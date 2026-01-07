@@ -1,0 +1,18 @@
+[package]
+name = "verge"
+version = "0.0.1"
+edition = "2024"
+license = "MIT"
+description = "Verge Library: Sound specifications and lemmas for Verus"
+keywords = ["verus", "verified-rust", "verification"]
+categories = ["development-tools"]
+
+[lib]
+name = "verge"
+path = "verge.rs"
+
+[dependencies]
+vstd = "0.0.0-2026-01-04-0057"
+
+[package.metadata.verus]
+verify = true
