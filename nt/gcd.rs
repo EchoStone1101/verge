@@ -370,8 +370,127 @@ pub proof fn lemma_gcd_div(a: nat, b: nat, d: nat)
     }
 }
 
-/// Proof that if `a|n`, `b|n`, then `(ab/(a,b)) | n`.
-pub proof fn lemma_common_multiples(a: nat, b: nat, n: nat)
+/// This function computes the least common multiple of `a` and `b` 
+/// (denoted as `[a, b]`).
+pub open spec fn lcm(a: nat, b: nat) -> nat
+    recommends a > 0 && b > 0,
+{
+    a * b / gcd(a, b)
+}
+
+/// Proof of `[a, b]`'s properties.
+pub proof fn axiom_lcm_properties(a: nat, b: nat)
+    requires 
+        a > 0 && b > 0,
+    ensures 
+        is_factor_of(lcm(a, b), a) && is_factor_of(lcm(a, b), b),
+        lcm(a, b) != 0,
+        forall|m: nat| m > 0 && is_factor_of(m, a) && is_factor_of(m, b) ==> m >= lcm(a, b),
+        lcm(a, b) == lcm(b, a),
+{
+    let m = lcm(a, b);
+    let d = gcd(a, b);
+    let a1 = a / d;
+    let b1 = b / d;
+    let m1 = m / d;
+    axiom_gcd_properties(a, b);
+
+    // Goal 1: a|[a, b] and b|[a, b]
+    assert(is_factor_of(m, a)) by {
+        calc!{
+            (==)
+            m; {}
+            a * b / d; { broadcast use lemma_fundamental_div_mod; }
+            a * (d * b1 + 0) / d; {}
+            a * (d * b1) / d; { broadcast use lemma_mul_is_associative; }
+            a * d * b1 / d; { broadcast use lemma_mul_is_commutative; }
+            d * a * b1 / d; { broadcast use lemma_mul_is_associative; }
+            d * (a * b1) / d; { broadcast use lemma_div_multiples_vanish; }
+            a * b1; {}
+            b1 * a;
+        }
+        lemma_mod_multiples_basic(b1 as int, a as int);
+    }
+    assert(is_factor_of(m, b)) by {
+        calc!{
+            (==)
+            m; {}
+            a * b / d; { broadcast use lemma_fundamental_div_mod; }
+            (d * a1 + 0) * b / d; {}
+            d * a1 * b / d; { broadcast use lemma_mul_is_associative; }
+            d * (a1 * b) / d; { broadcast use lemma_div_multiples_vanish; }
+            a1 * b;
+        }
+        lemma_mod_multiples_basic(a1 as int, b as int);
+    }
+
+    // Goal w: [a, b] != 0
+    assert_by_contradiction!(m != 0, {
+        assert(is_factor_of(a * b, d)) by {
+            assert(is_factor_of(a * b, b)) by { broadcast use lemma_mod_multiples_basic; }
+            lemma_is_factor_transitive(d, b, a * b);
+        }
+        calc!{
+            (==)
+            a * b; { broadcast use lemma_fundamental_div_mod; }
+            d * m + 0; { broadcast use group_mul_basics; }
+            0 + 0; {}
+            0;
+        }
+        assert(a * b != 0) by { broadcast use group_mul_properties; }
+    });
+
+    // Goal 3: [a, b] is the *least*
+    assert forall|m0: nat| m0 > 0 && is_factor_of(m0, a) && is_factor_of(m0, b)
+    implies m0 >= lcm(a, b)
+    by {
+        lemma_lcm_is_factor(a, b, m0); // lcm(a, b) | m0
+        lemma_is_factor_bound(m0, lcm(a, b));
+    }
+
+    // Goal 4: [a, b] = [b, a]
+    assert(lcm(a, b) == lcm(b, a)) by {
+        calc!{
+            (==)
+            lcm(a, b); {}
+            a * b / gcd(a, b); { broadcast use lemma_mul_is_commutative; }
+            b * a / gcd(a, b); { axiom_gcd_properties(a, b); }
+            b * a / gcd(b, a); {}
+            lcm(b, a);
+        }
+    }
+}
+
+/// Proof that `[a, b] == a * b` is equivalent to coprimeness.
+pub proof fn axiom_coprime_lcm(a: nat, b: nat)
+    ensures a > 0 && b > 0 && lcm(a, b) == a * b <==> is_coprime(a, b),
+{
+    // ..the not so obvious step
+    if a > 0 && b > 0 && lcm(a, b) == a * b / 1 {
+        axiom_lcm_properties(a, b);
+        assert(is_factor_of(a * b, gcd(a, b))) by {
+            axiom_gcd_properties(a, b);
+            assert(is_factor_of(b, gcd(a, b)));
+            assert(is_factor_of(a * b, b)) by { broadcast use lemma_mod_multiples_basic; } 
+            lemma_is_factor_transitive(gcd(a, b), b, a * b);
+        }
+        assert(a * b == gcd(a, b) * lcm(a, b) + 0) by { broadcast use lemma_fundamental_div_mod; }
+        assert(a * b == lcm(a, b) * gcd(a, b));
+        assert(a * b == lcm(a, b) * 1);
+        lemma_mul_equality_converse(lcm(a, b) as int, gcd(a, b) as int, 1);
+        assert(gcd(a, b) == 1);
+    }
+    calc!{
+        (<==>)
+        is_coprime(a, b); { axiom_coprime_gcd(a, b); }
+        a > 0 && b > 0 && gcd(a, b) == 1; {}
+        a > 0 && b > 0 && lcm(a, b) == a * b / 1; {}
+        a > 0 && b > 0 && lcm(a, b) == a * b;
+    }
+}
+
+/// Proof that `[a, b]` is a factor of any common multiple `n` of `a` and `b`.
+pub proof fn lemma_lcm_is_factor(a: nat, b: nat, n: nat)
     requires
         is_factor_of(n, a),
         is_factor_of(n, b),
@@ -466,27 +585,6 @@ pub proof fn lemma_common_multiples(a: nat, b: nat, n: nat)
         }
         lemma_mod_multiples_basic(n3 as int, (a1 * b) as int);
     }
-}
-
-/// This function computes the least common multiple of `a` and `b` 
-/// (denoted as `[a, b]`).
-pub open spec fn lcm(a: nat, b: nat) -> nat
-    recommends a > 0 && b > 0,
-{
-    a * b / gcd(a, b)
-}
-
-/// Proof of `[a, b]`'s properties.
-pub proof fn axiom_lcm_properties(a: nat, b: nat)
-    requires 
-        a > 0 && b > 0,
-    ensures 
-        is_factor_of(lcm(a, b), a) && is_factor_of(lcm(a, b), b),
-        forall|m: nat| is_factor_of(m, a) && is_factor_of(m, b) ==> m >= lcm(a, b),
-        lcm(a, b) == lcm(b, a),
-{
-    // TODO
-    assume(false);
 }
 
 // TODO: gcd_exec
