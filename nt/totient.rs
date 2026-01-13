@@ -460,7 +460,14 @@ proof fn lemma_totient_coprime_mul_part1(a: nat, b: nat)
                 a * qa + ra; {}
                 (rb - ra - b * qb) + ra; {}
                 rb - b * qb; {}
-                -(b * qb) + rb; { lemma_mul_unary_negation(qb, b as int); }
+                -(b * qb) + rb; { 
+                    calc!{
+                        (==)
+                        -(b * qb); { lemma_mul_is_commutative(b as int, qb); }
+                        -(qb * b); { lemma_mul_unary_negation(qb, b as int); }
+                        (-qb) * b;
+                    }
+                }
                 (-qb) * b + rb;
             }
             assert(x % (a as int) == ra) by { lemma_fundamental_div_mod_converse(x as int, a as int, qa, ra); }
@@ -870,6 +877,16 @@ proof fn lemma_totient_factorization_induct(n: nat, p: nat, n1: nat, ps: Set<nat
     }
 }
 
-// TODO: totient_exec
+/// This function computes `phi(i)` for `i` in `0..=n`.
+pub fn totients(n: usize) -> (ret: Vec<usize>)
+    requires isize::MAX > n >= 2,
+    ensures
+        ret@.len() == n + 1,
+        forall|i: nat| #![auto] 0 <= i <= n ==> ret@[i as int] == totient(i),
+{
+    // TODO
+    assume(false);
+    unreached()
+}
 
 } // verus!

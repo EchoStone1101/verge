@@ -11,12 +11,8 @@ use vstd::prelude::*;
 pub mod nt;
 pub mod cart;
 
-verus! {
-
-}
+verus! {}
 
 #[cfg(not(verus_verify_core))]
 #[doc(hidden)]
 pub use crate as verge;
-
-fn main() {}

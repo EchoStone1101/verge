@@ -587,6 +587,13 @@ pub proof fn lemma_lcm_is_factor(a: nat, b: nat, n: nat)
     }
 }
 
-// TODO: gcd_exec
+/// This function computes `gcd(a, b)` in executable code.
+pub fn gcd_exec(a: usize, b: usize) -> (ret: usize)
+    ensures a > 0 && b > 0 ==> ret == gcd(a as nat, b as nat),
+{
+    // TODO
+    assume(false);
+    unreached()
+}
 
 } // verus!
