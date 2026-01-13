@@ -9,6 +9,7 @@
 
 use vstd::prelude::*;
 pub mod nt;
+pub mod cart;
 
 verus! {
 

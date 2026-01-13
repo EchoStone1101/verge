@@ -450,6 +450,24 @@ pub proof fn lemma_bezout_identity(a: nat, b: nat, d: nat)
     util::lemma_bezout_identity_epilogue2(a1, b1, d as int);
 }
 
+/// Proof of more properties about the Bezout identity. Specifically, for any 
+/// `a > 0`, `b > 0`, and `m` such that `(a, b) | m`, `ax + by = m` as a *unique* 
+/// solution such that `0 <= x < b / (a, b)`.
+pub proof fn lemma_bezout_identity_ext(a: nat, b: nat, m: int)
+    requires
+        a > 0 && b > 0,
+        m % (gcd(a, b) as int) == 0,
+    ensures 
+        exists|x: int, y: int| 0 <= x < b / gcd(a, b) && #[trigger] (a * x + b * y) == m,
+        !exists|x1: int, y1: int, x2: int, y2: int| 
+            0 <= x1 < x2 < b / gcd(a, b)
+            && #[trigger] (a * x1 + b * y1) == m
+            && #[trigger] (a * x2 + b * y2) == m,
+{
+    util::lemma_bezout_identity_ext1(a, b, m);
+    util::lemma_bezout_identity_ext2(a, b, m);
+}
+
 /// Proof that all positive natural numbers are either prime, composite, or 1.
 pub proof fn lemma_prime_or_composite(n: nat)
     requires n > 0,
@@ -833,7 +851,10 @@ pub proof fn lemma_factorization(n: nat)
                 }
                 n2 * (pow(p as int, e + 1) as nat);
             }
-            assert(is_factor_of(n, pow(p as int, e + 1) as nat)) by { broadcast use lemma_mod_multiples_basic; }
+            assert(is_factor_of(n, pow(p as int, e + 1) as nat)) by { 
+                lemma_pow_positive(p as int, e + 1);
+                lemma_mod_multiples_basic(n2 as int, pow(p as int, e + 1));
+            }
         });
         assert(prime_factors(n1).insert(p) == prime_factors(n)) by {
             let set1 = prime_factors(n1).insert(p);
@@ -945,7 +966,6 @@ proof fn lemma_factorization_induct(n: nat, p: nat, n1: nat, ps: Set<nat>)
     let f = |prod: nat, p: nat| prod * (pow(p as int, vp(n, p)) as nat);
     let f1 = |prod: nat, p: nat| prod * (pow(p as int, vp(n1, p)) as nat);
     
-    
     lemma_prime_factors_bound(n1);
     assert(ps.finite());
 
@@ -1016,5 +1036,3 @@ proof fn lemma_factorization_induct(n: nat, p: nat, n1: nat, ps: Set<nat>)
 }
 
 } // verus!
-
-fn main() {} // placeholder
