@@ -781,21 +781,23 @@ pub proof fn lemma_prime_factors_disjoint_iff_coprime(a: nat, b: nat)
     }
 }
 
-/// Proof of the fundamental principle of arithmetics, or that every `n > 0` is equal to
-/// a unique factorization form.
-pub proof fn lemma_factorization(n: nat) 
+/// Proof of induction over factorization of `n`. 
+/// Specifically, if `g(a * b) == g(a) * g(b)` when `a` and `b` are coprime, then
+/// `g(n) = prime_factors(n).fold(g(1), x g(pow(p, vp(n, p))))`. 
+pub proof fn lemma_factorization_induct(n: nat, g: spec_fn(nat) -> nat) 
     requires
         n > 0,
+        forall|a: nat, b: nat| #[trigger] is_coprime(a, b) ==> g(a * b) == g(a) * g(b),
     ensures
-        n == prime_factors(n).fold(1, |prod: nat, p: nat| prod * (pow(p as int, vp(n, p)) as nat)),
+        g(n) == prime_factors(n).fold(g(1), |prod: nat, p: nat| prod * g((pow(p as int, vp(n, p)) as nat))),
     decreases n,
 {
-    let f = |prod: nat, p: nat| prod * (pow(p as int, vp(n, p)) as nat);
-    lemma_factorization_fun_comm(n);
+    let f = |prod: nat, p: nat| prod * g((pow(p as int, vp(n, p)) as nat));
+    lemma_factorization_fun_comm(n, g);
 
     if n == 1 {
         lemma_prime_factors_one();
-        lemma_fold_empty(1, f);
+        lemma_fold_empty(g(1), f);
     } else {
         lemma_prime_factor_exists(n);
         let p = prime_factors(n).choose();
@@ -813,22 +815,22 @@ pub proof fn lemma_factorization(n: nat)
 
         // ..induction step
         let n1 = n / p_to_e;
-        let f1 = |prod: nat, p: nat| prod * (pow(p as int, vp(n1, p)) as nat);
+        let f1 = |prod: nat, p: nat| prod * g((pow(p as int, vp(n1, p)) as nat));
         assert(n == p_to_e * n1 + 0) by { broadcast use lemma_fundamental_div_mod; }
         assert(0 < n1 < n) by {
             lemma_div_non_zero(n as int, p_to_e as int);
             lemma_mul_strict_inequality(1, p_to_e as int, n1 as int);
             lemma_mul_strict_inequality_converse(1, p_to_e as int, n1 as int);
         }
-        lemma_factorization_fun_comm(n1);
+        lemma_factorization_fun_comm(n1, g);
         
-        assert(n1 == prime_factors(n1).fold(1, f1)) by {
-            lemma_factorization(n1);
+        assert(g(n1) == prime_factors(n1).fold(g(1), f1)) by {
+            lemma_factorization_induct(n1, g);
         }
 
         // Goals: 
         // (1) prime_factors(n1).insert(p) == prime_factors(n)
-        // (2) prime_factors(n1).fold(1, f1) == prime_factors(n1).fold(1, f)
+        // (2) prime_factors(n1).fold(g(1), f1) == prime_factors(n1).fold(g(1), f)
         assert_by_contradiction!(!is_factor_of(n1, p), {
             let n2 = n1 / p;
             assert(n1 == p * n2 + 0) by { broadcast use lemma_fundamental_div_mod; }
@@ -898,55 +900,61 @@ pub proof fn lemma_factorization(n: nat)
             }
         } // ..(1)
 
-        assert(prime_factors(n1).fold(1, f1) == prime_factors(n1).fold(1, f)) by {
+        assert(prime_factors(n1).fold(g(1), f1) == prime_factors(n1).fold(g(1), f)) by {
             assert(is_factor_of(n, n1)) by { lemma_mod_multiples_basic(p_to_e as int, n1 as int); }
-            lemma_factorization_induct(n, p, n1, prime_factors(n1));
+            lemma_factorization_fun_fold(n, p, n1, prime_factors(n1), g);
         } // ..(2)
         
         // ..and we are done!
         calc!{
             (==)
-            n; {}
-            p_to_e * n1; { broadcast use lemma_mul_is_commutative; }
-            n1 * p_to_e; {}
-            prime_factors(n1).fold(1, f1) * p_to_e; {}
-            prime_factors(n1).fold(1, f) * p_to_e; {}
-            f(prime_factors(n1).fold(1, f), p); { 
-                lemma_prime_factors_bound(n1);
-                lemma_fold_insert(prime_factors(n1), 1, f, p);
+            g(n); {}
+            g(p_to_e * n1); { broadcast use lemma_mul_is_commutative; }
+            g(n1 * p_to_e); {
+                assert(prime_factors(p_to_e) == set!{p}) by { lemma_prime_factors_prime_pow(p, e); }
+                assert(prime_factors(n1).disjoint(set!{p}));
+                lemma_prime_factors_disjoint_iff_coprime(n1, p_to_e);
+                assert(is_coprime(n1, p_to_e));
             }
-            prime_factors(n1).insert(p).fold(1, f); {}
-            prime_factors(n).fold(1, f);
+            g(n1) * g(p_to_e); {}
+            prime_factors(n1).fold(g(1), f1) * g(p_to_e); {}
+            prime_factors(n1).fold(g(1), f) * g(p_to_e); {}
+            f(prime_factors(n1).fold(g(1), f), p); { 
+                lemma_prime_factors_bound(n1);
+                lemma_fold_insert(prime_factors(n1), g(1), f, p);
+            }
+            prime_factors(n1).insert(p).fold(g(1), f); {}
+            prime_factors(n).fold(g(1), f);
         }
     }
 }
 
-proof fn lemma_factorization_fun_comm(n: nat)
+proof fn lemma_factorization_fun_comm(n: nat, g: spec_fn(nat) -> nat)
     requires n > 0,
     ensures
         ({
-            let f = |prod: nat, p: nat| prod * (pow(p as int, vp(n, p)) as nat);
+            let f = |prod: nat, p: nat| prod * g((pow(p as int, vp(n, p)) as nat));
             is_fun_commutative(f)
         })
 {
-    let f = |prod: nat, p: nat| prod * (pow(p as int, vp(n, p)) as nat);
+    let f = |prod: nat, p: nat| prod * g((pow(p as int, vp(n, p)) as nat));
     assert forall |a1: nat, a2: nat, b: nat| #[trigger] f(f(b, a2), a1) == f(f(b, a1), a2) 
     by {
-        let pow1 = pow(a1 as int, vp(n, a1)) as nat;
-        let pow2 = pow(a2 as int, vp(n, a2)) as nat;
+        let g1 = g(pow(a1 as int, vp(n, a1)) as nat);
+        let g2 = g(pow(a2 as int, vp(n, a2)) as nat);
         calc!{
             (==)
             f(f(b, a1), a2); {}
-            b * pow1 * pow2; { broadcast use lemma_mul_is_associative; }
-            b * (pow1 * pow2); { broadcast use lemma_mul_is_commutative; }
-            b * (pow2 * pow1); { broadcast use lemma_mul_is_associative; }
-            b * pow2 * pow1; {}
+            b * g1 * g2; { broadcast use lemma_mul_is_associative; }
+            b * (g1 * g2); { broadcast use lemma_mul_is_commutative; }
+            b * (g2 * g1); { broadcast use lemma_mul_is_associative; }
+            b * g2 * g1; {}
             f(f(b, a2), a1);
         }
     }
 }
 
-proof fn lemma_factorization_induct(n: nat, p: nat, n1: nat, ps: Set<nat>) 
+proof fn lemma_factorization_fun_fold(n: nat, p: nat, n1: nat, ps: Set<nat>, g: spec_fn(nat) -> nat) 
     requires
         is_prime(p),
         n > 0,
@@ -957,31 +965,31 @@ proof fn lemma_factorization_induct(n: nat, p: nat, n1: nat, ps: Set<nat>)
         ps.subset_of(prime_factors(n1)),
     ensures
         ({
-            let f = |prod: nat, p: nat| prod * (pow(p as int, vp(n, p)) as nat);
-            let f1 = |prod: nat, p: nat| prod * (pow(p as int, vp(n1, p)) as nat);
-            ps.fold(1, f1) == ps.fold(1, f)
+            let f = |prod: nat, p: nat| prod * g((pow(p as int, vp(n, p)) as nat));
+            let f1 = |prod: nat, p: nat| prod * g((pow(p as int, vp(n1, p)) as nat));
+            ps.fold(g(1), f1) == ps.fold(g(1), f)
         })
     decreases ps.len(),
 {
-    let f = |prod: nat, p: nat| prod * (pow(p as int, vp(n, p)) as nat);
-    let f1 = |prod: nat, p: nat| prod * (pow(p as int, vp(n1, p)) as nat);
+    let f = |prod: nat, p: nat| prod * g((pow(p as int, vp(n, p)) as nat));
+    let f1 = |prod: nat, p: nat| prod * g((pow(p as int, vp(n1, p)) as nat));
     
     lemma_prime_factors_bound(n1);
     assert(ps.finite());
 
     if ps.is_empty() {
         // ..base
-        lemma_fold_empty(1, f);
-        lemma_fold_empty(1, f1);
+        lemma_fold_empty(g(1), f);
+        lemma_fold_empty(g(1), f1);
     } else {
         // ..induct
         let p0 = ps.choose();
-        let z = ps.remove(p0).fold(1, f);
-        let z1 = ps.remove(p0).fold(1, f1);
+        let z = ps.remove(p0).fold(g(1), f);
+        let z1 = ps.remove(p0).fold(g(1), f1);
        
         assert(f(z, p0) == f1(z1, p0)) by {
             assert(z == z1) by {
-                lemma_factorization_induct(n, p, n1, ps.remove(p0));
+                lemma_factorization_fun_fold(n, p, n1, ps.remove(p0), g);
             }
             assert(vp(n, p0) == vp(n1, p0)) by {
                 assert(p0 != p) by {
@@ -1028,11 +1036,30 @@ proof fn lemma_factorization_induct(n: nat, p: nat, n1: nat, ps: Set<nat>)
             assert(pow(p0 as int, vp(n, p0)) == pow(p0 as int, vp(n1, p0)));
             assert(f(z, p0) == f1(z1, p0));
         }
-        lemma_factorization_fun_comm(n);
-        lemma_factorization_fun_comm(n1);
-        lemma_fold_insert(ps.remove(p0), 1, f, p0);
-        lemma_fold_insert(ps.remove(p0), 1, f1, p0);
+        lemma_factorization_fun_comm(n, g);
+        lemma_factorization_fun_comm(n1, g);
+        lemma_fold_insert(ps.remove(p0), g(1), f, p0);
+        lemma_fold_insert(ps.remove(p0), g(1), f1, p0);
     }
+}
+
+/// Proof of the fundamental principle of arithmetics, or the factorization
+/// of positive integer `n`.
+pub proof fn lemma_factorization(n: nat) 
+    requires
+        n > 0,
+    ensures
+        n == prime_factors(n).fold(1, |prod: nat, p: nat| prod * (pow(p as int, vp(n, p)) as nat)),
+{
+    let id = |x: nat| x;
+    lemma_factorization_induct(n, id);
+    assert(id(1) == 1);
+
+    let fold_fn = |g: spec_fn(nat) -> nat| {
+        |prod: nat, p: nat| prod * g((pow(p as int, vp(n, p)) as nat))
+    };
+    let trivial_fn = |prod: nat, p: nat| prod * (pow(p as int, vp(n, p)) as nat);
+    assert(fold_fn(id) == trivial_fn);
 }
 
 } // verus!

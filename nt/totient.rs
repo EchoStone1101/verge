@@ -9,7 +9,7 @@ use super::{
     lemma_prime_factor_exists, lemma_prime_factors_bound, lemma_prime_factors_one, 
     lemma_prime_factors_prime, lemma_prime_factors_prime_pow,
     lemma_prime_factors_disjoint_iff_coprime, 
-    lemma_bezout_identity_ext, lemma_factorization,
+    lemma_bezout_identity_ext, lemma_factorization_induct,
 };
 use crate::cart::{
     cart, lemma_cart_len, lemma_cart_intersect,
@@ -660,221 +660,21 @@ pub proof fn lemma_totient_factorization(n: nat)
     ensures 
         totient(n) == prime_factors(n).fold(1, |prod: nat, p: nat| 
             prod * totient(pow(p as int, vp(n, p)) as nat)),
-    decreases n,
 {
-    let f = |prod: nat, p: nat| prod * totient(pow(p as int, vp(n, p)) as nat);
-    lemma_totient_factorization_fun_comm(n);
-    if n == 1 {
-        assert(prime_factors(n).is_empty()) by { lemma_prime_factors_one(); }
-        assert(prime_factors(n).fold(1, f) == 1) by { lemma_fold_empty(1, f); }
-        assert(totient(1) == 1) by { lemma_totient_one(); }
-    } else {
-        lemma_prime_factor_exists(n);
-        lemma_prime_factors_bound(n);
-        let p1 = prime_factors(n).choose();
-        let ps = prime_factors(n).remove(p1);
-        let e1 = vp(n, p1);
-        let p1_to_e1 = pow(p1 as int, e1) as nat;
-        axiom_vp_properties(n, p1);
-        assert(e1 >= 1) by {
-            lemma_pow1(p1 as int);
-            assert(is_factor_of(n, pow(p1 as int, 1) as nat));
-        }
-        assert(prime_factors(p1_to_e1) == set!{p1}) by { lemma_prime_factors_prime_pow(p1, e1); }
-
-        let n1 = n / p1_to_e1;
-        assert(n == p1_to_e1 * n1 + 0) by { broadcast use lemma_fundamental_div_mod; }
-        assert(0 < n1 < n) by { 
-            lemma_is_factor_bound(n, p1_to_e1);
-            lemma_div_non_zero(n as int, p1_to_e1 as int);
-            assert(p1_to_e1 > 1) by {
-                lemma_pow1(p1 as int);
-                lemma_pow_increases(p1, 1, e1);
-            }
-            lemma_div_decreases(n as int, p1_to_e1 as int);
-        }
-        assert(is_factor_of(n, n1)) by { lemma_mod_multiples_basic(p1_to_e1 as int, n1 as int); }
-
-        assert_sets_equal!(prime_factors(n1) == ps, p => {
-            if prime_factors(n1).contains(p) {
-                assert(is_factor_of(n, p)) by { lemma_is_factor_transitive(p, n1, n); }
-                assert_by_contradiction!(p != p1, {
-                    let n2 = n1 / p1;
-                    assert(n1 == p1 * n2 + 0) by { broadcast use lemma_fundamental_div_mod; }
-                    calc!{
-                        (==)
-                        n; {}
-                        p1_to_e1 * n1; {}
-                        p1_to_e1 * (p1 * n2); { broadcast use lemma_mul_is_associative; }
-                        p1_to_e1 * p1 * n2; {}
-                        pow(p1 as int, e1) as nat * p1 * n2; { 
-                            lemma_mul_is_commutative(pow(p1 as int, e1), p1 as int); 
-                        }
-                        p1 * pow(p1 as int, e1) as nat * n2; { 
-                            lemma_pow_positive(p1 as int, e1);
-                            lemma_pow_positive(p1 as int, e1 + 1);
-                            reveal(pow);
-                            assert(p1 * pow(p1 as int, e1) as nat == pow(p1 as int, e1 + 1) as nat);
-                        }
-                        pow(p1 as int, e1 + 1) as nat * n2; { 
-                            lemma_mul_is_commutative(pow(p1 as int, e1 + 1), n2 as int);
-                        }
-                        n2 * pow(p1 as int, e1 + 1) as nat;
-                    }
-                    assert(is_factor_of(n, pow(p1 as int, e1 + 1) as nat)) by {
-                        lemma_pow_positive(p1 as int, e1 + 1);
-                        lemma_mod_multiples_basic(n2 as int, pow(p1 as int, e1 + 1));
-                    }
-                });
-                assert(prime_factors(n).contains(p));
-            }
-            if ps.contains(p) {
-                assert(is_factor_of(n, p));
-                assert(is_coprime(p, p1_to_e1)) by {
-                    assert(p != p1);
-                    assert(set!{p}.disjoint(set!{p1}));
-                    lemma_prime_factors_prime(p);
-                    lemma_prime_factors_disjoint_iff_coprime(p, p1_to_e1);
-                }
-                assert(prime_factors(n1).contains(p)) by {
-                    lemma_coprime_factor(p, p1_to_e1, n1);
-                }
-            }
-        });
-        assert(is_coprime(p1_to_e1, n1)) by { lemma_prime_factors_disjoint_iff_coprime(p1_to_e1, n1); }
-
-        calc!{
-            (==)
-            prime_factors(n).fold(1, f); { lemma_fold_insert(ps, 1, f, p1); }
-            f(ps.fold(1, f), p1); {}
-            f(prime_factors(n1).fold(1, f), p1); {
-                lemma_totient_factorization(n1);
-                assert(!is_factor_of(n1, p1)) by { assert(!prime_factors(n1).contains(p1)); }
-                lemma_totient_factorization_induct(n, p1, n1, ps);
-            }
-            f(totient(n1), p1); {}
-            totient(n1) * totient(p1_to_e1); { lemma_mul_is_commutative(totient(n1) as int, totient(p1_to_e1) as int); }
-            totient(p1_to_e1) * totient(n1); { lemma_totient_coprime_mul(p1_to_e1, n1); }
-            totient(p1_to_e1 * n1); {}
-            totient(n);
-        }
-    }
-}
-
-// TODO: redundant with lemma_factorization?
-proof fn lemma_totient_factorization_fun_comm(n: nat)
-    requires n > 0,
-    ensures
-        ({
-            let f = |prod: nat, p: nat| prod * totient(pow(p as int, vp(n, p)) as nat);
-            is_fun_commutative(f)
-        })
-{
-    let f = |prod: nat, p: nat| prod * totient(pow(p as int, vp(n, p)) as nat);
-    assert forall |a1: nat, a2: nat, b: nat| #[trigger] f(f(b, a2), a1) == f(f(b, a1), a2) 
+    let tot = |x: nat| totient(x);
+    assert forall|a: nat, b: nat| is_coprime(a, b)
+    implies tot(a * b) == tot(a) * tot(b)
     by {
-        let tot1 = totient(pow(a1 as int, vp(n, a1)) as nat);
-        let tot2 = totient(pow(a2 as int, vp(n, a2)) as nat);
-        calc!{
-            (==)
-            f(f(b, a1), a2); {}
-            b * tot1 * tot2; { broadcast use lemma_mul_is_associative; }
-            b * (tot1 * tot2); { broadcast use lemma_mul_is_commutative; }
-            b * (tot2 * tot1); { broadcast use lemma_mul_is_associative; }
-            b * tot2 * tot1; {}
-            f(f(b, a2), a1);
-        }
+        lemma_totient_coprime_mul(a, b);
     }
-}
+    lemma_factorization_induct(n, tot);
 
-proof fn lemma_totient_factorization_induct(n: nat, p: nat, n1: nat, ps: Set<nat>) 
-    requires
-        is_prime(p),
-        n > 0,
-        vp(n, p) > 0,
-        n == pow(p as int, vp(n, p)) as nat * n1,
-        is_factor_of(n, n1),
-        !is_factor_of(n1, p),
-        ps.subset_of(prime_factors(n1)),
-    ensures
-        ({
-            let f = |prod: nat, p: nat| prod * totient(pow(p as int, vp(n, p)) as nat);
-            let f1 = |prod: nat, p: nat| prod * totient(pow(p as int, vp(n1, p)) as nat);
-            ps.fold(1, f1) == ps.fold(1, f)
-        })
-    decreases ps.len(),
-{
-    let f = |prod: nat, p: nat| prod * totient(pow(p as int, vp(n, p)) as nat);
-    let f1 = |prod: nat, p: nat| prod * totient(pow(p as int, vp(n1, p)) as nat);
-    
-    lemma_prime_factors_bound(n1);
-    assert(ps.finite());
-
-    if ps.is_empty() {
-        // ..base
-        lemma_fold_empty(1, f);
-        lemma_fold_empty(1, f1);
-    } else {
-        // ..induct
-        let p0 = ps.choose();
-        let z = ps.remove(p0).fold(1, f);
-        let z1 = ps.remove(p0).fold(1, f1);
-       
-        assert(f(z, p0) == f1(z1, p0)) by {
-            assert(z == z1) by {
-                lemma_totient_factorization_induct(n, p, n1, ps.remove(p0));
-            }
-            assert(vp(n, p0) == vp(n1, p0)) by {
-                assert(p0 != p) by {
-                    assert(!prime_factors(n1).contains(p));
-                }
-                assert(is_factor_of(n, p0)) by {
-                    lemma_is_factor_transitive(p0, n1, n);
-                }
-
-                let e = vp(n, p0);
-                let e1 = vp(n1, p0);
-                axiom_vp_properties(n, p0);
-                axiom_vp_properties(n1, p0);
-                assert(e >= 1) by {
-                    lemma_pow1(p0 as int);
-                    assert(is_factor_of(n, pow(p0 as int, 1) as nat));
-                }
-                assert(e1 >= 1) by {
-                    lemma_pow1(p0 as int);
-                    assert(is_factor_of(n1, pow(p0 as int, 1) as nat));
-                }
-
-                assert(e1 <= e) by {
-                    let p0_to_e1 = pow(p0 as int, e1) as nat;
-                    assert(is_factor_of(n, p0_to_e1)) by {
-                        lemma_is_factor_transitive(p0_to_e1, n1, n);
-                    }
-                }
-                assert(e <= e1) by {
-                    let p0_to_e = pow(p0 as int, e) as nat;
-                    let p_exp = pow(p as int, vp(n, p)) as nat;
-                    lemma_pow_positive(p0 as int, e);
-                    lemma_pow_positive(p as int, vp(n, p));
-                    assert(is_factor_of(n1, p0_to_e)) by {
-                        assert(is_coprime(p0_to_e, p_exp)) by {
-                            assert(prime_factors(p0_to_e) == set!{p0}) by { lemma_prime_factors_prime_pow(p0, e); }
-                            assert(prime_factors(p_exp) == set!{p}) by { lemma_prime_factors_prime_pow(p, vp(n, p)); }
-                            lemma_prime_factors_disjoint_iff_coprime(p0_to_e, p_exp);
-                        }
-                        lemma_coprime_factor(p0_to_e, p_exp, n1);
-                    }
-                }
-            }
-            assert(pow(p0 as int, vp(n, p0)) == pow(p0 as int, vp(n1, p0)));
-            assert(totient(pow(p0 as int, vp(n, p0)) as nat) == totient(pow(p0 as int, vp(n1, p0)) as nat));
-            assert(f(z, p0) == f1(z1, p0));
-        }
-        lemma_totient_factorization_fun_comm(n);
-        lemma_totient_factorization_fun_comm(n1);
-        lemma_fold_insert(ps.remove(p0), 1, f, p0);
-        lemma_fold_insert(ps.remove(p0), 1, f1, p0);
-    }
+    assert(tot(1) == 1) by { lemma_totient_one(); }
+    let fold_fn = |g: spec_fn(nat) -> nat| {
+        |prod: nat, p: nat| prod * g((pow(p as int, vp(n, p)) as nat))
+    };
+    let tot_fn = |prod: nat, p: nat| prod * totient((pow(p as int, vp(n, p)) as nat));
+    assert(fold_fn(tot) == tot_fn);
 }
 
 /// This function computes `phi(i)` for `i` in `0..=n`.
