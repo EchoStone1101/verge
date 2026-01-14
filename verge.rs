@@ -10,6 +10,7 @@
 use vstd::prelude::*;
 pub mod nt;
 pub mod cart;
+pub mod fs;
 
 verus! {}
 
