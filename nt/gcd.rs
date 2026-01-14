@@ -4,7 +4,8 @@
 use super::{
     set_nat_range, is_factor_of, is_common_factor, is_coprime,
     lemma_is_factor_bound, lemma_is_factor_transitive, 
-    lemma_nat_range, lemma_is_factor_lincomb, lemma_is_factor_multiples, lemma_coprime_factor,
+    lemma_nat_range, lemma_is_factor_lincomb, lemma_is_factor_lincomb2, 
+    lemma_is_factor_multiples, lemma_coprime_factor,
 };
 use vstd::prelude::*;
 use vstd::arithmetic::mul::*;
@@ -587,13 +588,106 @@ pub proof fn lemma_lcm_is_factor(a: nat, b: nat, n: nat)
     }
 }
 
-/// This function computes `gcd(a, b)` in executable code.
+/// This function computes `gcd(a, b)` via the Euclidean method, in executable code.
 pub fn gcd_exec(a: usize, b: usize) -> (ret: usize)
     ensures a > 0 && b > 0 ==> ret == gcd(a as nat, b as nat),
 {
-    // TODO
-    assume(false);
-    unreached()
+    if a == 0 || b == 0 {
+        return 0;
+    }
+
+    let mut ea = a;
+    let mut eb = b;
+    let ghost d = gcd(a as nat, b as nat);
+    while eb % ea != 0 
+        invariant
+            ea > 0 && eb > 0,
+            gcd(ea as nat, eb as nat) == d,
+        decreases ea, eb, 
+    {
+        let ghost a = ea as nat;
+        let ghost b = eb as nat;
+        if ea > eb {
+            let tmp = ea;
+            ea = eb;
+            eb = tmp;
+            proof { // invariant
+                assert(ea == b && eb == a);
+                axiom_gcd_properties(a, b); 
+            }
+        } else {
+            let tmp = ea;
+            ea = eb % ea;
+            eb = tmp;
+            proof { // invariant
+                assert(ea == b % a && eb == a);
+                assert(decreases_to!(a, b => ea, eb)) by {
+                    lemma_mod_bound(b as int, a as int);
+                    assert(ea < a);
+                }
+                gcd_exec_proof(a, b);
+            }
+        }
+    }
+    
+    proof { // post invariants
+        assert(ea == d) by {
+            assert(gcd(ea as nat, eb as nat) == d && eb % ea == 0);
+            lemma_gcd_is_gcd_rec(ea as nat, eb as nat);
+            assert(eb >= ea) by { lemma_is_factor_bound(eb as nat, ea as nat); }
+            reveal_with_fuel(gcd_rec, 2);
+            assert(gcd_rec(ea as nat, eb as nat) == ea); 
+        }
+    }
+    ea
+}
+
+proof fn gcd_exec_proof(a: nat, b: nat) 
+    requires a > 0 && b > 0 && b % a != 0,
+    ensures gcd(b % a, a) == gcd(a, b),
+{
+    let d = gcd(a, b);
+    let d1 = gcd(b % a, a);
+    axiom_gcd_properties(a, b);
+    axiom_gcd_properties(b % a, a);
+
+    assert(d1 <= d) by {
+        calc!{
+            (==)
+            b; { broadcast use lemma_fundamental_div_mod; }
+            a * (b/a) + b % a; { broadcast use group_mul_basics; }
+            a * (b/a) + (b % a) * 1; 
+        }
+        lemma_is_factor_lincomb(a, (b/a) as int, b % a, 1, d1);
+        let pred = |x: nat| is_factor_of(x, d1);
+        assert forall|a0: nat, b0: nat, x: int, y: int| 
+            pred(a0) && pred(b0) && a0 * x + b0 * y >= 0
+        implies
+            #[trigger] pred((a0 * x + b0 * y) as nat)
+        by { lemma_is_factor_lincomb(a0, x, b0, y, d1); }
+        assert(pred(d)) by { lemma_euclidean_induct(a, b, pred); }
+        lemma_is_factor_bound(d, d1);
+    }
+
+    assert(d <= d1) by {
+        calc!{
+            (==)
+            (b % a) as int; { lemma_fundamental_div_mod(b as int, a as int); }
+            b - a * (b/a); { broadcast use group_mul_basics; }
+            b * 1 - a * (b/a);
+        }
+        assert(is_factor_of(b % a, d)) by {
+            lemma_is_factor_lincomb2(b, 1, a, (b/a) as int, d);
+        }
+        let pred = |x: nat| is_factor_of(x, d);
+        assert forall|a0: nat, b0: nat, x: int, y: int| 
+            pred(a0) && pred(b0) && a0 * x + b0 * y >= 0
+        implies
+            #[trigger] pred((a0 * x + b0 * y) as nat)
+        by { lemma_is_factor_lincomb(a0, x, b0, y, d); }
+        assert(pred(d1)) by { lemma_euclidean_induct(b % a, a, pred); }
+        lemma_is_factor_bound(d1, d);
+    }  
 }
 
 } // verus!

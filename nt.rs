@@ -127,6 +127,26 @@ pub proof fn lemma_is_factor_lincomb(n1: nat, a1: int, n2: nat, a2: int, d: nat)
     assert((n1 * a1 + n2 * a2) % (d as int) == 0);
 }
 
+/// Proof that if `d|n1` and `d|n2`, then `d|(n1 * a1 - n2 * a2)` for any integer coefficients
+/// `a1` and `a2`.
+/// This is an alternative form of `lemma_is_factor_lincomb`, useful when the linear
+/// combination comes in the substraction form.
+pub proof fn lemma_is_factor_lincomb2(n1: nat, a1: int, n2: nat, a2: int, d: nat)
+    requires 
+        is_factor_of(n1, d),
+        is_factor_of(n2, d),
+        n1 * a1 - n2 * a2 >= 0,
+    ensures 
+        is_factor_of((n1 * a1 - n2 * a2) as nat, d),
+{
+    calc!{
+        (==)
+        n1 * a1 - n2 * a2; { lemma_mul_unary_negation(n2 as int, a2); }
+        n1 * a1 + n2 * (-a2);
+    }
+    lemma_is_factor_lincomb(n1, a1, n2, -a2, d);
+}
+
 /// Proof that if `a | b` and `b | c`, then `a | c`.
 pub proof fn lemma_is_factor_transitive(a: nat, b: nat, c: nat)
     requires
