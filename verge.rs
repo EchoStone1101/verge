@@ -11,6 +11,7 @@ use vstd::prelude::*;
 pub mod nt;
 pub mod cart;
 pub mod fs;
+pub mod ascii_utils;
 
 verus! {}
 
