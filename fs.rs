@@ -3,29 +3,149 @@ use std::path::Path;
 use std::io::SeekFrom;
 use std::os::fd::AsRawFd;
 use std::io::Seek;
+use std::collections::HashMap;
 
 mod std_fs;
 
 verus! {
 
 use std_fs::{
-    StdFile, IoError
+    StdFile, IoError, file_exists, 
 };
 
-uninterp spec fn get_file_len() -> nat;
-uninterp spec fn get_file_content(len: nat) -> Seq<u8>;
-// uninterp spec fn is_different_file(fd1: String, fd2: String) -> bool;
+uninterp spec fn get_file_content(file: &String, i: int) -> u8;
+pub uninterp spec fn is_different_file(file1: &String, file2: &String) -> bool;
+
+#[verifier::external_body]
+pub struct GlobalOpenFilesInner {
+    open_files: HashMap<(u64, u64), ()>,
+}
+
+impl GlobalOpenFilesInner {
+    #[verifier::external_body]
+    fn new() -> Self {
+        GlobalOpenFilesInner {
+            open_files: HashMap::new(),
+        }
+    }
+
+    #[verifier::external_body]
+    fn contains_key(&self, k: &(u64, u64)) -> bool {
+        self.open_files.contains_key(k)
+    }
+
+    #[verifier::external_body]
+    fn insert(&mut self, k: (u64, u64)) {
+        self.open_files.insert(k, ());
+    }
+
+    #[verifier::external_body]
+    fn remove(&mut self, k: &(u64, u64)) {
+        self.open_files.remove(k);
+    }
+}
+
+pub struct GlobalOpenFiles {
+    pub open_files: GlobalOpenFilesInner,
+    /// A ghost set of all files, including those that are closed
+    pub ghost_files: Ghost<Set<String>>,
+}
+
+impl GlobalOpenFiles {
+    pub fn new() -> (s: Self) 
+        ensures s.ghost_files@.is_empty()
+    {
+        Self {
+            open_files: GlobalOpenFilesInner::new(),
+            ghost_files: Ghost(Set::empty()),
+        }
+    }
+
+    #[verifier::external_body]
+    fn open_checked(&mut self, open_result: Result<(StdFile, Ghost<nat>), FileError>, path: &String) -> (result: Result<(StdFile, Ghost<nat>), FileError>) 
+        requires
+            forall |p: String| #![auto] old(self).ghost_files@.contains(p) ==> {
+                !is_different_file(&p, &p) && old(self).ghost_files@.filter(|q| !is_different_file(&q, &p)).len() == 1
+            },  
+        ensures 
+            !is_different_file(path, path),
+            forall |p: String| #![auto] self.ghost_files@.contains(p) ==> {
+                !is_different_file(&p, &p) && self.ghost_files@.filter(|q| !is_different_file(&q, &p)).len() == 1
+            },
+            match result {
+                Ok((_, file_len)) => {
+                    &&& old(self).ghost_files@.insert(*path) == self.ghost_files@ 
+                    &&& forall |p: String| #![auto] old(self).ghost_files@.contains(p) ==> is_different_file(&p, &path) && is_different_file(&path, &p)
+                    &&& 0 <= file_len@ <= i64::MAX
+                },
+                Err(FileError::AlreadyOpen) => {
+                    &&& old(self).ghost_files@ =~= self.ghost_files@ 
+                    &&& exists |p: String| #![auto] self.ghost_files@.contains(p) && !is_different_file(&p, &path) && !is_different_file(&path, &p)
+                },
+                Err(_) => old(self).ghost_files@ =~= self.ghost_files@,
+            }
+    {
+        let Ok((file, file_len)) = open_result else {
+            return open_result;
+        };
+        let metadata = file.metadata().map_err(FileError::new)?;
+        let key = (metadata.dev(), metadata.ino());
+        let is_open = self.open_files.contains_key(&key);
+
+        if is_open {
+            Err(FileError::already_open())
+        }
+        else {
+            self.open_files.insert(key);
+            Ok((file, file_len))
+        }
+    }
+
+    #[verifier::external_body]
+    /// Check if the file is already open (when it exists)
+    fn create_checked(&self, path: &String) -> Result<(), FileError> {
+        let is_exist = file_exists(path).map_err(FileError::new)?;
+        if !is_exist {
+            return Ok(());
+        }
+        let Ok((std_file, _)) = StdFile::open(path) else {
+            return Ok(());
+        };
+
+        let metadata = std_file.metadata().map_err(FileError::new)?;
+        let key = (metadata.dev(), metadata.ino());
+        let is_open = self.open_files.contains_key(&key);
+
+        if is_open {
+            Err(FileError::already_open())
+        }
+        else {
+            Ok(())
+        }
+    }
+    
+    #[verifier::external_body]
+    fn close(&mut self, std_file: &StdFile) -> (result: Result<(), FileError>) 
+        requires
+            forall |p: String| #![auto] old(self).ghost_files@.contains(p) ==> {
+                !is_different_file(&p, &p) && old(self).ghost_files@.filter(|q| !is_different_file(&q, &p)).len() == 1
+            },  
+        ensures 
+            old(self).ghost_files@ =~= self.ghost_files@,
+            forall |p: String| #![auto] self.ghost_files@.contains(p) ==> {
+                !is_different_file(&p, &p) && self.ghost_files@.filter(|q| !is_different_file(&q, &p)).len() == 1
+            },
+    {
+        let metadata = std_file.metadata().map_err(FileError::new)?;
+        let key = (metadata.dev(), metadata.ino());
+        self.open_files.remove(&key);
+        Ok(())
+    }
+}
 
 /// A verified file handle that tracks the file's state
 pub struct VerifiedFile {
     pub inner: StdFile,
-    // // Current position in the file
-    // pub pos: u64,
-    // // File length at the time of opening
-    // pub file_len: u64,
-    // // Ghost content: Seq<u8>
-    // pub content: Vec<u8>,
-    // Virtual file
     pub virtual_file: Ghost<VirtualFile>,
 }
 
@@ -36,7 +156,7 @@ pub ghost struct VirtualFile {
 }
 
 impl VirtualFile {
-    pub closed spec fn build(file_len: nat, content: Seq<u8>) -> VirtualFile
+    spec fn build(file_len: nat, content: Seq<u8>) -> VirtualFile
         recommends
             content.len() == file_len,
     {
@@ -52,6 +172,7 @@ pub enum FileError {
     IoError(IoError),
     // Other error variants can be added here
     Other,
+    AlreadyOpen,
 }
 
 impl FileError {
@@ -62,28 +183,55 @@ impl FileError {
     pub fn empty() -> Self {
         FileError::Other
     }
+
+    pub fn already_open() -> Self {
+        FileError::AlreadyOpen
+    }
 }
 
 impl VerifiedFile {
-    /// Opens a file for reading and writing
-    pub fn open(path: &String) -> (result: Result<VerifiedFile, FileError>)
+    /// Opens a file for reading and writing, but only if it is not already open.
+    pub fn open(path: &String, global_open_files: &mut GlobalOpenFiles) -> (result: Result<VerifiedFile, FileError>)
+        requires
+            forall |p: String| #![auto] old(global_open_files).ghost_files@.contains(p) ==> {
+                !is_different_file(&p, &p) && old(global_open_files).ghost_files@.filter(|q| !is_different_file(&q, &p)).len() == 1
+            }
         ensures
+            forall |p: String| #![auto] global_open_files.ghost_files@.contains(p) ==> {
+                !is_different_file(&p, &p) && global_open_files.ghost_files@.filter(|q| !is_different_file(&q, &p)).len() == 1
+            }, 
             match result {
                 Ok(f) => {
                     let vf = f.virtual_file@;
                     vf.pos == 0 && vf.file_len == vf.content.len() && 0 <= vf.file_len <= i64::MAX
+                    && old(global_open_files).ghost_files@.insert(*path) == global_open_files.ghost_files@ 
+                    && forall |p: String| #![auto] old(global_open_files).ghost_files@.contains(p) ==> is_different_file(&p, &path) && is_different_file(&path, &p)
                 },
-                Err(_) => true,
+                Err(FileError::AlreadyOpen) => {
+                    old(global_open_files).ghost_files@ =~= global_open_files.ghost_files@
+                    && exists |p: String| #![auto] global_open_files.ghost_files@.contains(p) && !is_different_file(&p, &path) && !is_different_file(&path, &p)
+                },
+                // Note: not handle error in StdFile yet
+                Err(_) => old(global_open_files).ghost_files@ =~= global_open_files.ghost_files@,
             },
     {
-        let file = StdFile::open(path).map_err(FileError::new)?;
+        let open_result = StdFile::open(path).map_err(FileError::new);
 
-        let ghost file_len = get_file_len();
-        let ghost content = get_file_content(file_len);
-        assume({
-            &&& content.len() == file_len
-            &&& 0 <= file_len <= i64::MAX as nat
-        });
+        let (file, file_len) = match global_open_files.open_checked(open_result, path) {
+            Ok((file, file_len)) => (file, file_len),
+            Err(e) => {
+                // Note: can not remove this assert
+                assert(
+                    forall |p: String| #![auto] global_open_files.ghost_files@.contains(p) ==> {
+                        !is_different_file(&p, &p) && global_open_files.ghost_files@.filter(|q| !is_different_file(&q, &p)).len() == 1
+                    }
+                );                
+                return Err(e)
+            },
+        };
+
+        let ghost file_len = file_len@;
+        let ghost content = Seq::new(file_len, |i: int| get_file_content(path, i));
         let virtual_file = Ghost(VirtualFile::build(file_len, content));
         
         Ok(VerifiedFile {
@@ -93,16 +241,32 @@ impl VerifiedFile {
     }
 
     /// Creates a new file or truncates an existing one
-    pub fn create(path: &String) -> (result: Result<VerifiedFile, FileError>)
+    #[verifier::external_body]
+    pub fn create(path: &String, global_open_files: &mut GlobalOpenFiles) -> (result: Result<VerifiedFile, FileError>)
+        requires
+            forall |p: String| #![auto] old(global_open_files).ghost_files@.contains(p) ==> {
+                !is_different_file(&p, &p) && old(global_open_files).ghost_files@.filter(|q| !is_different_file(&q, &p)).len() == 1
+            }
         ensures
+            forall |p: String| #![auto] global_open_files.ghost_files@.contains(p) ==> {
+                !is_different_file(&p, &p) && global_open_files.ghost_files@.filter(|q| !is_different_file(&q, &p)).len() == 1
+            }, 
             match result {
                 Ok(f) => {
                     let vf = f.virtual_file@;
                     vf.pos == 0 && vf.file_len == 0 && vf.content.len() == 0
+                    && old(global_open_files).ghost_files@.insert(*path) == global_open_files.ghost_files@ 
+                    && forall |p: String| #![auto] old(global_open_files).ghost_files@.contains(p) ==> is_different_file(&p, &path) && is_different_file(&path, &p)
                 },
-                Err(_) => true,
+                Err(FileError::AlreadyOpen) => {
+                    old(global_open_files).ghost_files@ =~= global_open_files.ghost_files@
+                    && exists |p: String| #![auto] global_open_files.ghost_files@.contains(p) && !is_different_file(&p, &path) && !is_different_file(&path, &p)
+                },
+                // Note: not handle error in StdFile yet
+                Err(_) => old(global_open_files).ghost_files@ =~= global_open_files.ghost_files@,
             },
     {
+        let _ = global_open_files.create_checked(path)?;
         let file = StdFile::create(path).map_err(FileError::new)?;
         let ghost file_len = 0;
         let ghost content = Seq::empty();
@@ -111,6 +275,20 @@ impl VerifiedFile {
             inner: file,
             virtual_file,
         })
+    }
+
+    pub fn close(self, global_open_files: &mut GlobalOpenFiles) 
+        requires
+            forall |p: String| #![auto] old(global_open_files).ghost_files@.contains(p) ==> {
+                !is_different_file(&p, &p) && old(global_open_files).ghost_files@.filter(|q| !is_different_file(&q, &p)).len() == 1
+            }
+        ensures
+            old(global_open_files).ghost_files@ =~= global_open_files.ghost_files@,
+            forall |p: String| #![auto] global_open_files.ghost_files@.contains(p) ==> {
+                !is_different_file(&p, &p) && global_open_files.ghost_files@.filter(|q| !is_different_file(&q, &p)).len() == 1
+            }, 
+    {
+        global_open_files.close(&self.inner);
     }
 
     /// Seeks to a specific position in the file

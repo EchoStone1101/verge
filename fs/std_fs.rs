@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::io::{Seek, SeekFrom, Read, Write};
 use std::ffi::OsString;
 use std::sync::Arc;
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{OpenOptionsExt, MetadataExt};
 use std::os::fd::AsRawFd;
 use std::marker::PointeeSized;
 
@@ -32,11 +32,20 @@ pub struct IoError(std::io::Error);
 #[verifier::external_body]
 pub struct StdFile(std::fs::File);
 
+uninterp spec fn get_file_len<P: AsRef<Path>>(path: P) -> nat;
+
 impl StdFile {
     #[verifier::external_body]
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<StdFile, IoError> {
+    pub fn open<P: AsRef<Path>>(path: P) -> (result: Result<(StdFile, Ghost<nat>), IoError>)
+        ensures
+            match result {
+                Result::Ok((_, file_len)) => 0 <= file_len@ <= i64::MAX,
+                Result::Err(_) => true,
+            },
+    {
         let std_file = std::fs::File::open(path).map_err(IoError)?;
-        Ok(StdFile(std_file))
+        let ghost file_len = get_file_len(path);
+        Ok((StdFile(std_file), Ghost(file_len)))
     }
 
     #[verifier::external_body]
@@ -256,6 +265,16 @@ impl StdMetadata {
     }
 
     #[verifier::external_body]
+    pub fn dev(&self) -> u64 {
+        self.0.dev()
+    }
+
+    #[verifier::external_body]
+    pub fn ino(&self) -> u64 {
+        self.0.ino()
+    }
+
+    #[verifier::external_body]
     pub fn permissions(&self) -> StdPermissions {
         StdPermissions(self.0.permissions())
     }
@@ -467,9 +486,9 @@ pub fn set_permissions<P: AsRef<Path>>(path: P, perm: StdPermissions) -> Result<
     std::fs::set_permissions(path, perm.0).map_err(IoError)
 }
 
-// #[verifier::external_body]
-// pub fn exists<P: AsRef<Path>>(path: P) -> Result<bool, IoError> {
-//     std::fs::exists(path).map_err(IoError)
-// }
+#[verifier::external_body]
+pub fn file_exists<P: AsRef<Path>>(path: P) -> Result<bool, IoError> {
+    std::fs::exists(path).map_err(IoError)
+}
 
 }

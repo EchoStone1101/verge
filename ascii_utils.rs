@@ -1,5 +1,7 @@
 use vstd::prelude::*;
 
+use std::num::ParseIntError;
+
 verus! {
     pub open spec fn spec_trim_ascii_start(s: Seq<u8>) -> Seq<u8> 
         decreases s.len()
@@ -68,20 +70,28 @@ verus! {
             }
         }
     }
-
-    // pub assume_specification [<u8>::from_ascii_radix] (s: &[u8], radix: u32) -> (ret: Result<u8, ParseIntError>);
     
     pub assume_specification [<[u8]>::is_ascii] (s: &[u8]) -> (b: bool)
         ensures b <==> forall |i: int| #![auto] 0 <= i < s.len() ==> s[i].spec_is_ascii();
 
     pub assume_specification [<[u8]>::trim_ascii_start] (s: &[u8]) -> (ret: &[u8])
-        ensures s.len() >= ret.len() && ret@ =~= spec_trim_ascii_start(s@);
+        ensures 
+            s.len() >= ret.len() 
+            && ret@ =~= spec_trim_ascii_start(s@) 
+            && ret@ =~= s@.skip(s.len() - ret.len())
+            && ret.len() > 0 ==> !ret[0].spec_is_ascii_whitespace()
+            && forall |i: int| #![auto] 0 <= i < s.len() - ret.len() ==> s[i].spec_is_ascii_whitespace();
 
     pub assume_specification [<[u8]>::trim_ascii_end] (s: &[u8]) -> (ret: &[u8])
-        ensures s.len() >= ret.len() && ret@ =~= spec_trim_ascii_end(s@);
+        ensures 
+            s.len() >= ret.len() 
+            && ret@ =~= spec_trim_ascii_end(s@)
+            && ret@ =~= s@.take(ret.len() as int)
+            && ret.len() > 0 ==> !ret[ret.len() - 1].spec_is_ascii_whitespace()
+            && forall |i: int| #![auto] ret.len() <= i < s.len() ==> s[i].spec_is_ascii_whitespace();
 
-    pub assume_specification [<[u8]>::trim_ascii] (s: &[u8]) -> (ret: &[u8])
-        ensures s.len() >= ret.len() && ret@ =~= spec_trim_ascii_end(spec_trim_ascii_start(s@));
+    // pub assume_specification [<[u8]>::trim_ascii] (s: &[u8]) -> (ret: &[u8])
+    //     ensures s.len() >= ret.len() && ret@ =~= spec_trim_ascii_end(spec_trim_ascii_start(s@));
 
     // Note: split_at_mut is not supported in Verus yet
     pub assume_specification<T> [<[T]>::split_at] (s: &[T], mid: usize) -> (result: (&[T], &[T]))
@@ -211,5 +221,161 @@ impl AsciiSpec for u8 {
         (0x41 <= *self <= 0x5A)
     }
 }
+
+}
+
+
+verus! {
+    #[verifier::external_body]
+    pub struct ExParseIntError(ParseIntError);
+
+    pub trait FromAsciiVerified: Sized {
+        fn from_ascii_verified(s: &[u8], radix: u32) -> Result<Self, ExParseIntError>
+            requires forall |i: int| #![auto] 0 <= i < s.len() ==> s[i].spec_is_ascii();
+    }
+
+    impl FromAsciiVerified for u8 {
+        #[verifier::external_body]
+        fn from_ascii_verified(s: &[u8], radix: u32) -> (result: Result<Self, ExParseIntError>) 
+            ensures match result {
+                Ok(x) => {
+                    let i = spec_ascii_to_number(s@, radix as int).unwrap();
+                    i == x && u8::MIN <= i <= u8::MAX
+                },
+                Err(_) => match spec_ascii_to_number(s@, radix as int) {
+                    None => true,
+                    Some(i) => i < u8::MIN || i > u8::MAX,
+                },
+            }
+        {
+            Ok(u8::from_str_radix(std::str::from_utf8(s).unwrap(), radix).map_err(ExParseIntError)?)
+        }
+    }
+
+    impl FromAsciiVerified for u16 {
+        #[verifier::external_body]
+        fn from_ascii_verified(s: &[u8], radix: u32) -> (result: Result<Self, ExParseIntError>) 
+            ensures match result {
+                Ok(x) => {
+                    let i = spec_ascii_to_number(s@, radix as int).unwrap();
+                    i == x && u16::MIN <= i <= u16::MAX
+                },
+                Err(_) => match spec_ascii_to_number(s@, radix as int) {
+                    None => true,
+                    Some(i) => i < u16::MIN || i > u16::MAX,
+                },
+            }
+        {
+            Ok(u16::from_str_radix(std::str::from_utf8(s).unwrap(), radix).map_err(ExParseIntError)?)
+        }
+    }
+
+    impl FromAsciiVerified for u32 {
+        #[verifier::external_body]
+        fn from_ascii_verified(s: &[u8], radix: u32) -> (result: Result<Self, ExParseIntError>) 
+            ensures match result {
+                Ok(x) => {
+                    let i = spec_ascii_to_number(s@, radix as int).unwrap();
+                    i == x && u32::MIN <= i <= u32::MAX
+                },
+                Err(_) => match spec_ascii_to_number(s@, radix as int) {
+                    None => true,
+                    Some(i) => i < u32::MIN || i > u32::MAX,
+                },
+            }
+        {
+            Ok(u32::from_str_radix(std::str::from_utf8(s).unwrap(), radix).map_err(ExParseIntError)?)
+        }
+    }
+
+    impl FromAsciiVerified for u64 {
+        #[verifier::external_body]
+        fn from_ascii_verified(s: &[u8], radix: u32) -> (result: Result<Self, ExParseIntError>) 
+            ensures match result {
+                Ok(x) => {
+                    let i = spec_ascii_to_number(s@, radix as int).unwrap();
+                    i == x && u64::MIN <= i <= u64::MAX
+                },
+                Err(_) => match spec_ascii_to_number(s@, radix as int) {
+                    None => true,
+                    Some(i) => i < u64::MIN || i > u64::MAX,
+                },
+            }
+        {
+            Ok(u64::from_str_radix(std::str::from_utf8(s).unwrap(), radix).map_err(ExParseIntError)?)
+        }
+    }
+
+    impl FromAsciiVerified for i8 {
+        #[verifier::external_body]
+        fn from_ascii_verified(s: &[u8], radix: u32) -> (result: Result<Self, ExParseIntError>) 
+            ensures match result {
+                Ok(x) => {
+                    let i = spec_ascii_to_number(s@, radix as int).unwrap();
+                    i == x && i8::MIN <= i <= i8::MAX
+                },
+                Err(_) => match spec_ascii_to_number(s@, radix as int) {
+                    None => true,
+                    Some(i) => i < i8::MIN || i > i8::MAX,
+                },
+            }
+        {
+            Ok(i8::from_str_radix(std::str::from_utf8(s).unwrap(), radix).map_err(ExParseIntError)?)
+        }
+    }
+
+    impl FromAsciiVerified for i16 {
+        #[verifier::external_body]
+        fn from_ascii_verified(s: &[u8], radix: u32) -> (result: Result<Self, ExParseIntError>) 
+            ensures match result {
+                Ok(x) => {
+                    let i = spec_ascii_to_number(s@, radix as int).unwrap();
+                    i == x && i16::MIN <= i <= i16::MAX
+                },
+                Err(_) => match spec_ascii_to_number(s@, radix as int) {
+                    None => true,
+                    Some(i) => i < i16::MIN || i > i16::MAX,
+                },
+            }
+        {
+            Ok(i16::from_str_radix(std::str::from_utf8(s).unwrap(), radix).map_err(ExParseIntError)?)
+        }
+    }
+
+    impl FromAsciiVerified for i32 {
+        #[verifier::external_body]
+        fn from_ascii_verified(s: &[u8], radix: u32) -> (result: Result<Self, ExParseIntError>) 
+            ensures match result {
+                Ok(x) => {
+                    let i = spec_ascii_to_number(s@, radix as int).unwrap();
+                    i == x && i32::MIN <= i <= i32::MAX
+                },
+                Err(_) => match spec_ascii_to_number(s@, radix as int) {
+                    None => true,
+                    Some(i) => i < i32::MIN || i > i32::MAX,
+                },
+            }
+        {
+            Ok(i32::from_str_radix(std::str::from_utf8(s).unwrap(), radix).map_err(ExParseIntError)?)
+        }
+    }
+
+    impl FromAsciiVerified for i64 {
+        #[verifier::external_body]
+        fn from_ascii_verified(s: &[u8], radix: u32) -> (result: Result<Self, ExParseIntError>) 
+            ensures match result {
+                Ok(x) => {
+                    let i = spec_ascii_to_number(s@, radix as int).unwrap();
+                    i == x && i64::MIN <= i <= i64::MAX
+                },
+                Err(_) => match spec_ascii_to_number(s@, radix as int) {
+                    None => true,
+                    Some(i) => i < i64::MIN || i > i64::MAX,
+                },
+            }
+        {
+            Ok(i64::from_str_radix(std::str::from_utf8(s).unwrap(), radix).map_err(ExParseIntError)?)
+        }
+    }
 
 }
