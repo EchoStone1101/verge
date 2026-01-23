@@ -8,8 +8,9 @@
 #![allow(rustdoc::invalid_rust_codeblocks)]
 
 use vstd::prelude::*;
-pub mod nt;
 pub mod cart;
+pub mod fold;
+pub mod nt;
 
 verus! {}
 

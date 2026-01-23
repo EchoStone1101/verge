@@ -2,6 +2,8 @@
 
 use super::*;
 use vstd::prelude::*;
+use vstd::seq_lib::*;
+use vstd::relations::total_ordering;
 
 verus! {
 
@@ -43,27 +45,27 @@ pub(crate) proof fn lemma_bezout_identity_epilogue1(a1: int, b1: int, d: int)
         assert(0 <= x < b1);
         assert((x * a1) % b1 == 1);
         let y: int = (x * a1) / b1;
-        assert(x * a1 == b1 * y + 1) by { broadcast use lemma_fundamental_div_mod; }
+        assert(x * a1 == b1 * y + 1) by { lemma_fundamental_div_mod(x * a1, b1); }
         assert(a1 * x - b1 * y == 1);
         calc!{
             (==)
-            a1 * x * d - b1 * y * d; { broadcast use lemma_mul_is_distributive_sub_other_way; }
+            a1 * x * d - b1 * y * d; { lemma_mul_is_distributive_sub_other_way(d, a1 * x, b1 * y); }
             (a1 * x - b1 * y) * d; {}
             1 * d; { broadcast use group_mul_basics; }
             d;
         }
         calc!{
             (==)
-            a1 * x * d; { broadcast use lemma_mul_is_associative; }
-            a1 * (x * d); { broadcast use lemma_mul_is_commutative; } 
-            a1 * (d * x); { broadcast use lemma_mul_is_associative; }
+            a1 * x * d; { lemma_mul_is_associative(a1, x, d); }
+            a1 * (x * d); { lemma_mul_is_commutative(x, d); } 
+            a1 * (d * x); { lemma_mul_is_associative(a1, d, x); }
             a1 * d * x; 
         }
         calc!{
             (==)
-            b1 * y * d; { broadcast use lemma_mul_is_associative; }
-            b1 * (y * d); { broadcast use lemma_mul_is_commutative; } 
-            b1 * (d * y); { broadcast use lemma_mul_is_associative; }
+            b1 * y * d; { lemma_mul_is_associative(b1, y, d); }
+            b1 * (y * d); { lemma_mul_is_commutative(y, d); } 
+            b1 * (d * y); { lemma_mul_is_associative(b1, d, y); }
             b1 * d * y; 
         }
         assert(0 <= x < b1 && (a1 * d * x - b1 * d * y) == d);
@@ -109,7 +111,7 @@ pub proof fn lemma_bezout_identity_ext1(a: nat, b: nat, m: int)
         (==)
         m; {}
         d * m1; {}
-        (a * x0 + b * y0) * m1; { broadcast use lemma_mul_is_distributive_add_other_way; }
+        (a * x0 + b * y0) * m1; { lemma_mul_is_distributive_add_other_way(m1, a * x0, b * y0); }
         a * x0 * m1 + b * y0 * m1; { lemma_mul_is_associative(a as int, x0, m1); }
         a * (x0 * m1) + b * y0 * m1; {}
         a * (b1 * q + r) + b * y0 * m1; { lemma_mul_is_distributive_add(a as int, b1 * q, r); }
@@ -127,7 +129,7 @@ pub proof fn lemma_bezout_identity_ext1(a: nat, b: nat, m: int)
                 b * (q * a1); { lemma_mul_is_commutative(q, a1); }
                 b * (a1 * q);
             }
-            assert(b * y0 * m1 == b * (y0 * m1)) by { broadcast use lemma_mul_is_associative; }
+            assert(b * y0 * m1 == b * (y0 * m1)) by { lemma_mul_is_associative(b as int, y0, m1); }
         }
         a * r + b * (a1 * q) + b * (y0 * m1); { lemma_mul_is_distributive_add(b as int, a1 * q, y0 * m1); }
         a * r + b * (a1 * q + y0 * m1);

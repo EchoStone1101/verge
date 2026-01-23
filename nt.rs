@@ -5,26 +5,25 @@ use vstd::prelude::*;
 use vstd::arithmetic::mul::*;
 use vstd::arithmetic::div_mod::*;
 use vstd::arithmetic::power::*;
+use vstd::seq::*;
 use vstd::set::fold::*;
 use vstd::set_lib::*;
 use vstd::math::{min, max, clip};
 use vstd::{assert_by_contradiction, calc};
-use vstd::relations::{injective_on, is_minimal};
+use vstd::relations::{injective_on, is_minimal, sorted_by};
 
 pub mod gcd;
 pub mod totient;
 mod util;
 
 pub use gcd::{
-    gcd, lcm,
+    gcd, lcm, gcd_exec,
     axiom_gcd_properties, axiom_lcm_properties, axiom_coprime_gcd, axiom_coprime_lcm,
     lemma_euclidean_induct, lemma_gcd_mul, lemma_gcd_div,
     lemma_gcd_common_factor, lemma_lcm_is_factor,
 };
 
-pub use totient::{
-    totient, set_prime_range,
-};
+pub use totient::{totient, totients};
 
 verus! {
 
@@ -227,6 +226,9 @@ pub proof fn axiom_vp_properties(n: nat, p: nat)
     ensures 
         is_factor_of(n, pow(p as int, vp(n, p)) as nat),
         forall|k: nat| is_factor_of(n, pow(p as int, k) as nat) ==> k <= #[trigger] vp(n, p),
+        vp(n, p) > 0 <==> is_factor_of(n, p),
+        !is_factor_of(n / pow(p as int, vp(n, p)) as nat, p),
+        prime_factors(n / pow(p as int, vp(n, p)) as nat) == prime_factors(n).remove(p),
 {
     let s = Set::<nat>::new(|k: nat| is_factor_of(n, pow(p as int, k) as nat));
     let r = |x: nat, y: nat| x <= y;
@@ -260,6 +262,106 @@ pub proof fn axiom_vp_properties(n: nat, p: nat)
     by { 
         assert_by_contradiction!(r(k, vp(n, p)), { assert(r(vp(n, p), k)); }); 
     };
+    // Goal 3
+    let e = vp(n, p);
+    let p_to_e = pow(p as int, vp(n, p)) as nat;
+    assert(e > 0 <==> is_factor_of(n, p)) by {
+        if is_factor_of(n, p) {
+            assert(p == pow(p as int, 1)) by { lemma_pow1(p as int); }
+            assert(3 >= 1);
+        }
+        if e > 0 {
+            let k = pow(p as int, (e - 1) as nat);
+            assert(p_to_e == p * k) by { 
+                lemma_pow_positive(p as int, e);
+                reveal(pow); 
+            };
+            assert(p * k == k * p) by { broadcast use lemma_mul_is_commutative; }
+            assert(is_factor_of(p_to_e, p)) by { lemma_mod_multiples_basic(k, p as int); }
+            assert(is_factor_of(n, p)) by { lemma_is_factor_transitive(p, p_to_e, n); }
+        }
+    }
+    // Goal 4
+    let n1 = n / p_to_e;
+    assert(n == p_to_e * n1 + 0) by { broadcast use lemma_fundamental_div_mod; }
+    assert_by_contradiction!(!is_factor_of(n1, p), {
+        let n2 = n1 / p;
+        assert(n1 == p * n2 + 0) by { broadcast use lemma_fundamental_div_mod; }
+        calc!{
+            (==)
+            n; {}
+            n1 * p_to_e; {}
+            p * n2 * p_to_e; {}
+            n2 * p * p_to_e; { broadcast use lemma_mul_is_associative; }
+            n2 * (p * p_to_e); {
+                let p = p as int;
+                let p_to_e = p_to_e as int;
+                calc!{
+                    (==)
+                    p * p_to_e; { lemma_pow_positive(p, e); }
+                    p * pow(p, e); { lemma_pow1(p); }
+                    pow(p, 1) * pow(p, e); { lemma_pow_adds(p, 1, e); }
+                    pow(p, 1 + e);
+                }
+            }
+            n2 * (pow(p as int, e + 1) as nat);
+        }
+        assert(is_factor_of(n, pow(p as int, e + 1) as nat)) by { 
+            lemma_pow_positive(p as int, e + 1);
+            lemma_mod_multiples_basic(n2 as int, pow(p as int, e + 1));
+        }
+    });
+    // Goal 5
+    if is_factor_of(n, p) {
+        assert(e > 0);
+        assert(prime_factors(n1).insert(p) == prime_factors(n)) by {
+            let set1 = prime_factors(n1).insert(p);
+            let set2 = prime_factors(n);
+            assert(set1.subset_of(set2)) by {
+                assert forall|p0: nat| set1.contains(p0)
+                implies set2.contains(p0)
+                by {
+                    if p0 == p {}
+                    else {
+                        assert(is_factor_of(n1, p0));
+                        assert(is_factor_of(n, n1)) by { lemma_mod_multiples_basic(p_to_e as int, n1 as int); }
+                        lemma_is_factor_transitive(p0, n1, n);
+                    }
+                }
+            }
+            assert(set2.subset_of(set1)) by {
+                assert forall|p0: nat| set2.contains(p0)
+                implies set1.contains(p0)
+                by {
+                    assert(is_factor_of(p_to_e, p0) || is_factor_of(n1, p0)) by {
+                        assert(is_factor_of(n1 * p_to_e, p0));
+                        axiom_prime_mul_union(p0);
+                    }
+                    if is_factor_of(p_to_e, p0) {
+                        lemma_prime_factors_prime_pow(p, e);
+                        assert(p0 == p) by {
+                            assert(prime_factors(p_to_e).contains(p0));
+                        }
+                        assert(set1.contains(p0));
+                    }
+                    if is_factor_of(n1, p0) {
+                        assert(is_factor_of(n, n1)) by {
+                            assert(n == p_to_e * n1);
+                            lemma_mod_multiples_basic(p_to_e as int, n1 as int);
+                        }
+                        lemma_is_factor_transitive(p0, n1, n);
+                        assert(set1.contains(p0));
+                    }
+                }
+            }
+        }
+        assert(prime_factors(n1) == prime_factors(n).remove(p));
+    } else {
+        assert(!prime_factors(n).contains(p));
+        assert(e == 0);
+        assert(p_to_e == 1) by { lemma_pow0(p as int); }
+        calc!{ (==) n1; {} n / 1; {} n; }
+    }
 }
 
 /// Proof that `p` is prime iff `p > 1` and `p` is not composite.
@@ -313,9 +415,13 @@ pub broadcast proof fn axiom_prime_mul_union(p: nat)
                     let d = choose|d: nat| d > 1 && #[trigger] is_common_factor(p, a, d);
                     assert(d == p);
                 });
-                if b > 0 { // b == 0 is trivial
+                if b > 0 {
                     lemma_coprime_factor(p, a, b);
+                    assert(is_factor_of(b, p));
+                } else {
+                    assert(is_factor_of(0, p));
                 }
+                
             }
         };
     }
@@ -365,6 +471,23 @@ pub proof fn lemma_is_factor_multiples(a: nat, b: nat, c: nat)
     assert(r == 0) by {
         lemma_is_factor_bound(r * c, b * c);
         broadcast use group_mul_properties;
+    }
+}
+
+/// Proof that `a * b / c == a / c * b` if `c|a`.
+pub proof fn lemma_is_factor_mul_div(a: nat, b: nat, c: nat)
+    requires is_factor_of(a, c),
+    ensures a * b / c == a / c * b,
+{
+    let a1 = a / c;
+    assert(a == c * a1 + 0) by { lemma_fundamental_div_mod(a as int, c as int); }
+    calc!{
+        (==)
+        a * b / c; {}
+        c * a1 * b / c; { lemma_mul_is_associative(c as int, a1 as int, b as int); }
+        c * (a1 * b) / c; { lemma_div_multiples_vanish((a1 * b) as int, c as int); }
+        a1 * b; {}
+        a / c * b;
     }
 }
 
@@ -825,18 +948,18 @@ pub proof fn lemma_factorization_induct(n: nat, g: spec_fn(nat) -> nat)
         axiom_vp_properties(n, p);
         let p_to_e = pow(p as int, e) as nat;
         assert(e >= 1 && 1 < p_to_e <= n) by {
-            assert(is_factor_of(n, p));
-            lemma_pow1(p as int); 
-            assert(p == pow(p as int, 1));
-            assert(e >= 1); // by axiom_vp_properties
-            assert(p_to_e >= p) by { lemma_pow_increases(p, 1, e); }
+            assert(e >= 1) by { assert(is_factor_of(n, p)); }
+            assert(p_to_e >= p) by { 
+                lemma_pow_increases(p, 1, e); 
+                lemma_pow1(p as int);
+            }
             lemma_is_factor_bound(n, p_to_e);
         }
 
         // ..induction step
         let n1 = n / p_to_e;
         let f1 = |prod: nat, p: nat| prod * g((pow(p as int, vp(n1, p)) as nat));
-        assert(n == p_to_e * n1 + 0) by { broadcast use lemma_fundamental_div_mod; }
+        assert(n == p_to_e * n1 + 0) by { lemma_fundamental_div_mod(n as int, p_to_e as int); }
         assert(0 < n1 < n) by {
             lemma_div_non_zero(n as int, p_to_e as int);
             lemma_mul_strict_inequality(1, p_to_e as int, n1 as int);
@@ -851,33 +974,7 @@ pub proof fn lemma_factorization_induct(n: nat, g: spec_fn(nat) -> nat)
         // Goals: 
         // (1) prime_factors(n1).insert(p) == prime_factors(n)
         // (2) prime_factors(n1).fold(g(1), f1) == prime_factors(n1).fold(g(1), f)
-        assert_by_contradiction!(!is_factor_of(n1, p), {
-            let n2 = n1 / p;
-            assert(n1 == p * n2 + 0) by { broadcast use lemma_fundamental_div_mod; }
-            calc!{
-                (==)
-                n; {}
-                n1 * p_to_e; {}
-                p * n2 * p_to_e; {}
-                n2 * p * p_to_e; { broadcast use lemma_mul_is_associative; }
-                n2 * (p * p_to_e); {
-                    let p = p as int;
-                    let p_to_e = p_to_e as int;
-                    calc!{
-                        (==)
-                        p * p_to_e; { lemma_pow_positive(p, e); }
-                        p * pow(p, e); { lemma_pow1(p); }
-                        pow(p, 1) * pow(p, e); { lemma_pow_adds(p, 1, e); }
-                        pow(p, 1 + e);
-                    }
-                }
-                n2 * (pow(p as int, e + 1) as nat);
-            }
-            assert(is_factor_of(n, pow(p as int, e + 1) as nat)) by { 
-                lemma_pow_positive(p as int, e + 1);
-                lemma_mod_multiples_basic(n2 as int, pow(p as int, e + 1));
-            }
-        });
+        assert(!is_factor_of(n1, p));
         assert(prime_factors(n1).insert(p) == prime_factors(n)) by {
             let set1 = prime_factors(n1).insert(p);
             let set2 = prime_factors(n);
@@ -1023,14 +1120,8 @@ proof fn lemma_factorization_fun_fold(n: nat, p: nat, n1: nat, ps: Set<nat>, g: 
                 let e1 = vp(n1, p0);
                 axiom_vp_properties(n, p0);
                 axiom_vp_properties(n1, p0);
-                assert(e >= 1) by {
-                    lemma_pow1(p0 as int);
-                    assert(is_factor_of(n, pow(p0 as int, 1) as nat));
-                }
-                assert(e1 >= 1) by {
-                    lemma_pow1(p0 as int);
-                    assert(is_factor_of(n1, pow(p0 as int, 1) as nat));
-                }
+                assert(e >= 1) by { assert(is_factor_of(n, p0)); }
+                assert(e1 >= 1) by { assert(is_factor_of(n1, p0)); }
 
                 assert(e1 <= e) by {
                     let p0_to_e1 = pow(p0 as int, e1) as nat;

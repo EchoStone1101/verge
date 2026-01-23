@@ -505,29 +505,29 @@ pub proof fn lemma_lcm_is_factor(a: nat, b: nat, n: nat)
     axiom_gcd_properties(a, b);
     calc!{
         (==)
-        a; { broadcast use lemma_fundamental_div_mod; }
+        a; { lemma_fundamental_div_mod(a as int, d as int); }
         d * a1 + 0; {}
         a1 * d;
     }
     calc!{
         (==)
-        b; { broadcast use lemma_fundamental_div_mod; }
+        b; { lemma_fundamental_div_mod(b as int, d as int); }
         d * b1 + 0; {}
         b1 * d;
     }
     calc!{
         (==)
         a * b / d; {}
-        (a1 * d) * b / d; { broadcast use lemma_mul_is_commutative; }
-        d * a1 * b / d; { broadcast use lemma_mul_is_associative; }
-        d * (a1 * b) / d; { broadcast use lemma_div_multiples_vanish; }
+        (a1 * d) * b / d; { lemma_mul_is_commutative(a1 as int, d as int); }
+        d * a1 * b / d; { lemma_mul_is_associative(d as int, a1 as int, b as int); }
+        d * (a1 * b) / d; { lemma_div_multiples_vanish((a1 * b) as int, d as int); }
         a1 * b;
     }
 
     lemma_is_factor_transitive(d, a, n);
     calc!{
         (==)
-        n; { broadcast use lemma_fundamental_div_mod; }
+        n; { lemma_fundamental_div_mod(n as int, d as int); }
         d * n1 + 0; {}
         n1 * d;
     }
@@ -545,11 +545,11 @@ pub proof fn lemma_lcm_is_factor(a: nat, b: nat, n: nat)
     lemma_is_factor_multiples(n1, b1, d); // b1 | n1
 
     let n2 = n1 / a1;
-    assert(n1 == a1 * n2 + 0) by { broadcast use lemma_fundamental_div_mod; }
+    assert(n1 == a1 * n2 + 0) by { lemma_fundamental_div_mod(n1 as int, a1 as int); }
     
+    assert(a1 * b > 0) by { broadcast use group_mul_properties; }
     if n == 0 {
         // ..trivial
-        assert(a1 * b > 0) by { broadcast use group_mul_properties; }
     } else {
         assert(n1 > 0) by {
             lemma_is_factor_bound(n, d);
@@ -572,15 +572,16 @@ pub proof fn lemma_lcm_is_factor(a: nat, b: nat, n: nat)
             (==)
             n; {}
             n1 * d; {}
-            a1 * n2 * d; { broadcast use lemma_fundamental_div_mod; }
+            a1 * n2 * d; { lemma_fundamental_div_mod(n2 as int, b1 as int); }
             a1 * (b1 * n3 + 0) * d; {}
-            a1 * (b1 * n3) * d; { broadcast use lemma_mul_is_associative; }
-            a1 * (b1 * n3 * d); { broadcast use lemma_mul_is_associative; }
+            a1 * (b1 * n3) * d; { lemma_mul_is_associative(a1 as int, (b1 * n3) as int, d as int); }
+            a1 * (b1 * n3 * d); { lemma_mul_is_associative(b1 as int, n3 as int, d as int); }
             a1 * (b1 * (n3 * d)); { lemma_mul_is_commutative(n3 as int, d as int); }
-            a1 * (b1 * (d * n3)); { broadcast use lemma_mul_is_associative; }
-            a1 * (b1 * d * n3); { broadcast use lemma_mul_is_associative; }
+            a1 * (b1 * (d * n3)); { lemma_mul_is_associative(b1 as int, d as int, n3 as int); }
+            a1 * (b1 * d * n3); { lemma_mul_is_associative(a1 as int, (b1 * d) as int, n3 as int); }
+            a1 * (b1 * d) * n3; { lemma_mul_is_associative(a1 as int, b1 as int, d as int); }
             (a1 * b1 * d) * n3; { lemma_mul_is_commutative(n3 as int, (a1 * b1 * d) as int); }
-            n3 * (a1 * b1 * d); { broadcast use lemma_mul_is_associative; }
+            n3 * (a1 * b1 * d); { lemma_mul_is_associative(a1 as int, b1 as int, d as int); }
             n3 * (a1 * (b1 * d)); {}
             n3 * (a1 * b);
         }
