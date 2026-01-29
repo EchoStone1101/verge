@@ -1,0 +1,16 @@
+[package]
+name = "verge_macros"
+version = "0.0.1"
+edition = "2024"
+license = "MIT"
+description = "Macros in the Verge Library"
+keywords = ["verus", "verified-rust", "verification"]
+categories = ["development-tools"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+verus_syn = { version = "=0.0.0-2026-01-25-0057", features = ["full", "visit", "visit-mut", "extra-traits"] }
+quote = "1.0"
+proc-macro2 = "1.0.39"
