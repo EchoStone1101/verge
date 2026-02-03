@@ -14,6 +14,7 @@ verus! {
 pub mod open;
 pub mod nt;
 pub mod set;
+pub mod ascii_string;
 
 }
 
