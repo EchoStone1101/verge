@@ -8,12 +8,14 @@
 #![allow(rustdoc::invalid_rust_codeblocks)]
 
 use vstd::prelude::*;
-pub mod cart;
-pub mod fold;
-pub mod nt;
-pub mod open;
 
-verus! {}
+verus! {
+
+pub mod open;
+pub mod nt;
+pub mod set;
+
+}
 
 #[cfg(not(verus_verify_core))]
 #[doc(hidden)]

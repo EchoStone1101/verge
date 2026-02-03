@@ -12,10 +12,10 @@ use super::{
     lemma_prime_factors_disjoint_iff_coprime, lemma_bezout_identity_ext, 
     lemma_factorization, lemma_factorization_induct, lemma_factorization_fun_comm,
 };
-use crate::cart::{
+use crate::set::cart::{
     cart, lemma_cart_len, lemma_cart_intersect,
 };
-use crate::fold::{lemma_fold_set_seq_eq, lemma_fold_fn_eq, lemma_fold_disjoint_union};
+use crate::set::fold::{lemma_fold_set_seq_eq, lemma_fold_fn_eq, lemma_fold_disjoint_union};
 
 use vstd::prelude::*;
 use vstd::arithmetic::mul::*;
