@@ -11,7 +11,10 @@ use vstd::prelude::*;
 
 verus! {
 
+pub mod io;
 pub mod open;
+pub mod mem;
+// pub mod mut_ref;
 pub mod nt;
 pub mod set;
 pub mod ascii_string;

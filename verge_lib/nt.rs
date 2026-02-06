@@ -12,6 +12,7 @@ use vstd::math::{min, max, clip};
 use vstd::{assert_by_contradiction, calc};
 use vstd::relations::{injective_on, is_minimal, sorted_by};
 
+pub mod inf;
 pub mod gcd;
 pub mod totient;
 mod util;
@@ -25,12 +26,15 @@ pub use gcd::{
 
 pub use totient::{totient, totients};
 
+pub use inf::*;
+
 verus! {
 
 /// An expansion of `div_mod::group_mod_properties` with commonly used lemmas 
 /// in number theory.
 /// WARNING: avoid using this and `mul::group_mul_properties` together; it likely 
 /// blows up error diagnostics.
+/// TODO(echostone): deprecate this to improve proof efficiency.
 broadcast group group_mod_properties_nt {
     group_mod_properties,
     group_fundamental_div_mod_converse,
