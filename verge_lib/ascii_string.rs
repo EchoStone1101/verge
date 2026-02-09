@@ -1,8 +1,135 @@
 use vstd::prelude::*;
+use vstd::slice::slice_to_vec;
 
 use std::num::ParseIntError;
 
 verus! {
+    pub struct AsciiString {
+        pub bytes: Vec<u8>,
+    }
+
+    impl View for AsciiString {
+        type V = Seq<u8>;
+
+        open spec fn view(&self) -> Self::V {
+            self.spec_as_bytes()
+        }
+    }
+
+    impl AsciiString {
+        pub open spec fn well_formed(&self) -> bool {
+            forall |i: int| #![auto] 0 <= i < self.spec_len() ==> self.spec_as_bytes()[i].spec_is_ascii()
+        }
+
+        pub open spec fn spec_as_bytes(&self) -> Seq<u8> {
+            self.bytes@
+        }
+
+        pub open spec fn spec_len(&self) -> nat {
+            self.bytes@.len()
+        }
+    }
+
+    impl AsciiString {
+        pub fn new() -> (s: Self)
+            ensures s.well_formed() && s.spec_len() == 0
+        {
+            AsciiString { bytes: Vec::new() }
+        }
+
+        pub fn from_bytes(bytes: &[u8]) -> (ret: Option<Self>)
+            ensures 
+                match ret {
+                    Some(s) => s.well_formed() && s.spec_as_bytes() =~= bytes@,
+                    None => exists |i: int| #![auto] 0 <= i < bytes.len() && !bytes[i].spec_is_ascii(),
+                }
+        {
+            if bytes.is_ascii() {
+                Some(AsciiString { bytes: slice_to_vec(bytes) })
+            } else {
+                None
+            }
+        }
+
+        pub fn from_str(s: &str) -> (ret: Self)
+            requires s.is_ascii()
+            ensures ret.view() == Seq::new(s.view().len(), |i| s.view().index(i) as u8) // && ret.well_formed() // TODO: prove it
+        {
+            let bytes = s.as_bytes_vec();
+            AsciiString { bytes }
+        }
+    }
+
+    impl AsciiString {
+        pub fn append(&mut self, other: &AsciiString)
+            requires old(self).well_formed() && other.well_formed()
+            ensures ({
+                &&& self.well_formed()
+                &&& self.spec_as_bytes() =~= old(self).spec_as_bytes() + other.spec_as_bytes()
+            })
+        {
+            let old_len = self.bytes.len();
+            self.bytes.extend_from_slice(&other.bytes);
+            assert(self.spec_as_bytes() =~= old(self).spec_as_bytes() + other.spec_as_bytes());
+        }
+
+        pub fn extend_from_slice(&mut self, bytes: &[u8])
+            requires old(self).well_formed() && forall |i: int| #![auto] 0 <= i < bytes.len() ==> bytes[i].spec_is_ascii()
+            ensures ({
+                &&& self.well_formed()
+                &&& self.spec_as_bytes() =~= old(self).spec_as_bytes() + bytes@
+            })
+        {
+            self.bytes.extend_from_slice(bytes);
+            assert(self.spec_as_bytes() =~= old(self).spec_as_bytes() + bytes@);
+        }
+
+        // Convert to &str (safe, because ASCII is a valid UTF-8 subset)
+        // pub fn as_str(&self) -> (s: &str)
+        //     requires self.well_formed()
+        //     ensures s@ == self.spec_as_bytes()
+        // {
+        //     unsafe { std::str::from_utf8_unchecked(&self.bytes) }
+        // }
+
+        /// Get a reference to the underlying byte slice.
+        pub fn as_bytes(&self) -> (bytes: &[u8])
+            requires self.well_formed()
+            ensures bytes@ =~= self.spec_as_bytes() && forall |i: int| #![auto] 0 <= i < bytes.len() ==> bytes[i].spec_is_ascii()
+        {
+            &self.bytes
+        }
+
+        /// Length of the string in bytes.
+        pub fn len(&self) -> (l: usize)
+            requires self.well_formed()
+            ensures l == self.spec_len()
+        {
+            self.bytes.len()
+        }
+
+        /// Check if the string is empty.
+        pub fn is_empty(&self) -> (b: bool)
+            requires self.well_formed()
+            ensures b == (self.spec_len() == 0)
+        {
+            self.bytes.is_empty()
+        }
+    }
+
+    impl AsRef<[u8]> for AsciiString {
+        fn as_ref(&self) -> (bytes: &[u8]) 
+            requires self.well_formed()
+            ensures bytes@ =~= self.spec_as_bytes() && forall |i: int| #![auto] 0 <= i < bytes.len() ==> bytes[i].spec_is_ascii()
+        {
+            self.as_bytes()
+        }
+    }
+}
+
+// Trim ASCII whitespace from the start of a string.
+verus! {    
+    /// Trim ASCII whitespace from the start of a string.
     pub open spec fn spec_trim_ascii_start(s: Seq<u8>) -> Seq<u8> 
         decreases s.len()
     {
@@ -15,6 +142,93 @@ verus! {
         }
     }
 
+    /// Length monotonicity (never increases)
+    pub proof fn lemma_trim_start_len_monotonic(s: Seq<u8>)
+        ensures 
+            spec_trim_ascii_start(s).len() <= s.len()
+        decreases s.len()
+    {
+        if s.len() == 0 {
+            // Base case: empty string, length is 0
+        } else if s[0].spec_is_ascii_whitespace() {
+            // Recursive case: whitespace, length decreases by 1
+            lemma_trim_start_len_monotonic(s.skip(1));
+        } else {
+            // Termination case: no whitespace, length is same
+        }
+    }
+
+    /// Suffix property
+    pub proof fn lemma_trim_start_is_suffix(s: Seq<u8>)
+        ensures ({
+            let ret = spec_trim_ascii_start(s);
+            ret =~= s.skip(s.len() - ret.len())
+        })
+        decreases s.len()
+    {
+        if s.len() == 0 {
+            // Empty string: automatically true
+        } else if s[0].spec_is_ascii_whitespace() {
+            // Recursive case
+            let sub_s = s.skip(1);
+            lemma_trim_start_is_suffix(sub_s);
+            // Key lemma: length monotonicity for suffix
+            lemma_trim_start_len_monotonic(sub_s);
+        } else {
+            // Termination case: skip 0 characters
+        }
+    }
+
+    /// If the result is not empty, the first character is not whitespace
+    pub proof fn lemma_trim_start_first_not_whitespace(s: Seq<u8>)
+        ensures ({
+            let ret = spec_trim_ascii_start(s);
+            ret.len() > 0 ==> !ret[0].spec_is_ascii_whitespace()
+        })
+        decreases s.len()
+    {
+        if s.len() == 0 {
+            // Empty string: premise is false, automatically true
+        } else if s[0].spec_is_ascii_whitespace() {
+            // Recursive case
+            lemma_trim_start_first_not_whitespace(s.skip(1));
+        } else {
+            // !s[0].spec_is_ascii_whitespace()
+        }
+    }
+
+    /// All skipped characters are whitespace
+    pub proof fn lemma_trim_start_skipped_are_whitespace(s: Seq<u8>)
+        ensures 
+            forall |i: int| #![auto] 0 <= i < s.len() - spec_trim_ascii_start(s).len() ==> 
+                s[i].spec_is_ascii_whitespace()
+        decreases s.len()
+    {
+        if s.len() == 0 {
+            // Empty string: automatically true
+        } else if s[0].spec_is_ascii_whitespace() {
+            // Recursive case
+            lemma_trim_start_skipped_are_whitespace(s.skip(1));
+            let result_len = spec_trim_ascii_start(s).len();
+            let total_skipped = s.len() - result_len;
+
+            // for i > 0, use induction hypothesis on s.skip(1)
+            assert forall |i: int| #![auto] 1 <= i < total_skipped implies
+                s[i].spec_is_ascii_whitespace()
+            by {
+                let sub_skipped = s.skip(1).len() - result_len;
+                let j = i - 1;
+                assert(0 <= j < sub_skipped ==> s.skip(1)[j].spec_is_ascii_whitespace());
+            }
+        } else {
+            // Non-whitespace case: no skipped characters
+        }
+    }
+}
+
+// Trim ASCII whitespace from the end of a string.
+verus!{
+    /// Trim ASCII whitespace from the end of a string.
     pub open spec fn spec_trim_ascii_end(s: Seq<u8>) -> Seq<u8> 
         decreases s.len()
     {
@@ -26,6 +240,90 @@ verus! {
             s
         }
     }
+
+    /// Length monotonicity (never increases)
+    pub proof fn lemma_trim_end_len_monotonic(s: Seq<u8>)
+        ensures 
+            spec_trim_ascii_end(s).len() <= s.len()
+        decreases s.len()
+    {
+        if s.len() == 0 {
+            // Base case: empty string, length is 0
+        } else if s[s.len() - 1].spec_is_ascii_whitespace() {
+            // Recursive case: whitespace, length decreases by 1
+            lemma_trim_end_len_monotonic(s.take(s.len() - 1));
+        } else {
+            // Termination case: no whitespace, length is same
+        }
+    }
+
+    /// Prefix property
+    pub proof fn lemma_trim_end_is_prefix(s: Seq<u8>)
+        ensures ({
+            let ret = spec_trim_ascii_end(s);
+            ret =~= s.take(ret.len() as int)
+        })
+        decreases s.len()
+    {
+        if s.len() == 0 {
+            // Empty string: automatically true
+        } else if s[s.len() - 1].spec_is_ascii_whitespace() {
+            // Recursive case
+            let sub_s = s.take(s.len() - 1);
+            lemma_trim_end_is_prefix(sub_s);
+            // Key lemma: length monotonicity for prefix
+            lemma_trim_end_len_monotonic(sub_s);
+        } else {
+            // Termination case: take all characters
+        }
+    }
+
+    /// If the result is not empty, the last character is not whitespace
+    pub proof fn lemma_trim_end_last_not_whitespace(s: Seq<u8>)
+        ensures ({
+            let ret = spec_trim_ascii_end(s);
+            ret.len() > 0 ==> !ret[ret.len() - 1].spec_is_ascii_whitespace()
+        })
+        decreases s.len()
+    {
+        if s.len() == 0 {
+            // Empty string: premise is false, automatically true
+        } else if s[s.len() - 1].spec_is_ascii_whitespace() {
+            // Recursive case
+            lemma_trim_end_last_not_whitespace(s.take(s.len() - 1));
+        } else {
+            // !s[-1].spec_is_ascii_whitespace()
+        }
+    }
+
+    /// All truncated characters are whitespace
+    pub proof fn lemma_trim_end_truncated_are_whitespace(s: Seq<u8>)
+        ensures 
+            forall |i: int| #![auto] spec_trim_ascii_end(s).len() <= i < s.len() ==> 
+                s[i].spec_is_ascii_whitespace()
+        decreases s.len()
+    {
+        if s.len() == 0 {
+            // Empty string: automatically true
+        } else if s[s.len() - 1].spec_is_ascii_whitespace() {
+            // Recursive case
+            let ret = spec_trim_ascii_end(s);
+            let sub_s = s.take(s.len() - 1);
+            lemma_trim_end_truncated_are_whitespace(sub_s);
+
+            // for ret.len() <= i < s.len() - 1, use induction hypothesis on sub_s
+            assert forall |i: int| #![auto] ret.len() <= i < s.len() - 1 implies
+                s[i].spec_is_ascii_whitespace()
+            by {
+                assert(ret.len() <= i < s.len() - 1 ==> s.take(s.len() - 1)[i].spec_is_ascii_whitespace());
+            }
+        } else {
+            // Non-whitespace case: no truncated characters
+        }
+    }
+}
+
+verus!{
 
     pub open spec fn spec_seq_find(s: Seq<u8>, idx: int, pred: spec_fn(u8) -> bool) -> Option<int> 
         recommends 0 <= idx <= s.len(),
@@ -75,25 +373,10 @@ verus! {
         ensures b <==> forall |i: int| #![auto] 0 <= i < s.len() ==> s[i].spec_is_ascii();
 
     pub assume_specification [<[u8]>::trim_ascii_start] (s: &[u8]) -> (ret: &[u8])
-        ensures 
-            s.len() >= ret.len() 
-            && ret@ =~= spec_trim_ascii_start(s@) 
-            && ret@ =~= s@.skip(s.len() - ret.len())
-            && ret.len() > 0 ==> !ret[0].spec_is_ascii_whitespace()
-            && forall |i: int| #![auto] 0 <= i < s.len() - ret.len() ==> s[i].spec_is_ascii_whitespace();
+        ensures ret@ =~= spec_trim_ascii_start(s@); 
 
     pub assume_specification [<[u8]>::trim_ascii_end] (s: &[u8]) -> (ret: &[u8])
-        ensures 
-            s.len() >= ret.len() 
-            && ret@ =~= spec_trim_ascii_end(s@)
-            && ret@ =~= s@.take(ret.len() as int)
-            && ret.len() > 0 ==> !ret[ret.len() - 1].spec_is_ascii_whitespace()
-            && forall |i: int| #![auto] ret.len() <= i < s.len() ==> s[i].spec_is_ascii_whitespace();
-
-    // pub assume_specification [<[u8]>::trim_ascii] (s: &[u8]) -> (ret: &[u8])
-    //     ensures s.len() >= ret.len() && ret@ =~= spec_trim_ascii_end(spec_trim_ascii_start(s@));
-
-    // Note: split_at_mut is not supported in Verus yet
+        ensures ret@ =~= spec_trim_ascii_end(s@);
     
     pub assume_specification<T> [<[T]>::split_at_checked] (s: &[T], mid: usize) -> (result: Option<(&[T], &[T])>)
         ensures
