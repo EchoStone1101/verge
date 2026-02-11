@@ -2,6 +2,8 @@
 
 #[allow(unused_imports)]
 use vstd::prelude::*;
+use vstd::view::View;
+use vstd::raw_ptr::MemContents;
 
 verus! {
 

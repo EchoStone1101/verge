@@ -12,7 +12,6 @@ use vstd::math::{min, max, clip};
 use vstd::{assert_by_contradiction, calc};
 use vstd::relations::{injective_on, is_minimal, sorted_by};
 
-pub mod inf;
 pub mod gcd;
 pub mod totient;
 mod util;
@@ -25,8 +24,6 @@ pub use gcd::{
 };
 
 pub use totient::{totient, totients};
-
-pub use inf::*;
 
 verus! {
 
