@@ -1,1 +1,1 @@
-verus --extern verge_macros=target/release/libverge_macros.dylib --crate-type=lib --verify-module io --expand-errors verge_lib/verge.rs
+verus --extern verge_macros=target/release/libverge_macros.dylib --extern memchr=target/release/deps/libmemchr-8d8c4b5b5804a9bd.rlib --crate-type=lib --expand-errors --verify-module io verge_lib/verge.rs
