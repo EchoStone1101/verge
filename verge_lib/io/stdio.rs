@@ -17,127 +17,73 @@ use crate::io::{ReadBuf, Result, ErrorKind, spec_error_kind};
 
 use std::sync::Once;
 use core::ops::Range;
+pub use std::io::{Stdin, Stdout, Stderr};
 
 verus! {
 
 #[verifier::external_body]
 #[verifier::external_type_specification]
-pub struct ExStdin(std::io::Stdin);
+pub struct ExStdin(Stdin);
 
 #[verifier::external_body]
 #[verifier::external_type_specification]
-pub struct ExStdout(std::io::Stdout);
+pub struct ExStdout(Stdout);
 
 #[verifier::external_body]
 #[verifier::external_type_specification]
-pub struct ExStderr(std::io::Stderr);
+pub struct ExStderr(Stderr);
 
 #[verifier::external_body]
-fn stdin_raw() -> std::io::Stdin {
+fn stdin() -> Stdin {
     std::io::stdin()
 }
 
 #[verifier::external_body]
-fn stdout_raw() -> std::io::Stdout {
+fn stdout() -> Stdout {
     std::io::stdout()
 }
 
 #[verifier::external_body]
-fn stderr_raw() -> std::io::Stderr {
+fn stderr() -> Stderr {
     std::io::stderr()
 }
 
-/// Initialize unique handles for accessing `stdin`, `stdout`, and `stderr`.
+/// Enables `std::io::Stdin`.
+pub trait StdinSpec {
+    spec fn inv(&self) -> bool; 
+    spec fn stream() -> Seq<u8>;
+    spec fn nbyte(&self) -> nat;
+}
+impl StdinSpec for Stdin {
+
+    /// Invariant of `Stdin`.
+    open spec fn inv(&self) -> bool {
+        self.nbyte() <= Stdin::stream().len()
+    }
+
+    /// All input bytes in the input stream, ever.
+    uninterp spec fn stream() -> Seq<u8>;
+
+    /// Number of bytes already revealed in the input stream.
+    uninterp spec fn nbyte(&self) -> nat;
+
+}
+
+/// Initialize unique handles for accessing `Stdin`, `Stdout`, and `Stderr`.
 ///
 /// NOTE: this function should not be called multiple times. Any subsequent invocation
 /// will result in a panic.
-/// XXX: to enforce this, maybe make this external, and make it a common header?
 #[verifier::external_body]
 pub fn init() -> (ret: (Stdin, Stdout, Stderr))
     ensures
         ret.0.nbyte() == 0,
+        ret.0.inv(),
 {
     static STDIO_INIT: Once = Once::new();
     assert!(!STDIO_INIT.is_completed(), "stdio::init() can only be called once");
     STDIO_INIT.call_once(|| {});
 
-    (
-        Stdin { inner: stdin_raw(), nbyte: Ghost(0) },
-        Stdout { inner: stdout_raw(), nbyte: Ghost(0) },
-        Stderr { inner: stderr_raw(), nbyte: Ghost(0) },
-    )
-}
-
-/// Singleton state for the standard input of the current process.
-pub struct Stdin {
-    inner: std::io::Stdin,
-    nbyte: Ghost<nat>,
-}
-
-/// Singleton state for the standard output of the current process.
-pub struct Stdout {
-    inner: std::io::Stdout,
-    nbyte: Ghost<nat>,
-}
-
-/// Singleton state for the standard error of the current process.
-pub struct Stderr {
-    inner: std::io::Stderr,
-    nbyte: Ghost<nat>,
-}
-
-impl Stdin {
-
-    #[verifier::type_invariant]
-    pub open spec fn inv(&self) -> bool {
-        self.nbyte() <= Stdin::stream().len()
-    }
-
-    /// All input bytes in the input stream, ever.
-    pub uninterp spec fn stream() -> Seq<u8>;
-
-    /// Number of bytes already revealed in the input stream.
-    pub closed spec fn nbyte(&self) -> nat {
-        self.nbyte@
-    }
-
-    #[verifier::external_body]
-    pub(crate) fn read_raw<B: ReadBuf + ?Sized>(&mut self, buf: &mut B, range: Option<Range<usize>>) -> (res: Result<usize>) 
-        ensures
-            ({
-                let (start, end) = match range {
-                    Some(range) => (range.start as int, range.end as int),
-                    _ => (0int, buf@.len() as int),
-                };
-                match res {
-                    Ok(nread) => ({
-                        &&& old(self).nbyte() + nread <= Stdin::stream().len() && nread <= end - start
-                        &&& buf@ =~= 
-                            old(buf)@.take(start) 
-                            + Stdin::stream().skip(old(self).nbyte() as int).take(nread as int) 
-                            + old(buf)@.skip(start + nread as int)
-                        &&& self.nbyte() == old(self).nbyte() + spec_unwrap(res)
-                        &&& end - start > 0 && nread == 0 ==> self.nbyte() == Stdin::stream().len()
-                    }),
-                    Err(e) => ({
-                        &&& buf@ =~= old(buf)@
-                        &&& self.nbyte() == old(self).nbyte()
-                        &&& spec_error_kind(e) != ErrorKind::UnexpectedEof
-                    }),
-                }
-            })
-    {
-        use std::io::Read;
-
-        let mut buf = unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr(), buf.buf_len()) };
-        if let Some(range) = range {
-            buf = &mut buf[range];
-        }
-        let nread = self.inner.read(buf)?;
-        self.nbyte = Ghost((self.nbyte@ + nread) as nat);
-        Ok(nread)
-    }
-
+    (stdin(), stdout(), stderr())
 }
 
 } // verus!

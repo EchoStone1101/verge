@@ -1,5 +1,4 @@
-//! Specifications and lemmas for memory operations.
-
+//! Specifications and lemmas for memory-related operations.
 #[allow(unused_imports)]
 use vstd::prelude::*;
 use vstd::view::View;

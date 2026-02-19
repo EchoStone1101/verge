@@ -11,7 +11,9 @@ use core::ops::{
 
 verus! {
 
-// TODO
+// TODO: RangeBounds, RangeBoundsSpec, Bound
+// then the actual Range types 
+
 // #[verifier::external_type_specification]
 // pub struct ExBound<T>(Bound<T>);
 

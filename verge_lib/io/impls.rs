@@ -1,331 +1,260 @@
 //! Default implementations of I/O traits.
 
 #[allow(unused_imports)]
+use crate::impl_maybe_generic;
 use super::*;
+use vstd::math::min;
 
 verus! {
 
-#[verifier::external_body]
-fn vecdeque_as_slices<T>(deque: &VecDeque<T>) -> (ret: (&[T], &[T])) 
-    ensures 
-        deque@ =~= ret.0@ + ret.1@,
-        deque@.len() > 0 ==> ret.0@.len() > 0,
-{
-    // SOUNDNESS: see https://doc.rust-lang.org/1.93.0/src/alloc/collections/vec_deque/mod.rs.html#103 
-    deque.as_slices()
+macro_rules! impl_read_for {
+    ($ty:ty) => {
+        impl_read_for!(@internal $ty []);
+    };
+
+    ($ty:ty where $($gen:tt)+) => {
+        impl_read_for!(@internal $ty [$($gen)+]);
+    };
+
+    // Common implementation
+    (@internal $ty:ty [$($gen:tt)*]) => {
+        impl_maybe_generic!([$($gen)*] Read for $ty {
+            #[inline]
+            #[verifier::external_body]
+            fn read<B: ReadBuf + ?Sized>(&mut self, buf: &mut B, range: Option<Range<usize>>) -> (res: Result<usize>)
+                ensures Self::read_ok_extra_ensures(old(self), self, old(buf)@, buf@, range, res),
+            {
+                <Self as std::io::Read>::read(self, buf.as_mut(range))
+            }
+            #[inline]
+            #[verifier::external_body]
+            fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
+                <Self as std::io::Read>::read_to_end(self, buf)
+            }
+            #[inline]
+            #[verifier::external_body]
+            fn read_exact<B: ReadBuf>(&mut self, buf: &mut B) -> Result<()> {
+                <Self as std::io::Read>::read_exact(self, buf.as_mut(None))
+            }
+        });
+    };
 }
 
-#[verifier::external_body]
-fn vecdeque_drain_front<T>(deque: &mut VecDeque<T>, n: usize)
-    requires 
-        n <= old(deque)@.len(),
-    ensures 
-        deque@ =~= old(deque)@.skip(n as int),
-{
-    // SOUNDNESS: pre-condition
-    _ = deque.drain(..n);
+macro_rules! impl_buf_read_for {
+    ($ty:ty) => {
+        impl_buf_read_for!(@internal $ty []);
+    };
+
+    ($ty:ty where $($gen:tt)+) => {
+        impl_buf_read_for!(@internal $ty [$($gen)+]);
+    };
+
+    // Common implementation
+    (@internal $ty:ty [$($gen:tt)*]) => {
+        impl_maybe_generic!([$($gen)*] BufRead for $ty {
+            #[inline]
+            #[verifier::external_body]
+            fn fill_buf(&mut self) -> Result<&[u8]> {
+                <Self as std::io::BufRead>::fill_buf(self)
+            }
+            #[inline]
+            #[verifier::external_body]
+            fn consume(&mut self, amt: usize) 
+                ensures Self::consume_extra_ensures(old(self), self, amt),
+            {
+                <Self as std::io::BufRead>::consume(self, amt)
+            }
+            #[inline]
+            #[verifier::external_body]
+            fn read_until(&mut self, byte: u8, buf: &mut Vec<u8>) -> Result<usize> {
+                <Self as std::io::BufRead>::read_until(self, byte, buf)
+            }
+            #[inline]
+            #[verifier::external_body]
+            fn skip_until(&mut self, byte: u8) -> Result<usize> {
+                <Self as std::io::BufRead>::skip_until(self, byte)
+            }
+        });
+    };
 }
 
-unsafe impl ReadBuf for [u8] {
-    
-    #[verifier::external_body]
-    fn read_from(&mut self, src: &[u8], range: Option<Range<usize>>) -> usize {
-        // SAFETY: no out-of-bound && memory layout
-        let (start, end) = match range {
-            Some(range) => (range.start, range.end),
-            _ => (0, self.len()),
-        };
-        let count = std::cmp::min(src.len(), end - start);
-        unsafe { core::ptr::copy_nonoverlapping(src.as_ptr(), self.as_mut_ptr().add(start), count); }
-        count
-    }
-
-    #[verifier::external_body]
-    fn fill(&mut self, byte: u8, range: Option<Range<usize>>) -> usize {
-        // SAFETY: no out-of-bound && memory layout
-        let (start, end) = match range {
-            Some(range) => (range.start, range.end),
-            _ => (0, self.len()),
-        };
-        unsafe { core::ptr::write_bytes(self.as_mut_ptr().add(start), byte, end - start); }
-        end - start
-    }
-
-    fn buf_len(&self) -> usize {
-        self.len()
-    }
-
-    #[verifier::external_body]
-    unsafe fn as_mut_ptr(&mut self) -> *mut u8 {
-        self.as_mut_ptr()
-    }
-
-}
-
-unsafe impl<const N: usize> ReadBuf for [u8; N] {
-    
-    #[verifier::external_body]
-    fn read_from(&mut self, src: &[u8], range: Option<Range<usize>>) -> usize {
-        // SAFETY: no out-of-bound && memory layout
-        let (start, end) = match range {
-            Some(range) => (range.start, range.end),
-            _ => (0, self.len()),
-        };
-        let count = std::cmp::min(src.len(), end - start);
-        unsafe { core::ptr::copy_nonoverlapping(src.as_ptr(), self.as_mut_ptr().add(start), count); }
-        count
-    }
-
-    #[verifier::external_body]
-    fn fill(&mut self, byte: u8, range: Option<Range<usize>>) -> usize {
-        // SAFETY: no out-of-bound && memory layout
-        let (start, end) = match range {
-            Some(range) => (range.start, range.end),
-            _ => (0, self.len()),
-        };
-        unsafe { core::ptr::write_bytes(self.as_mut_ptr().add(start), byte, end - start); }
-        end - start
-    }
-
-    fn buf_len(&self) -> usize {
-        self.len()
-    }
-
-    #[verifier::external_body]
-    unsafe fn as_mut_ptr(&mut self) -> *mut u8 {
-        self.as_mut_slice().as_mut_ptr()
-    }
-
-}
-
-unsafe impl ReadBuf for Vec<u8> {
-    
-    #[verifier::external_body]
-    fn read_from(&mut self, src: &[u8], range: Option<Range<usize>>) -> usize {
-        // SAFETY: no out-of-bound && memory layout
-        let (start, end) = match range {
-            Some(range) => (range.start, range.end),
-            _ => (0, self.len()),
-        };
-        let count = std::cmp::min(src.len(), end - start);
-        unsafe { core::ptr::copy_nonoverlapping(src.as_ptr(), self.as_mut_ptr().add(start), count); }
-        count
-    }
-
-    #[verifier::external_body]
-    fn fill(&mut self, byte: u8, range: Option<Range<usize>>) -> usize {
-        // SAFETY: no out-of-bound && memory layout
-        let (start, end) = match range {
-            Some(range) => (range.start, range.end),
-            _ => (0, self.len()),
-        };
-        unsafe { core::ptr::write_bytes(self.as_mut_ptr().add(start), byte, end - start); }
-        end - start
-    }
-
-    fn buf_len(&self) -> usize {
-        self.len()
-    }
-
-    #[verifier::external_body]
-    unsafe fn as_mut_ptr(&mut self) -> *mut u8 {
-        self.as_mut_ptr()
-    }
-
-}
-
-unsafe impl<B: ReadBuf + ?Sized> ReadBuf for Box<B> {
-
-    fn read_from(&mut self, src: &[u8], range: Option<Range<usize>>) -> usize {
-        (&mut**self).read_from(src, range)
-    }
-
-    fn fill(&mut self, byte: u8, range: Option<Range<usize>>) -> usize {
-        (&mut**self).fill(byte, range)
-    }
-
-    fn buf_len(&self) -> usize {
-        (&**self).buf_len()
-    }
-
-    unsafe fn as_mut_ptr(&mut self) -> *mut u8 {
-        (&mut**self).as_mut_ptr() 
-    }
-}
-
-
-impl Read for &[u8] {
+impl ReadSpec for &[u8] {
     /// This works by consuming the length of the slice each time it is read. 
 
     #[verifier::inline]
     open spec fn bytes(&self) -> Seq<u8> 
         { self@ }
     
-    open spec fn read_ok(pre_self: Self, post_self: Self) -> bool
+    open spec fn read_ok(pre_self: &Self, post_self: &Self) -> bool
         { true } // no extra post-conditions
     
-    open spec fn read_err(error: Error, pre_self: Self, post_self: Self) -> bool
+    open spec fn read_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
         { false } // should not fail
 
-    open spec fn read_eof(inst: Self) -> bool 
-        { inst.bytes().len() == 0 }
+    open spec fn read_eof(&self) -> bool 
+        { self.bytes().len() == 0 }
 
-    #[inline]
-    fn read<B: ReadBuf + ?Sized>(&mut self, buf: &mut B, range: Option<Range<usize>>) -> (res: Result<usize>) 
-        ensures 
-            // no short reads
-            ({
-                let (start, end) = match range {
-                    Some(range) => (range.start as int, range.end as int),
-                    _ => (0int, buf@.len() as int),
-                }; 
-                spec_unwrap(res) == min(old(self).bytes().len() as int, end - start)
-            })
-    {
-        let nread = buf.read_from(self, range);
-        let (_, remaining) = self.split_at(nread);
-        *self = remaining;
-        Ok(nread)
+    #[verifier::inline]
+    open spec fn read_ok_extra_ensures(
+        pre_self: &Self, post_self: &Self, 
+        pre_buf: Seq<u8>, post_buf: Seq<u8>, 
+        range: Option<Range<usize>>, res: Result<usize>,
+    ) -> bool 
+    { 
+        // no short reads
+        let (start, end) = match range {
+            Some(range) => (range.start as int, range.end as int),
+            _ => (0int, post_buf.len() as int),
+        }; 
+        spec_unwrap(res) == min(pre_self.bytes().len() as int, end - start)
     }
 
-    proof fn read_ok_is_reflexive(inst: Self) {}
+    proof fn read_ok_is_reflexive(inst: &Self) {}
 
-    proof fn read_ok_is_composable(pre_self: Self, mid_self: Self, post_self: Self) {}
+    proof fn read_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {}
 
-    proof fn read_ok_err_are_composable(pre_self: Self, mid_self: Self, post_self: Self, error: Error) {}
+    proof fn read_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {}
 
 }
-impl ReadAdditionalFns for &[u8] {}
+impl_read_for!(&[u8]);
 
-impl Read for VecDeque<u8> {
+impl ReadSpec for VecDeque<u8> {
     /// This works by consuming bytes from the front of the deque.
 
     #[verifier::inline]
     open spec fn bytes(&self) -> Seq<u8> 
         { self@ }
     
-    open spec fn read_ok(pre_self: Self, post_self: Self) -> bool
+    open spec fn read_ok(pre_self: &Self, post_self: &Self) -> bool
         { true } // no extra post-conditions
     
-    open spec fn read_err(error: Error, pre_self: Self, post_self: Self) -> bool
+    open spec fn read_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
         { false } // should not fail
 
-    open spec fn read_eof(inst: Self) -> bool 
-        { inst.bytes().len() == 0 }
+    open spec fn read_eof(&self) -> bool 
+        { self.bytes().len() == 0 }
 
-    #[inline]
-    fn read<B: ReadBuf + ?Sized>(&mut self, buf: &mut B, range: Option<Range<usize>>) -> (res: Result<usize>) {
-        proof { vstd::std_specs::vecdeque::axiom_spec_len(self); }
-        let (front, _) = vecdeque_as_slices(self);
-        let nread = buf.read_from(front, range);
-        vecdeque_drain_front(self, nread);
-        Ok(nread)
-    }
+    proof fn read_ok_is_reflexive(inst: &Self) {}
 
-    proof fn read_ok_is_reflexive(inst: Self) {}
+    proof fn read_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {}
 
-    proof fn read_ok_is_composable(pre_self: Self, mid_self: Self, post_self: Self) {}
-
-    proof fn read_ok_err_are_composable(pre_self: Self, mid_self: Self, post_self: Self, error: Error) {}
+    proof fn read_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {}
 
 }
-impl ReadAdditionalFns for VecDeque<u8> {}
+impl_read_for!(VecDeque<u8>);
 
-impl Read for Empty {
+impl ReadSpec for Empty {
 
     #[verifier::inline]
     open spec fn bytes(&self) -> Seq<u8> 
         { Seq::<u8>::empty() }
     
-    open spec fn read_ok(pre_self: Self, post_self: Self) -> bool
+    open spec fn read_ok(pre_self: &Self, post_self: &Self) -> bool
         { true } // no extra post-conditions
     
-    open spec fn read_err(error: Error, pre_self: Self, post_self: Self) -> bool
+    open spec fn read_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
         { false } // should not fail
 
-    open spec fn read_eof(inst: Self) -> bool 
-        { inst.bytes().len() == 0 } 
+    open spec fn read_eof(&self) -> bool 
+        { self.bytes().len() == 0 } 
 
-    #[inline]
-    fn read<B: ReadBuf + ?Sized>(&mut self, buf: &mut B, range: Option<Range<usize>>) -> (res: Result<usize>) {
-        Ok(0)
-    }
+    proof fn read_ok_is_reflexive(inst: &Self) {}
 
-    proof fn read_ok_is_reflexive(inst: Self) {}
+    proof fn read_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {}
 
-    proof fn read_ok_is_composable(pre_self: Self, mid_self: Self, post_self: Self) {}
-
-    proof fn read_ok_err_are_composable(pre_self: Self, mid_self: Self, post_self: Self, error: Error) {}
+    proof fn read_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {}
 
 }
-impl ReadAdditionalFns for Empty {}
+impl_read_for!(Empty);
 
-impl Read for Repeat {
+impl ReadSpec for Repeat {
     /// ### Proving Termination 
     /// Note that while `Repeat::read_to_end()` results in a dead loop, it is actually impossible
-    /// to call it because of its `require` clause cannot be proved (`old(self).bytes().len() <= usize::MAX`). 
+    /// to call it because of its `require` clause cannot be proved (`old(self).bytes().len() <= isize::MAX`). 
 
     uninterp spec fn bytes(&self) -> Seq<u8>;
 
-    open spec fn read_ok(pre_self: Self, post_self: Self) -> bool { 
+    open spec fn read_ok(pre_self: &Self, post_self: &Self) -> bool { 
         let nread = (pre_self.bytes().len() - post_self.bytes().len()) as nat;
         &&& post_self.byte() == pre_self.byte()
         &&& pre_self.bytes() =~= seq![pre_self.byte(); nread] + post_self.bytes()
     } 
     
-    open spec fn read_err(error: Error, pre_self: Self, post_self: Self) -> bool
+    open spec fn read_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
         { false } // should not fail
 
-    open spec fn read_eof(inst: Self) -> bool 
+    open spec fn read_eof(&self) -> bool 
         { false } // cannot EOF
 
-    #[inline]
-    fn read<B: ReadBuf + ?Sized>(&mut self, buf: &mut B, range: Option<Range<usize>>) -> (res: Result<usize>) {        
-        let nread = buf.fill(self.0, range);
-        // SOUNDNESS: by the semantics of `fill`
-        assume(nread <= old(self).bytes().len() && self.bytes() == old(self).bytes().skip(nread as int));
-        Ok(nread)
-    }
+    proof fn read_ok_is_reflexive(inst: &Self) {}
 
-    proof fn read_ok_is_reflexive(inst: Self) {}
+    proof fn read_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {}
 
-    proof fn read_ok_is_composable(pre_self: Self, mid_self: Self, post_self: Self) {}
+    proof fn read_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {}
 
-    proof fn read_ok_err_are_composable(pre_self: Self, mid_self: Self, post_self: Self, error: Error) {}
 }
-impl ReadAdditionalFns for Repeat {}
+impl_read_for!(Repeat);
 
-impl Read for Stdin {
+impl ReadSpec for Stdin {
 
     open spec fn bytes(&self) -> Seq<u8> {
         Stdin::stream().skip(self.nbyte() as int)
     }
 
     open spec fn read_inv(&self) -> bool 
-        { self.nbyte() <= Stdin::stream().len() }
+        { self.inv() }
 
-    open spec fn read_ok(pre_self: Self, post_self: Self) -> bool 
+    open spec fn read_ok(pre_self: &Self, post_self: &Self) -> bool 
         { true } 
     
-    open spec fn read_err(error: Error, pre_self: Self, post_self: Self) -> bool
-        { true } 
+    open spec fn read_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
+        { true } // TODO: stdin read errors
 
-    open spec fn read_eof(inst: Self) -> bool 
-        { true } // EOF does not imply input stream is empty forever 
+    open spec fn read_eof(&self) -> bool 
+        { true } // EOF does not imply input stream is exhausted forever 
 
-    fn read<B: ReadBuf + ?Sized>(&mut self, buf: &mut B, range: Option<Range<usize>>) -> (res: Result<usize>) {        
-        self.read_raw(buf, range)
+    proof fn read_ok_is_reflexive(inst: &Self) {}
+
+    proof fn read_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {}
+
+    proof fn read_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {}
+
+}
+impl_read_for!(Stdin);
+
+impl<R: Read + ?Sized> ReadSpec for Box<R> {
+
+    open spec fn bytes(&self) -> Seq<u8> 
+        { R::bytes(&*self) }
+
+    open spec fn read_inv(&self) -> bool 
+        { R::read_inv(&*self) }
+    
+    open spec fn read_ok(pre_self: &Self, post_self: &Self) -> bool 
+        { R::read_ok(pre_self, post_self) } 
+    
+    open spec fn read_err(error: Error, pre_self: &Self, post_self: &Self) -> bool 
+        { R::read_err(error, pre_self, post_self) }
+
+    open spec fn read_eof(&self) -> bool 
+        { R::read_eof(self) }
+
+    proof fn read_ok_is_reflexive(inst: &Self) {
+        R::read_ok_is_reflexive(inst);
     }
 
-    proof fn read_ok_is_reflexive(inst: Self) {}
+    proof fn read_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {
+        R::read_ok_is_composable(pre_self, mid_self, post_self);
+    }
 
-    proof fn read_ok_is_composable(pre_self: Self, mid_self: Self, post_self: Self) {}
+    proof fn read_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {
+        R::read_ok_err_are_composable(pre_self, mid_self, post_self, error);
+    }
 
-    proof fn read_ok_err_are_composable(pre_self: Self, mid_self: Self, post_self: Self, error: Error) {}
 }
-impl ReadAdditionalFns for Stdin {}
+impl_read_for!(Box<R> where R: Read + ?Sized + std::io::Read);
 
-impl<R: Read> Read for BufReader<R> {
+impl<R: Read> ReadSpec for BufReader<R> {
     /// This works by first reading from the internal buffer, then (if empty) calling 
     /// `read` on the inner read instance.
 
@@ -335,224 +264,74 @@ impl<R: Read> Read for BufReader<R> {
     open spec fn read_inv(&self) -> bool 
         { self.inv() && self.inner().read_inv() }
     
-    open spec fn read_ok(pre_self: Self, post_self: Self) -> bool 
+    open spec fn read_ok(pre_self: &Self, post_self: &Self) -> bool 
         { R::read_ok(pre_self.inner(), post_self.inner()) } 
     
-    open spec fn read_err(error: Error, pre_self: Self, post_self: Self) -> bool 
+    open spec fn read_err(error: Error, pre_self: &Self, post_self: &Self) -> bool 
         { R::read_err(error, pre_self.inner(), post_self.inner()) }
 
-    open spec fn read_eof(inst: Self) -> bool 
-        { inst.valid_buf().len() == 0 && R::read_eof(inst.inner()) }
+    open spec fn read_eof(&self) -> bool 
+        { self.valid_buf().len() == 0 && R::read_eof(self.inner()) }
 
-    #[inline]
-    fn read<B: ReadBuf + ?Sized>(&mut self, buf: &mut B, range: Option<Range<usize>>) -> Result<usize> {
-        // If we don't have any buffered data and we're doing a massive read
-        // (larger than our internal buffer), bypass our internal buffer
-        // entirely.
-        let buf_len = match &range {
-            Some(range) => range.end - range.start,
-            _ => buf.buf_len(),
-        };
-        if self.pos == self.filled && buf_len >= self.capacity() {
-            self.pos = 0;
-            self.filled = 0;
-            return self.inner.read(buf, range);
-        }
-        proof { R::read_ok_is_reflexive(self.inner()); } // in case `fill_buf()` does not read
-        let mut rem = self.fill_buf()?;
-        let nread = rem.read(buf, range)?;
-        self.consume(nread);
-        Ok(nread)
-    }
-
-    proof fn read_ok_is_reflexive(inst: Self) {
+    proof fn read_ok_is_reflexive(inst: &Self) {
         R::read_ok_is_reflexive(inst.inner());
     }
 
-    proof fn read_ok_is_composable(pre_self: Self, mid_self: Self, post_self: Self) {
+    proof fn read_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {
         R::read_ok_is_composable(pre_self.inner(), mid_self.inner(), post_self.inner());
     }
 
-    proof fn read_ok_err_are_composable(pre_self: Self, mid_self: Self, post_self: Self, error: Error) {
+    proof fn read_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {
         R::read_ok_err_are_composable(pre_self.inner(), mid_self.inner(), post_self.inner(), error);
     }
 
 }
-impl<R: Read> ReadAdditionalFns for BufReader<R> {}
+impl_read_for!(BufReader<R> where R: Read + std::io::Read);
 
-impl<R: Read> Read for Box<R> {
-
-    open spec fn bytes(&self) -> Seq<u8> 
-        { R::bytes(&*self) }
-
-    open spec fn read_inv(&self) -> bool 
-        { R::read_inv(&*self) }
-    
-    open spec fn read_ok(pre_self: Self, post_self: Self) -> bool 
-        { R::read_ok(*pre_self, *post_self) } 
-    
-    open spec fn read_err(error: Error, pre_self: Self, post_self: Self) -> bool 
-        { R::read_err(error, *pre_self, *post_self) }
-
-    open spec fn read_eof(inst: Self) -> bool 
-        { R::read_eof(*inst) }
-    
-    #[inline]
-    fn read<B: ReadBuf + ?Sized>(&mut self, buf: &mut B, range: Option<Range<usize>>) -> Result<usize> {
-        R::read(&mut*self, buf, range)
-    }
-
-    proof fn read_ok_is_reflexive(inst: Self) {
-        R::read_ok_is_reflexive(*inst);
-    }
-
-    proof fn read_ok_is_composable(pre_self: Self, mid_self: Self, post_self: Self) {
-        R::read_ok_is_composable(*pre_self, *mid_self, *post_self);
-    }
-
-    proof fn read_ok_err_are_composable(pre_self: Self, mid_self: Self, post_self: Self, error: Error) {
-        R::read_ok_err_are_composable(*pre_self, *mid_self, *post_self, error);
-    }
-}
-
-
-impl BufRead for &[u8] {
+impl BufReadSpec for &[u8] {
+    /// This works by using the slice itself as the buffer.
 
     open spec fn buffer(&self) -> Seq<u8> {
         self@
     }
-
-    #[inline]
-    fn fill_buf(&mut self) -> Result<&[u8]> {
-        Ok(*self)
-    }
-
-    #[inline]
-    fn consume(&mut self, amt: usize) {
-        let (_, remaining) = self.split_at(amt);
-        *self = remaining;
-    }
 }
-impl BufReadAdditionalFns for &[u8] {}
+impl_buf_read_for!(&[u8]);
 
-impl BufRead for Empty {
+// TODO: VecDeque: needs spec for VecDeque::as_slices
 
+impl BufReadSpec for Empty {
     open spec fn buffer(&self) -> Seq<u8> {
         Seq::<u8>::empty()
     }
-
-    #[inline]
-    fn fill_buf(&mut self) -> Result<&[u8]> {
-        Ok(&[])
-    }
-
-    #[inline]
-    fn consume(&mut self, _amt: usize) {}
 }
-impl BufReadAdditionalFns for Empty {}
+impl_buf_read_for!(Empty);
 
-impl<R: Read> BufRead for BufReader<R> {
+impl<B: BufRead + ?Sized> BufReadSpec for Box<B> {
+
+    open spec fn buffer(&self) -> Seq<u8> 
+        { B::buffer(&*self) }
+
+    open spec fn consume_extra_ensures(
+        pre_self: &Self, post_self: &Self, amt: usize
+    ) -> bool 
+        { B::consume_extra_ensures(&*pre_self, &*post_self, amt) }
+}
+impl_buf_read_for!(Box<B> where B: BufRead + ?Sized + std::io::BufRead);
+
+impl<R: Read> BufReadSpec for BufReader<R> {
 
     open spec fn buffer(&self) -> Seq<u8> {
         self.valid_buf()
     }
 
-    fn fill_buf(&mut self) -> Result<&[u8]> {
-        // Replenish buffer if empty; otherwise return it as-is
-        if self.pos == self.filled {
-            let filled = self.inner.read(&mut self.buf, None)?;
-            self.pos = 0;
-            self.filled = filled;
-        }
-        proof { R::read_ok_is_reflexive(self.inner()) } // in case no read happened
-        Ok(self.buffer())
-    }
-
-    fn consume(&mut self, amt: usize) 
-        ensures
-            self.inner() == old(self).inner(),
-    {
-        self.pos = self.pos + amt;
-        proof { R::read_ok_is_reflexive(self.inner()) }
+    open spec fn consume_extra_ensures(
+        pre_self: &Self, post_self: &Self, amt: usize
+    ) -> bool 
+    { 
+        pre_self.inner() == post_self.inner()
     }
 }
-impl<R: Read> BufReadAdditionalFns for BufReader<R> {}
-
-// TODO:  File?
-
-
-
-// impl Write for Empty, Sink, Vec<u8>, VecDeque<u8>; BufWriter; Stdout; PipeWriter; File
-
-
-// impl Write for [u8] {
-//     /// This works by overwriting the existing bytes in the slice.
-
-//     #[verifier::inline]
-//     open spec fn bytes(&self) -> Seq<u8> 
-//         { self@ }
-
-//     open spec fn write_ok(nwritten: usize, pre_self: &Self, post_self: &Self, buf: Seq<u8>) -> bool
-//     {
-//         post_self.bytes() =~= buf.take(nwritten as int) + pre_self.bytes().skip(nwritten as int)
-//     }
-    
-//     #[allow(unused)]
-//     open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self, buf: Seq<u8>) -> bool 
-//         { false } // should never fail
-
-//     #[inline]
-//     fn write(&mut self, buf: &[u8]) -> (res: Result<usize>)
-//         ensures
-//             ({
-//                 match res {
-//                     Ok(nwritten) => 
-//                         nwritten <= buf.len() 
-//                         && Self::write_ok(nwritten, old(self), self, buf@),
-//                     Err(error) => Self::write_err(error, old(self), self, buf@),
-//                 }
-//             }),
-//     {
-//         let amt = if buf.len() < self.len() { buf.len() } else { self.len() };
-//         copy_from_slice_partial(self, buf);
-//         Ok(amt)
-//     }
-// }
-
-// impl Write for Vec<u8> {
-//     /// This works by appending the written bytes to the vector, potentially growing it.
-
-//     #[verifier::inline]
-//     open spec fn bytes(&self) -> Seq<u8> 
-//         { self@ }
-
-//     open spec fn write_ok(nwritten: usize, pre_self: &Self, post_self: &Self, buf: Seq<u8>) -> bool
-//     {
-//         &&& nwritten == buf.len()
-//         &&& post_self.bytes() =~= pre_self.bytes() + buf
-//     }
-    
-//     #[allow(unused)]
-//     open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self, buf: Seq<u8>) -> bool 
-//         { false } // should never fail
-
-//     #[inline]
-//     fn write(&mut self, buf: &[u8]) -> (res: Result<usize>)
-//         ensures
-//             ({
-//                 match res {
-//                     Ok(nwritten) => 
-//                         nwritten <= buf.len() 
-//                         && Self::write_ok(nwritten, old(self), self, buf@),
-//                     Err(error) => Self::write_err(error, old(self), self, buf@),
-//                 }
-//             }),
-//     {
-//         self.extend_from_slice(buf);
-//         Ok(buf.len())
-//     }
-
-// }
+impl_buf_read_for!(BufReader<R> where R: Read + std::io::Read);
 
 mod tests {
     use super::*;
@@ -580,7 +359,7 @@ mod tests {
         requires old(dest)@.len() <= isize::MAX,
         ensures old(dest)@ =~= dest@,
     {
-        let mut empty = empty();
+        let mut empty = std::io::empty();
         empty.read_to_end(dest).unwrap();
     }
 
@@ -604,12 +383,13 @@ mod tests {
     }
 
     fn read_stdin_basic(stdin: &mut Stdin, buf: &mut [u8]) -> (nread: usize)
+        requires
+            old(stdin).inv(),
         ensures 
             stdin.nbyte() == old(stdin).nbyte() + nread,
             buf@.take(nread as int) 
                 =~= Stdin::stream().subrange(old(stdin).nbyte() as int, stdin.nbyte() as int),
     {
-        proof { use_type_invariant(&*stdin) }
         stdin.read(buf, None).ok().unwrap_or(0)
     }
 
@@ -624,6 +404,8 @@ mod tests {
             assert(buf[0] != delim);
         }
     }
+
+    // TODO: test BufReader
 }
 
 } // verus!
