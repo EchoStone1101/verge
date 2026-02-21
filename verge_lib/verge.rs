@@ -82,7 +82,7 @@ macro_rules! impl_maybe_generic {
 
 verus! {
 
-// pub mod ascii_string;
+pub mod iter;
 pub mod io;
 pub mod mem;
 pub mod nt;

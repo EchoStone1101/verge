@@ -1,18 +1,45 @@
 //! Specifications and lemmas for `std::String`.
-
 use super::*;
+
+pub use std::string::FromUtf8Error;
 
 verus! {
 
 #[verifier::external_body]
 #[verifier::external_type_specification]
-pub struct ExFromUtf8Error(std::string::FromUtf8Error);
+pub struct ExFromUtf8Error(FromUtf8Error);
+
+/// Enable `String::as_bytes`.
+pub assume_specification [ String::as_bytes ] (s: &String) -> (bytes: &[u8])
+    ensures
+        bytes@ =~= s@.as_bytes(),
+    no_unwind
+;
+
+/// Enable `String::len`. Note that this returns length in bytes.
+pub assume_specification [ String::len ] (s: &String) -> (ret: usize)
+    ensures
+        ret == s@.as_bytes().len(),
+    no_unwind
+;
+
+/// Enable `String::new`.
+pub assume_specification [ String::new ] () -> (s: String)
+    ensures
+        s@ =~= Seq::<char>::empty(),
+    no_unwind
+;
+
+/// Enable `String::with_capacity`.
+pub assume_specification [ String::with_capacity ] (cap: usize) -> (s: String)
+    ensures
+        s@ =~= Seq::<char>::empty(),
+;
 
 /// Enable `String::into_bytes`.
 pub assume_specification [ String::into_bytes ] (s: String) -> (bytes: Vec<u8>)
     ensures
-        bytes@ =~= as_bytes(s@),
-        is_utf8(as_bytes(s@)),
+        bytes@ =~= s@.as_bytes(),
     no_unwind
 ;
 
@@ -20,7 +47,6 @@ pub assume_specification [ String::into_bytes ] (s: String) -> (bytes: Vec<u8>)
 pub assume_specification [ String::clear ] (s: &mut String)
     ensures
         s@ =~= Seq::<char>::empty(),
-        is_utf8(as_bytes(s@)),
     no_unwind
 ;
 
@@ -56,26 +82,11 @@ pub assume_specification [ String::reserve_exact ] (s: &mut String, _amt: usize)
 /// falls between code points. 
 pub assume_specification [ String::insert ] (s: &mut String, idx: usize, ch: char) 
     requires
-        idx <= as_bytes(old(s)@).len(),
-        is_utf8(as_bytes(old(s)@).take(idx as int)), 
-        is_utf8(as_bytes(old(s)@).skip(idx as int)), 
+        idx <= old(s)@.as_bytes().len(),
+        old(s)@.as_bytes().take(idx as int).is_utf8(), 
+        old(s)@.as_bytes().skip(idx as int).is_utf8(), 
     ensures
-        s@ =~= as_str(as_bytes(old(s)@).take(idx as int)).push(ch) + as_str(as_bytes(old(s)@).skip(idx as int)),
-;
-
-/// Enable `String::remove`. 
-///
-/// Note that this function no longer panics, but requires proving that `idx` 
-/// falls between code points. 
-pub assume_specification [ String::remove ] (s: &mut String, idx: usize) -> (ch: char)
-    requires
-        idx < as_bytes(old(s)@).len(),
-        is_utf8(as_bytes(old(s)@).take(idx as int)), 
-        is_utf8(as_bytes(old(s)@).skip(idx as int)), 
-    ensures
-        s@ =~= as_str(as_bytes(old(s)@).take(idx as int)) + as_str(as_bytes(old(s)@).skip(idx as int)).drop_first(),
-        ch == as_str(as_bytes(old(s)@).skip(idx as int)).first(),
-    no_unwind
+        s@.as_bytes() =~= old(s)@.as_bytes().take(idx as int) + seq![ch].as_bytes() + old(s)@.as_bytes().skip(idx as int),
 ;
 
 /// Enable `String::insert_str`. 
@@ -84,11 +95,25 @@ pub assume_specification [ String::remove ] (s: &mut String, idx: usize) -> (ch:
 /// falls between code points. 
 pub assume_specification [ String::insert_str ] (s: &mut String, idx: usize, string: &str) 
     requires
-        idx <= as_bytes(old(s)@).len(),
-        is_utf8(as_bytes(old(s)@).take(idx as int)), 
-        is_utf8(as_bytes(old(s)@).skip(idx as int)), 
+        idx <= old(s)@.as_bytes().len(),
+        old(s)@.as_bytes().take(idx as int).is_utf8(),
+        old(s)@.as_bytes().skip(idx as int).is_utf8(),
     ensures
-        s@ =~= as_str(as_bytes(old(s)@).take(idx as int)) + string@ + as_str(as_bytes(old(s)@).skip(idx as int)),
+        s@.as_bytes() =~= old(s)@.as_bytes().take(idx as int) + string@.as_bytes() + old(s)@.as_bytes().skip(idx as int),
+;
+
+/// Enable `String::split_off`. 
+///
+/// Note that this function no longer panics, but requires proving that `at` 
+/// falls between code points.
+pub assume_specification [ String::split_off ] (s: &mut String, at: usize) -> (rem: String)
+    requires
+        at <= old(s)@.as_bytes().len(),
+        old(s)@.as_bytes().take(at as int).is_utf8(), 
+        old(s)@.as_bytes().skip(at as int).is_utf8(), 
+    ensures
+        s@.as_bytes() =~= old(s)@.as_bytes().take(at as int),
+        rem@.as_bytes() =~= old(s)@.as_bytes().skip(at as int),
 ;
 
 /// Enable `String::truncate`. 
@@ -97,54 +122,51 @@ pub assume_specification [ String::insert_str ] (s: &mut String, idx: usize, str
 /// falls between code points.
 pub assume_specification [ String::truncate ] (s: &mut String, new_len: usize) 
     requires
-        new_len <= as_bytes(old(s)@).len(),
-        is_utf8(as_bytes(old(s)@).take(new_len as int)), 
+        new_len <= old(s)@.as_bytes().len(),
+        old(s)@.as_bytes().take(new_len as int).is_utf8(), 
     ensures
-        s@ =~= as_str(as_bytes(old(s)@).take(new_len as int)),
+        s@.as_bytes() =~= old(s)@.as_bytes().take(new_len as int),
     no_unwind
 ;
 
 pub trait StringExecFromUtf8Fns {
-
-    /// Enable `String::from_utf8`.
-    fn from_utf8_checked(vec: Vec<u8>) -> (res: Result<String, std::string::FromUtf8Error>)
+    fn from_utf8_checked(vec: Vec<u8>) -> (res: Result<String, FromUtf8Error>)
         ensures 
-            is_utf8(vec@) <==> res.is_ok(),
+            vec@.is_utf8() <==> res.is_ok(),
         no_unwind
     ;
 
-    /// Enable `String::from_utf8_unchecked`; note that this is no longer `unsafe`.
     fn from_utf8_verified(vec: Vec<u8>) -> String
         requires 
-            is_utf8(vec@),
+            vec@.is_utf8(),
         no_unwind
     ;
 }
 
 impl StringExecFromUtf8Fns for String {
 
+    /// Enable `String::from_utf8`.
     #[verifier::external_body]
-    fn from_utf8_checked(vec: Vec<u8>) -> (res: Result<String, std::string::FromUtf8Error>)
+    fn from_utf8_checked(vec: Vec<u8>) -> (res: Result<String, FromUtf8Error>)
         ensures 
             ({
                 match res {
-                    Ok(s) => s@ =~= as_str(vec@),
+                    Ok(s) => s@ =~= vec@.as_str(),
                     _ => true,
                 }
             }),
-            
     {
         String::from_utf8(vec)
     }
 
+    /// Enable `String::from_utf8_unchecked`; note that this is no longer `unsafe`.
     #[verifier::external_body]
     fn from_utf8_verified(vec: Vec<u8>) -> (s: String)
         ensures 
-            s@ =~= as_str(vec@),
+            s@ =~= vec@.as_str(),
     {
         unsafe { String::from_utf8_unchecked(vec) }
     }
 }
-
 
 } // verus!

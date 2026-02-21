@@ -405,7 +405,7 @@ mod tests {
         }
     }
 
-    // TODO: test BufReader
+    // TODO(rilin): test more functions
 }
 
 } // verus!

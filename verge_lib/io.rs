@@ -558,4 +558,9 @@ pub assume_specification<R: ?Sized>[ BufReader::capacity ](r: &BufReader<R>) -> 
         ret == spec_slice_len(r.buf()),
 ;
 
+mod tests {
+    use super::*;
+    // TODO(rilin): test more functions
+}
+
 } // verus!

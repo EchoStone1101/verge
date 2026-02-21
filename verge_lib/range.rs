@@ -14,6 +14,8 @@ verus! {
 // TODO: RangeBounds, RangeBoundsSpec, Bound
 // then the actual Range types 
 
+// Once ranges are ready, we could implement Index traits so that we don't need special methods to index slices
+
 // #[verifier::external_type_specification]
 // pub struct ExBound<T>(Bound<T>);
 
