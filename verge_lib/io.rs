@@ -12,11 +12,13 @@
 use vstd::prelude::*;
 use vstd::slice::{slice_subrange, spec_slice_len};
 use vstd::std_specs::result::spec_unwrap;
+use crate::str::{StrView, BytesView};
 
 use core::ops::Range;
 use std::collections::VecDeque;
 pub use std::io::{
-    Error, ErrorKind, Empty, Repeat, BufReader,
+    Error, ErrorKind, Empty, Repeat, 
+    BufReader, BufWriter, LineWriter, IntoInnerError,
     empty, repeat,
 };
 
@@ -82,6 +84,11 @@ pub trait ExBufRead: std::io::Read {
     type ExternalTraitSpecificationFor: std::io::BufRead;
 }
 
+#[verifier::external_trait_specification]
+pub trait ExWrite {
+    type ExternalTraitSpecificationFor: std::io::Write;
+}
+
 #[verifier::external_body]
 #[verifier::external_type_specification]
 pub struct ExError(Error);
@@ -89,10 +96,34 @@ pub struct ExError(Error);
 #[verifier::external_type_specification]
 pub struct ExErrorKind(ErrorKind);
 
-pub uninterp spec fn spec_error_kind(e: Error) -> ErrorKind;
+pub uninterp spec fn spec_error_kind(e: &Error) -> ErrorKind;
+#[verifier::when_used_as_spec(spec_error_kind)]
 pub assume_specification[Error::kind](e: &Error) -> (kind: ErrorKind)
     ensures
-        spec_error_kind(*e) == kind,
+        spec_error_kind(e) == kind,
+;
+
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(W)]
+pub struct ExIntoInnerError<W>(IntoInnerError<W>);
+
+pub uninterp spec fn spec_err_into_error<W>(e: IntoInnerError<W>) -> Error;
+#[verifier::when_used_as_spec(spec_err_into_error)]
+pub assume_specification<W>[IntoInnerError::into_error](e: IntoInnerError<W>) -> (err: Error)
+    ensures
+        spec_err_into_error(e) == err,
+;
+pub assume_specification<W>[IntoInnerError::error](e: &IntoInnerError<W>) -> (err: &Error)
+    ensures
+        spec_err_into_error(*e) == *err,
+;
+
+pub uninterp spec fn spec_err_into_inner<W>(e: IntoInnerError<W>) -> W;
+#[verifier::when_used_as_spec(spec_err_into_inner)]
+pub assume_specification<W>[IntoInnerError::into_inner](e: IntoInnerError<W>) -> (ret: W)
+    ensures
+        spec_err_into_inner(e) == ret,
 ;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -131,7 +162,7 @@ pub trait Read: ReadSpec {
                     _ => (0int, buf@.len() as int),
                 };
                 match res {
-                    Ok(nread) => ({
+                    Ok(nread) => {
                         &&& nread <= old(self).bytes().len() && nread <= end - start
                         &&& buf@ =~= 
                             old(buf)@.take(start) 
@@ -141,15 +172,14 @@ pub trait Read: ReadSpec {
                         // ^ basic read semantics
                         &&& Self::read_ok(old(self), self)
                         &&& end - start > 0 && nread == 0 ==> self.read_eof() 
-                    }),
-                    Err(e) => ({
+                    },
+                    Err(e) => {
                         &&& self.bytes() =~= old(self).bytes() 
                         &&& buf@ =~= old(buf)@
-                        &&& spec_error_kind(e) == ErrorKind::Interrupted ==> Self::read_ok(old(self), self)
-                        &&& spec_error_kind(e) != ErrorKind::UnexpectedEof // not returned in base `read`
+                        &&& e.kind() == ErrorKind::Interrupted ==> Self::read_ok(old(self), self)
                         // ^ basic error semantics
                         &&& Self::read_err(e, old(self), self)
-                    })
+                    }
                 }
             }),
     ;
@@ -160,32 +190,64 @@ pub trait Read: ReadSpec {
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> (res: Result<usize>)
         requires 
             old(self).read_inv(),
-            old(buf)@.len() + old(self).bytes().len() <= isize::MAX,
+            old(self).bytes().len() <= isize::MAX,
         ensures
             self.read_inv(),
             ({
                 match res {
-                    Ok(nread) => ({
+                    Ok(nread) => {
                         &&& self.read_eof()
                         &&& nread <= old(self).bytes().len() && buf@.len() == old(buf)@.len() + nread 
                         &&& buf@ =~= old(buf)@ + old(self).bytes().take(nread as int) 
                         &&& self.bytes() =~= old(self).bytes().skip(nread as int)
                         &&& Self::read_ok(old(self), self)
-                    }),
-                    Err(e) => ({
+                    },
+                    Err(e) => {
                         let nread = old(self).bytes().len() - self.bytes().len();
                         &&& nread >= 0 
                         &&& self.bytes() =~= old(self).bytes().skip(nread)
                         &&& buf@ =~= old(buf)@ + old(self).bytes().take(nread) 
                         //  ^ bytes already read are in `buf`
-                        &&& spec_error_kind(e) != ErrorKind::Interrupted // interrupts are retried
+                        &&& e.kind() != ErrorKind::Interrupted // interrupts are retried
                         &&& Self::read_err(e, old(self), self) 
-                    }),
+                    },
                 }
             }),
     ;
 
-    // fn read_to_string(&mut self, buf: &mut String) -> (res: Result<(usize)>);
+    /// Reads all bytes until EOF in this source, appending them to `buf`.
+    ///
+    /// If the data in this stream is not valid UTF-8 then an error is returned and `buf` is unchanged.
+    fn read_to_string(&mut self, buf: &mut String) -> (res: Result<(usize)>)
+        requires 
+            old(self).read_inv(),
+            old(self).bytes().len() <= isize::MAX,
+        ensures
+            self.read_inv(),
+            ({
+                match res {
+                    Ok(nread) => {
+                        &&& self.read_eof()
+                        &&& nread <= old(self).bytes().len()
+                        &&& old(self).bytes().take(nread as int).is_utf8()
+                        &&& buf@.as_bytes() =~= old(buf)@.as_bytes() + old(self).bytes().take(nread as int) 
+                        &&& self.bytes() =~= old(self).bytes().skip(nread as int)
+                        &&& Self::read_ok(old(self), self)
+                    },
+                    Err(e) => {
+                        let nread = old(self).bytes().len() - self.bytes().len();
+                        &&& nread >= 0 
+                        &&& self.bytes() =~= old(self).bytes().skip(nread)
+                        &&& buf@ =~= old(buf)@ 
+                        //  ^ bytes already read are *not* in `buf`
+                        &&& e.kind() == ErrorKind::InvalidData ==> 
+                                !old(self).bytes().take(nread).is_utf8()
+                        &&& e.kind() != ErrorKind::Interrupted // interrupts are retried
+                        &&& Self::read_err(e, old(self), self) 
+                    },
+                }
+            }),
+    ;
 
     /// Reads the exact number of bytes required to fill `buf`.
     fn read_exact<B: ReadBuf>(&mut self, buf: &mut B) -> (res: Result<()>) 
@@ -195,18 +257,17 @@ pub trait Read: ReadSpec {
             self.read_inv(),
             ({
                 match res {
-                    Ok(_) => ({
+                    Ok(_) => {
                         &&& old(buf)@.len() <= old(self).bytes().len() 
                         &&& buf@ =~= old(self).bytes().take(old(buf)@.len() as int) 
                         &&& self.bytes() =~= old(self).bytes().skip(old(buf)@.len() as int)
                         &&& Self::read_ok(old(self), self)
-                    }),
-                    Err(e) if spec_error_kind(e) == ErrorKind::UnexpectedEof => 
-                        self.read_eof(),
-                    Err(e) => ({
-                        &&& spec_error_kind(e) != ErrorKind::Interrupted // interrupts are retried
+                    },
+                    Err(e) => {
+                        &&& e.kind() != ErrorKind::Interrupted // interrupts are retried
+                        &&& e.kind() == ErrorKind::UnexpectedEof ==> self.read_eof()
                         &&& Self::read_err(e, old(self), self)
-                    }),
+                    },
                 }
             }),
     ;
@@ -297,8 +358,7 @@ pub trait BufRead: Read + BufReadSpec {
                     // effectively one failed `read`
                     &&& old(self).buffer().len() == 0 && self.buffer().len() == 0
                     &&& self.buffer() =~= old(self).buffer()
-                    &&& spec_error_kind(e) == ErrorKind::Interrupted ==> Self::read_ok(old(self), self)
-                    &&& spec_error_kind(e) != ErrorKind::UnexpectedEof
+                    &&& e.kind() == ErrorKind::Interrupted ==> Self::read_ok(old(self), self)
                     &&& Self::read_err(e, old(self), self)
                 })
             },
@@ -328,7 +388,7 @@ pub trait BufRead: Read + BufReadSpec {
     fn read_until(&mut self, byte: u8, buf: &mut Vec<u8>) -> (res: Result<usize>)
         requires 
             old(self).read_inv(),
-            old(buf)@.len() + old(self).bytes().len() <= isize::MAX,
+            old(self).bytes().len() <= isize::MAX,
         ensures
             self.read_inv(),
             ({
@@ -348,7 +408,7 @@ pub trait BufRead: Read + BufReadSpec {
                         &&& buf@ =~= old(buf)@ + old(self).bytes().take(nread) 
                         &&& forall|i: int| #![auto] old(buf)@.len() <= i < buf@.len() ==> buf[i] != byte 
                         //  ^ bytes already read are in `buf`
-                        &&& spec_error_kind(e) != ErrorKind::Interrupted // interrupts are retried
+                        &&& e.kind() != ErrorKind::Interrupted // interrupts are retried
                         &&& Self::read_err(e, old(self), self) 
                     }),
                 }
@@ -379,15 +439,48 @@ pub trait BufRead: Read + BufReadSpec {
                         &&& nread >= 0 
                         &&& self.bytes() =~= old(self).bytes().skip(nread)
                         &&& forall|i: int| #![auto] 0 <= i < nread ==> old(self).bytes()[i] != byte 
-                        &&& spec_error_kind(e) != ErrorKind::Interrupted // interrupts are retried
+                        &&& e.kind() != ErrorKind::Interrupted // interrupts are retried
                         &&& Self::read_err(e, old(self), self) 
                     }),
                 }
             }),
     ;
 
-    // TODO: read_lines and others
-        
+    /// Reads all bytes until a newline (the `0xA` byte) is reached, and append them to the provided `String` buffer.
+    ///
+    /// This function will read bytes from the underlying stream until the newline delimiter (the 0xA byte) or EOF is found. 
+    /// Once found, all bytes up to, and including, the delimiter (if found) will be appended to buf.
+    /// If successful, this function will return the total number of bytes read.
+    fn read_line(&mut self, buf: &mut String) -> (res: Result<usize>)
+        requires 
+            old(self).read_inv(),
+            old(self).bytes().len() <= isize::MAX,
+        ensures
+            ({
+                match res {
+                    Ok(nread) => ({
+                        &&& nread <= old(self).bytes().len()
+                        &&& old(self).bytes().take(nread as int).is_utf8()
+                        &&& buf@.as_bytes() =~= old(buf)@.as_bytes() + old(self).bytes().take(nread as int) 
+                        &&& self.bytes() =~= old(self).bytes().skip(nread as int)
+                        &&& forall|i: int| old(buf)@.len() <= i < buf@.len() - 1 ==> #[trigger] buf@[i] != 0xA 
+                        &&& (nread == 0 || buf@.last() != 0xA) ==> self.read_eof()
+                        &&& Self::read_ok(old(self), self)
+                    }),
+                    Err(e) => ({
+                        let nread = old(self).bytes().len() - self.bytes().len();
+                        &&& nread >= 0 
+                        &&& self.bytes() =~= old(self).bytes().skip(nread)
+                        &&& buf@ =~= old(buf)@ 
+                        //  ^ bytes already read are *not* in `buf`
+                        &&& e.kind() == ErrorKind::InvalidData ==> 
+                                !old(self).bytes().take(nread).is_utf8()
+                        &&& e.kind() != ErrorKind::Interrupted // interrupts are retried
+                        &&& Self::read_err(e, old(self), self) 
+                    }),
+                }
+            }),
+    ;
 }
 
 /// The `BufReadSpec` trait specifies `std::io::BufRead` by describing the behavior of 
@@ -402,66 +495,178 @@ pub trait BufReadSpec: ReadSpec {
     open spec fn consume_extra_ensures(
         pre_self: &Self, post_self: &Self, amt: usize
     ) -> bool { true }
+
+    proof fn buffer_is_prefix_of_bytes(inst: &Self)
+        requires    
+            inst.read_inv(),
+        ensures 
+            inst.buffer().is_prefix_of(inst.bytes()),
+    ;
+
 }
 
+/// The `Write` trait is for objects which are byte-oriented sinks.
+pub trait Write: WriteSpec + Sized {
+
+    // Required methods
+
+    /// Writes a buffer into this writer, returning how many bytes were written.
+    fn write(&mut self, buf: &[u8]) -> (res: Result<usize>)
+        requires
+            old(self).write_inv(),
+        ensures
+            self.write_inv(),
+            ({
+                match res {
+                    Ok(nwritten) => {
+                        &&& nwritten <= buf@.len()
+                        &&& self.bytes() =~= old(self).bytes() + buf@.take(nwritten as int)
+                        // ^ basic write semantics
+                        &&& Self::write_ok(old(self), self)
+                        &&& buf@.len() > 0 && nwritten == 0 ==> self.write_eof()
+                    },
+                    Err(e) => {
+                        &&& self.bytes() =~= old(self).bytes() 
+                        &&& e.kind() == ErrorKind::Interrupted ==> Self::write_ok(old(self), self)
+                        // ^ basic error semantics
+                        &&& Self::write_err(e, old(self), self)
+                    }
+                }
+            }),
+    ;
+
+    /// Flushes this output stream, ensuring that all intermediately buffered contents reach their destination.
+    ///
+    /// It is considered an error if not all bytes could be written due to I/O errors or EOF being reached.
+    fn flush(&mut self) -> (res: Result<()>)
+        requires
+            old(self).write_inv(),
+        ensures
+            self.write_inv(),
+            self.bytes() =~= old(self).bytes(),
+            ({
+                match res {
+                    Ok(_) => {
+                        &&& self.buffer().len() == 0
+                        &&& Self::write_ok(old(self), self)
+                    },
+                    Err(e) => {
+                        &&& self.buffer().len() <= old(self).buffer().len()
+                        &&& Self::write_err(e, old(self), self)
+                        &&& e.kind() != ErrorKind::Interrupted
+                        &&& e.kind() == ErrorKind::WriteZero
+                            ==> self.write_eof()
+                    }
+                }
+            }),
+    ;
+
+    // Provided methods
+
+    /// Attempts to write an entire buffer into this writer.
+    ///
+    /// If the buffer contains no data, this will never call write.
+    fn write_all(&mut self, buf: &[u8]) -> (res: Result<()>)
+        requires
+            old(self).write_inv(),
+        ensures
+            self.write_inv(),
+            ({
+                match res {
+                    Ok(_) => {
+                        let nwritten = buf@.len();
+                        &&& self.bytes() =~= old(self).bytes() + buf@
+                        &&& Self::write_ok(old(self), self)
+                        &&& buf@.len() > 0 && nwritten == 0 ==> self.write_eof()
+                        &&& buf@.len() == 0 ==> *self == *old(self)
+                    },
+                    Err(e) => {
+                        let nwritten = self.bytes().len() - old(self).bytes().len();
+                        &&& 0 <= nwritten < buf@.len()
+                        &&& self.bytes() =~= old(self).bytes() + buf@.take(nwritten)
+                        //  ^ bytes already written are in the sink
+                        &&& e.kind() != ErrorKind::Interrupted // interrupts are retried
+                        &&& Self::write_err(e, old(self), self)
+                        &&& e.kind() == ErrorKind::WriteZero
+                            ==> self.write_eof()
+                    }
+                }
+            }),
+    ;
+
+}
+
+/// The `WriteSpec` trait specifies `std::io::Write` by describing the behavior of
+/// writing bytes to a (potentially buffered) sink.
+///
+/// This trait should be implemented by types that also implement `std::io::Write`. 
+/// Implementors should customize the following functions for instance-specific semantics:
+/// 
+/// * `bytes()`: the bytes currently in the sink.
+///
+/// * `buffer()`: the bytes in the buffer (also considered "in the sink").
+/// 
+/// * `write_inv()`: invariants of this instance; 
+/// 
+/// * `write_ok()`: extra post-conditions for a successful write;
+/// 
+/// * `write_err()`: post-conditions for an erroneous write; can be `false` if `write()` cannot fail;
+///
+/// * `write_eof()`: post-conditions after an EOF write; 
+/// 
+/// ### `flush()` and Buffering
+/// `Write` is more like `BufRead` (compared to `Read`) in the sense that it assumes buffering 
+/// capabilities of a sink. If a sink is buffered, then asserting that `Write::bytes()` contains 
+/// some sequence of bytes (i.e., the sequence is "in the sink") does not prove that the sequence 
+/// is truly "written" - you must also prove that the sequence is not in the buffer, which is 
+/// only possible by calling the `flush()` method on buffered sinks. Meanwhile, unbuffered sinks 
+/// should be specified in a way where `Write::buffer()` is always empty.
+pub trait WriteSpec {
+    
+    spec fn bytes(&self) -> Seq<u8>;
+    spec fn buffer(&self) -> Seq<u8>;
+    open spec fn write_inv(&self) -> bool { true }
+    spec fn write_ok(pre_self: &Self, post_self: &Self) -> bool;
+    spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool;
+    spec fn write_eof(&self) -> bool;
+
+    open spec fn write_ok_extra_ensures(pre_self: &Self, post_self: &Self, buf: Seq<u8>, res: Result<usize>) -> bool 
+        { true }
+
+    open spec fn flush_extra_ensures(pre_self: &Self, post_self: &Self, res: Result<()>) -> bool 
+        { true }
+
+    proof fn buffer_is_suffix_of_bytes(inst: &Self)
+        requires
+            inst.write_inv(),
+        ensures
+            inst.buffer().is_suffix_of(inst.bytes()),
+    ;
+
+    proof fn write_ok_is_reflexive(inst: &Self)
+        ensures
+            Self::write_ok(inst, inst),
+    ;
+
+    proof fn write_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self)
+        requires
+            Self::write_ok(pre_self, mid_self),
+            Self::write_ok(mid_self, post_self),
+        ensures 
+            Self::write_ok(pre_self, post_self),
+    ;
+
+    proof fn write_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error)
+        requires
+            Self::write_ok(pre_self, mid_self),
+            Self::write_err(error, mid_self, post_self),
+        ensures
+            Self::write_err(error, pre_self, post_self),
+    ;
+
+}
 
 // TODO: Seek & Cursor?
-// TODO: StdinLock
-
-
-// /// The `Write` trait allows for writing bytes to a sink.
-// /// 
-// /// The design of this trait is generally similar to `std::io::Write` (https://doc.rust-lang.org/std/io/trait.Write.html).
-// /// In fact, `Write` is intended to be implementable for any type that implements `std::io::Write`.
-// /// Its `ensure` clauses include the basic writing semantics in `spec` mode; implementors then customize 
-// /// the following functions for instance-specific semantics:
-// /// 
-// /// * `bytes()`: the bytes currently in the sink.
-// ///
-// /// * `buffer()`: the bytes in the buffer (not yet in the sink).
-// /// 
-// /// * `write_inv()`: invariants of this instance; by default it is only upheld when `write()` returns `Ok`, 
-// ///   in case that an erroneous write corrupts future writes;
-// /// 
-// /// * `write_ok()`: extra post-conditions for a successful write;
-// /// 
-// /// * `write_err()`: post-conditions for an erroneous write; can be `false` if `write()` cannot fail;
-// pub trait Write {
-//     // Required methods
-//     spec fn bytes(&self) -> Seq<u8>;
-//     // fn flush(&mut self) -> Result<()>;
-//     fn write(&mut self, buf: &[u8]) -> (res: Result<usize>)
-//         ensures
-//             ({
-//                 match res {
-//                     Ok(nwritten) => 
-//                         nwritten <= buf.len() 
-//                         && Self::write_ok(nwritten, old(self), self, buf@.take(nwritten as int)),
-//                     Err(error) => Self::write_err(error, old(self), self, buf@),
-//                 }
-//             }),
-//     ;
-//     spec fn write_ok(nwritten: usize, pre_self: &Self, post_self: &Self, buf: Seq<u8>) -> bool;
-//     spec fn write_err(error: Error, pre_self: &Self, post_self: &Self, buf: Seq<u8>) -> bool;
-
-//     // Provided methods
-//     fn write_all(&mut self, buf: &[u8]) -> (res: Result<usize>)
-//         ensures
-//             ({
-//                 match res {
-//                     Ok(nwritten) => 
-//                         nwritten == buf.len() 
-//                         && Self::write_ok(nwritten, old(self), self, buf@),
-//                     Err(error) => Self::write_err(error, old(self), self, buf@),
-//                 }
-//             }),
-//     {
-//         assume(false);
-//         unreached()
-//     }
-//     // fn by_ref(&mut self) -> &mut Self
-//     //    where Self: Sized { ... }
-// }
 
 /// Enables `std::io::Empty`.
 #[verifier::external_body]
@@ -557,6 +762,213 @@ pub assume_specification<R: ?Sized>[ BufReader::capacity ](r: &BufReader<R>) -> 
     ensures
         ret == spec_slice_len(r.buf()),
 ;
+/// XXX: this is a workaround for an issue of `assume_specification` when the trait bound is `Sized + ?Sized`.
+pub trait BufReaderIntoInnerFns<R: Read + Sized> {
+    fn into_inner(self) -> R;
+}
+impl<R: Read + Sized> BufReaderIntoInnerFns<R> for BufReader<R> {
+    #[verifier::external_body]
+    fn into_inner(self) -> (ret: R)
+        ensures
+            self.inv() ==> ret == *self.inner(),
+    {
+        self.into_inner()
+    }
+}
+
+/// Enables `std::io::BufWriter`.
+///
+/// ### `Drop` and Flushing
+/// In native Rust, the buffer of a `BufWriter` is flushed whenever the writer itself goes out of scope, 
+/// using a custom `Drop::drop` implementation, which Verus does not yet support.
+/// While this does potentially creates a discrepancy between specification and actual program states, 
+/// it will only matter when those inner sink states are part of some `spec`. And when they are, `Write`'s
+/// specification will in fact not derive anything specific about the inner sink (e.g., how much bytes are 
+/// truly written) without inspecting or flushing the buffer in `exec` code; thus there is no real soundness issue here.
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(W)]
+pub struct ExBufWriter<W: ?Sized + std::io::Write>(BufWriter<W>);
+pub trait BufWriterSpec<W: ?Sized> {
+    /// Invariant of `BufWriter`.
+    open spec fn inv(&self) -> bool {
+        &&& 0 <= self.pos() <= spec_slice_len(self.buf())
+        &&& spec_slice_len(self.buf()) > 0
+    }
+
+    /// In-use region of the internal buffer.
+    #[verifier::inline]
+    open spec fn valid_buf(&self) -> Seq<u8> {
+        self.buf()@.take(self.pos())
+    }
+
+    /// The full internal buffer.
+    spec fn buf(&self) -> &[u8];
+
+    /// End offset of the in-use buffer range.
+    spec fn pos(&self) -> int;
+
+    /// Underlying writer instance.
+    spec fn inner(&self) -> &W;
+}
+impl<W: ?Sized + std::io::Write> BufWriterSpec<W> for BufWriter<W> {
+    uninterp spec fn buf(&self) -> &[u8];
+    uninterp spec fn pos(&self) -> int;
+    uninterp spec fn inner(&self) -> &W;
+}
+pub assume_specification<W: std::io::Write>[ BufWriter::new ](inner: W) -> (ret: BufWriter<W>)
+    ensures
+        ret.inv(),
+        ret.pos() == 0,
+        *ret.inner() == inner,
+;
+pub assume_specification<W: std::io::Write>[ BufWriter::with_capacity ](cap: usize, inner: W) -> (ret: BufWriter<W>)
+    requires
+        cap > 0,
+    ensures
+        ret.inv(),
+        spec_slice_len(ret.buf()) == cap,
+        ret.pos() == 0,
+        *ret.inner() == inner,
+;
+pub assume_specification<W: ?Sized + std::io::Write>[ BufWriter::get_ref ](w: &BufWriter<W>) -> (ret: &W)
+    requires
+        w.inv(),
+    ensures
+        ret == w.inner(),
+;
+pub assume_specification<W: ?Sized + std::io::Write>[ BufWriter::buffer ](w: &BufWriter<W>) -> (ret: &[u8])
+    requires
+        w.inv(),
+    ensures
+        ret@ =~= w.valid_buf(),
+;
+pub assume_specification<W: ?Sized + std::io::Write>[ BufWriter::capacity ](w: &BufWriter<W>) -> (ret: usize)
+    requires
+        w.inv(),
+    ensures
+        ret == spec_slice_len(w.buf()),
+;
+pub trait BufWriterIntoInnerFns<W: Write + std::io::Write> {
+    fn into_inner(self) -> std::result::Result<W, IntoInnerError<BufWriter<W>>>;
+}
+impl<W: Write + std::io::Write> BufWriterIntoInnerFns<W> for BufWriter<W> {
+    #[verifier::external_body]
+    fn into_inner(self) -> (ret: std::result::Result<W, IntoInnerError<BufWriter<W>>>)
+        ensures
+            self.inv() ==> {
+                match ret {
+                    // `flush` on destruction
+                    Ok(ret) => {
+                        &&& ret.write_inv()
+                        &&& ret.bytes() =~= self.bytes()
+                        &&& W::write_ok(self.inner(), &ret)
+                    },
+                    Err(e) => {
+                        &&& e.into_inner().write_inv()
+                        &&& e.into_inner().bytes() =~= self.bytes()
+                        &&& WriteSpec::buffer(&e.into_inner()).len() <= WriteSpec::buffer(&self).len()
+                        &&& W::write_err(e.into_error(), self.inner(), e.into_inner().inner())
+                        &&& e.into_error().kind() != ErrorKind::Interrupted
+                        &&& e.into_error().kind() == ErrorKind::WriteZero
+                            ==> e.into_inner().write_eof()
+                    },
+                }
+            },
+    {
+        self.into_inner()
+    }
+}
+
+
+/// Enables `std::io::LineWriter`.
+///
+/// ### `Drop` and Flushing
+/// See the comments on `BufWriter` for the issue on `LineWriter`'s drop specification.
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(W)]
+pub struct ExLineWriter<W: ?Sized + std::io::Write>(LineWriter<W>);
+pub trait LineWriterSpec<W: ?Sized> {
+    /// Invariant of `LineWriter`.
+    open spec fn inv(&self) -> bool {
+        &&& 0 <= self.pos() <= spec_slice_len(self.buf())
+        &&& spec_slice_len(self.buf()) > 0
+        &&& !self.valid_buf().contains(0xA)
+    }
+
+    /// In-use region of the internal buffer.
+    #[verifier::inline]
+    open spec fn valid_buf(&self) -> Seq<u8> {
+        self.buf()@.take(self.pos())
+    }
+
+    /// The full internal buffer.
+    spec fn buf(&self) -> &[u8];
+
+    /// End offset of the in-use buffer range.
+    spec fn pos(&self) -> int;
+
+    /// Underlying writer instance.
+    spec fn inner(&self) -> &W;
+}
+impl<W: ?Sized + std::io::Write> LineWriterSpec<W> for LineWriter<W> {
+    uninterp spec fn buf(&self) -> &[u8];
+    uninterp spec fn pos(&self) -> int;
+    uninterp spec fn inner(&self) -> &W;
+}
+pub assume_specification<W: std::io::Write>[ LineWriter::new ](inner: W) -> (ret: LineWriter<W>)
+    ensures
+        ret.inv(),
+        ret.pos() == 0,
+        *ret.inner() == inner,
+;
+pub assume_specification<W: std::io::Write>[ LineWriter::with_capacity ](cap: usize, inner: W) -> (ret: LineWriter<W>)
+    requires
+        cap > 0,
+    ensures
+        ret.inv(),
+        spec_slice_len(ret.buf()) == cap,
+        ret.pos() == 0,
+        *ret.inner() == inner,
+;
+pub assume_specification<W: ?Sized + std::io::Write>[ LineWriter::get_ref ](w: &LineWriter<W>) -> (ret: &W)
+    requires
+        w.inv(),
+    ensures
+        ret == w.inner(),
+;
+pub trait LineWriterIntoInnerFns<W: Write + std::io::Write> {
+    fn into_inner(self) -> std::result::Result<W, IntoInnerError<LineWriter<W>>>;
+}
+impl<W: Write + std::io::Write> LineWriterIntoInnerFns<W> for LineWriter<W> {
+    #[verifier::external_body]
+    fn into_inner(self) -> (ret: std::result::Result<W, IntoInnerError<LineWriter<W>>>)
+        ensures
+            self.inv() ==> {
+                match ret {
+                    // `flush` on destruction
+                    Ok(ret) => {
+                        &&& ret.write_inv()
+                        &&& ret.bytes() =~= self.bytes()
+                        &&& W::write_ok(self.inner(), &ret)
+                    },
+                    Err(e) => {
+                        &&& e.into_inner().write_inv()
+                        &&& e.into_inner().bytes() =~= self.bytes()
+                        &&& WriteSpec::buffer(&e.into_inner()).len() <= WriteSpec::buffer(&self).len()
+                        &&& W::write_err(e.into_error(), self.inner(), e.into_inner().inner())
+                        &&& e.into_error().kind() != ErrorKind::Interrupted
+                        &&& e.into_error().kind() == ErrorKind::WriteZero
+                            ==> e.into_inner().write_eof()
+                    },
+                }
+            },
+    {
+        self.into_inner()
+    }
+}
+
 
 mod tests {
     use super::*;

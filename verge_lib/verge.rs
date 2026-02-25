@@ -87,7 +87,6 @@ pub mod io;
 pub mod mem;
 pub mod nt;
 // pub mod open;
-pub mod range;
 pub mod set;
 pub mod str;
 

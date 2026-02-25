@@ -7,6 +7,8 @@ use vstd::math::min;
 
 verus! {
 
+// Helper macros
+
 macro_rules! impl_read_for {
     ($ty:ty) => {
         impl_read_for!(@internal $ty []);
@@ -30,6 +32,11 @@ macro_rules! impl_read_for {
             #[verifier::external_body]
             fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
                 <Self as std::io::Read>::read_to_end(self, buf)
+            }
+            #[inline]
+            #[verifier::external_body]
+            fn read_to_string(&mut self, buf: &mut String) -> Result<usize> {
+                <Self as std::io::Read>::read_to_string(self, buf)
             }
             #[inline]
             #[verifier::external_body]
@@ -74,9 +81,51 @@ macro_rules! impl_buf_read_for {
             fn skip_until(&mut self, byte: u8) -> Result<usize> {
                 <Self as std::io::BufRead>::skip_until(self, byte)
             }
+            #[inline]
+            #[verifier::external_body]
+            fn read_line(&mut self, buf: &mut String) -> Result<usize> {
+                <Self as std::io::BufRead>::read_line(self, buf)
+            }
         });
     };
 }
+
+macro_rules! impl_write_for {
+    ($ty:ty) => {
+        impl_write_for!(@internal $ty []);
+    };
+
+    ($ty:ty where $($gen:tt)+) => {
+        impl_write_for!(@internal $ty [$($gen)+]);
+    };
+
+    // Common implementation
+    (@internal $ty:ty [$($gen:tt)*]) => {
+        impl_maybe_generic!([$($gen)*] Write for $ty {
+            #[inline]
+            #[verifier::external_body]
+            fn write(&mut self, buf: &[u8]) -> (res: Result<usize>)
+                ensures Self::write_ok_extra_ensures(old(self), self, buf@, res),
+            {
+                <Self as std::io::Write>::write(self, buf)
+            }
+            #[inline]
+            #[verifier::external_body]
+            fn flush(&mut self) -> (res: Result<()>)
+                ensures Self::flush_extra_ensures(old(self), self, res),
+            {
+                <Self as std::io::Write>::flush(self)
+            }
+            #[inline]
+            #[verifier::external_body]
+            fn write_all(&mut self, buf: &[u8]) -> Result<()> {
+                <Self as std::io::Write>::write_all(self, buf)
+            }
+        });
+    };
+}
+
+// `Read` implementations
 
 impl ReadSpec for &[u8] {
     /// This works by consuming the length of the slice each time it is read. 
@@ -132,7 +181,7 @@ impl ReadSpec for VecDeque<u8> {
         { false } // should not fail
 
     open spec fn read_eof(&self) -> bool 
-        { self.bytes().len() == 0 }
+        { ReadSpec::bytes(self).len() == 0 }
 
     proof fn read_ok_is_reflexive(inst: &Self) {}
 
@@ -156,7 +205,7 @@ impl ReadSpec for Empty {
         { false } // should not fail
 
     open spec fn read_eof(&self) -> bool 
-        { self.bytes().len() == 0 } 
+        { ReadSpec::bytes(self).len() == 0 } 
 
     proof fn read_ok_is_reflexive(inst: &Self) {}
 
@@ -195,7 +244,7 @@ impl ReadSpec for Repeat {
 }
 impl_read_for!(Repeat);
 
-impl ReadSpec for Stdin {
+impl ReadSpec for Stdin<'_> {
 
     open spec fn bytes(&self) -> Seq<u8> {
         Stdin::stream().skip(self.nbyte() as int)
@@ -208,7 +257,7 @@ impl ReadSpec for Stdin {
         { true } 
     
     open spec fn read_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
-        { true } // TODO: stdin read errors
+        { true } // TODO(xyx): stdin read errors
 
     open spec fn read_eof(&self) -> bool 
         { true } // EOF does not imply input stream is exhausted forever 
@@ -220,7 +269,7 @@ impl ReadSpec for Stdin {
     proof fn read_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {}
 
 }
-impl_read_for!(Stdin);
+impl_read_for!(Stdin<'_>);
 
 impl<R: Read + ?Sized> ReadSpec for Box<R> {
 
@@ -238,6 +287,19 @@ impl<R: Read + ?Sized> ReadSpec for Box<R> {
 
     open spec fn read_eof(&self) -> bool 
         { R::read_eof(self) }
+
+    #[verifier::inline]
+    open spec fn read_ok_extra_ensures(
+        pre_self: &Self, post_self: &Self, 
+        pre_buf: Seq<u8>, post_buf: Seq<u8>, 
+        range: Option<Range<usize>>, res: Result<usize>,
+    ) -> bool { 
+        R::read_ok_extra_ensures(
+            &*pre_self, &*post_self,
+            pre_buf, post_buf,
+            range, res,
+        ) 
+    }
 
     proof fn read_ok_is_reflexive(inst: &Self) {
         R::read_ok_is_reflexive(inst);
@@ -264,11 +326,15 @@ impl<R: Read> ReadSpec for BufReader<R> {
     open spec fn read_inv(&self) -> bool 
         { self.inv() && self.inner().read_inv() }
     
-    open spec fn read_ok(pre_self: &Self, post_self: &Self) -> bool 
-        { R::read_ok(pre_self.inner(), post_self.inner()) } 
+    open spec fn read_ok(pre_self: &Self, post_self: &Self) -> bool { 
+        &&& post_self.inner().bytes().is_suffix_of(pre_self.inner().bytes())
+        &&& R::read_ok(pre_self.inner(), post_self.inner()) 
+    } 
     
-    open spec fn read_err(error: Error, pre_self: &Self, post_self: &Self) -> bool 
-        { R::read_err(error, pre_self.inner(), post_self.inner()) }
+    open spec fn read_err(error: Error, pre_self: &Self, post_self: &Self) -> bool { 
+        &&& post_self.inner().bytes().is_suffix_of(pre_self.inner().bytes())
+        &&& R::read_err(error, pre_self.inner(), post_self.inner()) 
+    }
 
     open spec fn read_eof(&self) -> bool 
         { self.valid_buf().len() == 0 && R::read_eof(self.inner()) }
@@ -288,23 +354,37 @@ impl<R: Read> ReadSpec for BufReader<R> {
 }
 impl_read_for!(BufReader<R> where R: Read + std::io::Read);
 
+
+// `BufRead` implementations
+
 impl BufReadSpec for &[u8] {
     /// This works by using the slice itself as the buffer.
 
     open spec fn buffer(&self) -> Seq<u8> {
         self@
     }
+
+    proof fn buffer_is_prefix_of_bytes(inst: &Self) {}
 }
 impl_buf_read_for!(&[u8]);
-
-// TODO: VecDeque: needs spec for VecDeque::as_slices
 
 impl BufReadSpec for Empty {
     open spec fn buffer(&self) -> Seq<u8> {
         Seq::<u8>::empty()
     }
+
+    proof fn buffer_is_prefix_of_bytes(inst: &Self) {}
 }
 impl_buf_read_for!(Empty);
+
+impl BufReadSpec for Stdin<'_> {
+    open spec fn buffer(&self) -> Seq<u8> {
+        self.buf()
+    }
+
+    proof fn buffer_is_prefix_of_bytes(inst: &Self) {}
+}
+impl_buf_read_for!(Stdin<'_>);
 
 impl<B: BufRead + ?Sized> BufReadSpec for Box<B> {
 
@@ -315,6 +395,10 @@ impl<B: BufRead + ?Sized> BufReadSpec for Box<B> {
         pre_self: &Self, post_self: &Self, amt: usize
     ) -> bool 
         { B::consume_extra_ensures(&*pre_self, &*post_self, amt) }
+
+    proof fn buffer_is_prefix_of_bytes(inst: &Self) {
+        B::buffer_is_prefix_of_bytes(&*inst)
+    }
 }
 impl_buf_read_for!(Box<B> where B: BufRead + ?Sized + std::io::BufRead);
 
@@ -330,8 +414,313 @@ impl<R: Read> BufReadSpec for BufReader<R> {
     { 
         pre_self.inner() == post_self.inner()
     }
+
+    proof fn buffer_is_prefix_of_bytes(inst: &Self) {}
 }
 impl_buf_read_for!(BufReader<R> where R: Read + std::io::Read);
+
+
+// `Write` implementations
+
+impl WriteSpec for Vec<u8> {
+    /// This works by appending bytes to the end of the vector.
+
+    #[verifier::inline]
+    open spec fn bytes(&self) -> Seq<u8> 
+        { self@ }
+
+    open spec fn buffer(&self) -> Seq<u8> 
+        { Seq::<u8>::empty() }
+
+    open spec fn write_ok(pre_self: &Self, post_self: &Self) -> bool
+        { true } // no extra post-conditions
+    
+    open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
+        { false } // should not fail
+    
+    open spec fn write_eof(&self) -> bool 
+        { false } // never EOF
+    
+    #[verifier::inline]
+    open spec fn write_ok_extra_ensures(pre_self: &Self, post_self: &Self, buf: Seq<u8>, res: Result<usize>) -> bool { 
+        // no short writes
+        spec_unwrap(res) == buf.len()
+    }
+
+    #[verifier::inline]
+    open spec fn flush_extra_ensures(pre_self: &Self, post_self: &Self, res: Result<()>) -> bool { 
+        // flush cannot fail 
+        res.is_ok() 
+    }
+
+    proof fn buffer_is_suffix_of_bytes(inst: &Self) {}
+
+    proof fn write_ok_is_reflexive(inst: &Self) {}
+
+    proof fn write_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {}
+
+    proof fn write_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {}
+
+}
+impl_write_for!(Vec<u8>);
+
+impl WriteSpec for VecDeque<u8> {
+    /// This works by appending bytes to the end of the `VecDeque`.
+
+    #[verifier::inline]
+    open spec fn bytes(&self) -> Seq<u8> 
+        { self@ }
+
+    open spec fn buffer(&self) -> Seq<u8> 
+        { Seq::<u8>::empty() }
+
+    open spec fn write_ok(pre_self: &Self, post_self: &Self) -> bool
+        { true } // no extra post-conditions
+    
+    open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
+        { false } // should not fail
+    
+    open spec fn write_eof(&self) -> bool 
+        { false } // never EOF
+    
+    #[verifier::inline]
+    open spec fn write_ok_extra_ensures(pre_self: &Self, post_self: &Self, buf: Seq<u8>, res: Result<usize>) -> bool { 
+        // no short writes
+        spec_unwrap(res) == buf.len()
+    }
+
+    #[verifier::inline]
+    open spec fn flush_extra_ensures(pre_self: &Self, post_self: &Self, res: Result<()>) -> bool { 
+        // flush cannot fail 
+        res.is_ok() 
+    }
+
+    proof fn buffer_is_suffix_of_bytes(inst: &Self) {}
+
+    proof fn write_ok_is_reflexive(inst: &Self) {}
+
+    proof fn write_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {}
+
+    proof fn write_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {}
+
+}
+impl_write_for!(VecDeque<u8>);
+
+impl WriteSpec for Stdout<'_> {
+
+    open spec fn bytes(&self) -> Seq<u8> {
+        Stdout::stream().take(self.nbyte() as int)
+    }
+
+    open spec fn buffer(&self) -> Seq<u8> {
+        self.buf()
+    }
+
+    open spec fn write_inv(&self) -> bool 
+        { self.inv() }
+
+    open spec fn write_ok(pre_self: &Self, post_self: &Self) -> bool 
+        { true } 
+    
+    open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
+        { true } // TODO(xyx): stdout read errors
+
+    open spec fn write_eof(&self) -> bool 
+        { true } // TODO(xyx): stdout eof conditions
+
+    proof fn buffer_is_suffix_of_bytes(inst: &Self) {}
+
+    proof fn write_ok_is_reflexive(inst: &Self) {}
+
+    proof fn write_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {}
+
+    proof fn write_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {}
+
+}
+impl_write_for!(Stdout<'_>);
+
+impl WriteSpec for Stderr<'_> {
+
+    open spec fn bytes(&self) -> Seq<u8> {
+        Stderr::stream().take(self.nbyte() as int)
+    }
+
+    open spec fn buffer(&self) -> Seq<u8> {
+        Seq::<u8>::empty() // `Stderr` is unbuffered
+    }
+
+    open spec fn write_inv(&self) -> bool 
+        { self.inv() }
+
+    open spec fn write_ok(pre_self: &Self, post_self: &Self) -> bool 
+        { true } 
+    
+    open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
+        { true } // TODO(xyx): stderr read errors
+
+    open spec fn write_eof(&self) -> bool 
+        { true } // TODO(xyx): stderr eof conditions
+
+    proof fn buffer_is_suffix_of_bytes(inst: &Self) {}
+
+    proof fn write_ok_is_reflexive(inst: &Self) {}
+
+    proof fn write_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {}
+
+    proof fn write_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {}
+
+}
+impl_write_for!(Stderr<'_>);
+
+impl<W: Write> WriteSpec for Box<W> {
+
+    open spec fn bytes(&self) -> Seq<u8> 
+        { W::bytes(&*self) }
+
+    open spec fn buffer(&self) -> Seq<u8> 
+        { W::buffer(&*self) }
+
+    open spec fn write_inv(&self) -> bool
+        { W::write_inv(&*self) }
+
+    open spec fn write_ok(pre_self: &Self, post_self: &Self) -> bool
+        { W::write_ok(pre_self, post_self) } 
+    
+    open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
+        { W::write_err(error, pre_self, post_self) } 
+    
+    open spec fn write_eof(&self) -> bool 
+        { W::write_eof(self) } 
+    
+    #[verifier::inline]
+    open spec fn write_ok_extra_ensures(pre_self: &Self, post_self: &Self, buf: Seq<u8>, res: Result<usize>) -> bool { 
+        W::write_ok_extra_ensures(&*pre_self, &*post_self, buf, res)
+    }
+
+    #[verifier::inline]
+    open spec fn flush_extra_ensures(pre_self: &Self, post_self: &Self, res: Result<()>) -> bool { 
+        W::flush_extra_ensures(&*pre_self, &*post_self, res)
+    }
+
+    proof fn buffer_is_suffix_of_bytes(inst: &Self) {
+        W::buffer_is_suffix_of_bytes(&*inst)
+    }
+
+    proof fn write_ok_is_reflexive(inst: &Self) {
+        W::write_ok_is_reflexive(&*inst)
+    }
+
+    proof fn write_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {
+        W::write_ok_is_composable(&*pre_self, &*mid_self, &*post_self)
+    }
+
+    proof fn write_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {
+        W::write_ok_err_are_composable(&*pre_self, &*mid_self, &*post_self, error)
+    }
+
+}
+impl_write_for!(Box<W> where W: Write + std::io::Write);
+
+impl<W: Write + std::io::Write> WriteSpec for BufWriter<W> {
+    /// This works by first writing into the internal buffer, then (if full) flushing to 
+    /// the inner write instance by calling `write`.
+
+    open spec fn bytes(&self) -> Seq<u8> 
+        { self.inner().bytes() + self.valid_buf() }
+
+    open spec fn buffer(&self) -> Seq<u8> 
+        { self.valid_buf() }
+
+    open spec fn write_inv(&self) -> bool
+        { self.inv() && self.inner().write_inv() }
+
+    open spec fn write_ok(pre_self: &Self, post_self: &Self) -> bool { 
+        &&& pre_self.inner().bytes().is_prefix_of(post_self.inner().bytes())
+        &&& W::write_ok(pre_self.inner(), post_self.inner()) 
+    } 
+    
+    open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool { 
+        &&& pre_self.inner().bytes().is_prefix_of(post_self.inner().bytes())
+        &&& W::write_err(error, pre_self.inner(), post_self.inner()) 
+    } 
+    
+    open spec fn write_eof(&self) -> bool 
+        { W::write_eof(self.inner()) } 
+
+    #[verifier::inline]
+    open spec fn flush_extra_ensures(pre_self: &Self, post_self: &Self, res: Result<()>) -> bool { 
+        &&& WriteSpec::buffer(pre_self).len() == 0 ==> pre_self.inner() == post_self.inner() // no writes if no buffer to flush
+        &&& W::flush_extra_ensures(pre_self.inner(), post_self.inner(), res)
+    }
+
+    proof fn buffer_is_suffix_of_bytes(inst: &Self) {}
+
+    proof fn write_ok_is_reflexive(inst: &Self) {
+        W::write_ok_is_reflexive(inst.inner())
+    }
+
+    proof fn write_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {
+        W::write_ok_is_composable(pre_self.inner(), mid_self.inner(), post_self.inner())
+    }
+
+    proof fn write_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {
+        W::write_ok_err_are_composable(pre_self.inner(), mid_self.inner(), post_self.inner(), error)
+    }
+
+}
+impl_write_for!(BufWriter<W> where W: Write + std::io::Write);
+
+impl<W: Write + std::io::Write> WriteSpec for LineWriter<W> {
+    /// This works by first writing into the internal buffer, then (if full or encounters a new line) 
+    /// flushing to the inner write instance by calling `write`.
+
+    open spec fn bytes(&self) -> Seq<u8> 
+        { self.inner().bytes() + self.valid_buf() }
+
+    open spec fn buffer(&self) -> Seq<u8> 
+        { self.valid_buf() }
+
+    open spec fn write_inv(&self) -> bool
+        { self.inv() && self.inner().write_inv() }
+
+    open spec fn write_ok(pre_self: &Self, post_self: &Self) -> bool { 
+        &&& pre_self.inner().bytes().is_prefix_of(post_self.inner().bytes())
+        &&& W::write_ok(pre_self.inner(), post_self.inner()) 
+    } 
+    
+    open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool { 
+        &&& pre_self.inner().bytes().is_prefix_of(post_self.inner().bytes())
+        &&& W::write_err(error, pre_self.inner(), post_self.inner()) 
+    } 
+    
+    open spec fn write_eof(&self) -> bool 
+        { W::write_eof(self.inner()) } 
+
+    #[verifier::inline]
+    open spec fn flush_extra_ensures(pre_self: &Self, post_self: &Self, res: Result<()>) -> bool { 
+        &&& WriteSpec::buffer(pre_self).len() == 0 ==> pre_self.inner() == post_self.inner() // no writes if no buffer to flush
+        &&& W::flush_extra_ensures(pre_self.inner(), post_self.inner(), res)
+    }
+
+    proof fn buffer_is_suffix_of_bytes(inst: &Self) {}
+
+    proof fn write_ok_is_reflexive(inst: &Self) {
+        W::write_ok_is_reflexive(inst.inner())
+    }
+
+    proof fn write_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {
+        W::write_ok_is_composable(pre_self.inner(), mid_self.inner(), post_self.inner())
+    }
+
+    proof fn write_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {
+        W::write_ok_err_are_composable(pre_self.inner(), mid_self.inner(), post_self.inner(), error)
+    }
+
+}
+impl_write_for!(LineWriter<W> where W: Write + std::io::Write);
+
+
+// TODO: write for Stdout, Stderr
 
 mod tests {
     use super::*;
@@ -382,7 +771,7 @@ mod tests {
         vec
     }
 
-    fn read_stdin_basic(stdin: &mut Stdin, buf: &mut [u8]) -> (nread: usize)
+    fn read_stdin_basic(stdin: &mut Stdin<'_>, buf: &mut [u8]) -> (nread: usize)
         requires
             old(stdin).inv(),
         ensures 

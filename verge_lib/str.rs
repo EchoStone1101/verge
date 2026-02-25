@@ -14,7 +14,7 @@
 //! enable the conversion between the two views in `spec`, which involves the `is_utf8()` predicate. 
 //! There is also basic support for ASCII strings where the byte-view and `char`-view unify.
 //!
-//! `Deref` Methods
+//! ### `Deref` Methods
 //! In native Rust, `String` inherits all `&self` methods from `str` because it implements `Deref<Target=str>`.
 //! However, `Deref` coercion is not automatically done in Verus, so an explicit `as_str()` is needed 
 //! to call these methods (e.g., `s.as_str().is_char_boundary()`).
@@ -22,7 +22,7 @@
 //! Note that some methods exists natively for both types, such as `str::len()` and `String::len()`; 
 //! in this case they are covered by `assume_specification`.
 //!
-//! Mid-String Mutation
+//! ### Mid-String Mutation
 //! Because of the UTF-8 nature of Rust strings, mid-string mutation (e.g., updating a character in the middle of 
 //! a string) is already awkward. In Verge, such APIs are generally not exposed on purpose.
 //! This essentially forces strings to be grow-only containers, which is the typical use case anyway.
@@ -449,8 +449,6 @@ pub assume_specification [ str::to_ascii_uppercase ] (s: &str) -> (ret: String)
 ;
 
 /// Enable `str::trim_ascii_start`.
-/// TODO(rilin): this does not immediately reveal `ret.len()` even if we know exactly what `s` is.
-/// Add a proof function for it.
 pub assume_specification [ str::trim_ascii_start ] (s: &str) -> (ret: &str)
     ensures
         ret@.is_suffix_of(s@),
