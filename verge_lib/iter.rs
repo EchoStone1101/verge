@@ -21,38 +21,38 @@ pub trait IteratorView {
 macro_rules! impl_iterator_default {
     // no requires clause
     (
-        $type:path [$($gen:tt)+] where Item = $ity:ty
+        $type:path [$($gen:tt)*] where Item = $ity:ty
         [ $method:path ] ($($params:tt)*) -> |$seq:ident| $($exp:tt)+
     ) => {
         impl_iterator_default!(
-            @impl $type [$($gen)+] where Item = $ity
+            @impl $type [$($gen)*] where Item = $ity
             [ $method ] ($($params)*) () -> |$seq| $($exp)+
         );
     };
 
     // with requires clause
     (
-        $type:path [$($gen:tt)+] where Item = $ity:ty
+        $type:path [$($gen:tt)*] where Item = $ity:ty
         [ $method:path ] ($($params:tt)*) requires($($requires:tt)*) -> |$seq:ident| $($exp:tt)+
     ) => {
         impl_iterator_default!(
-            @impl $type [$($gen)+] where Item = $ity
+            @impl $type [$($gen)*] where Item = $ity
             [ $method ] ($($params)*) (requires $($requires)*) -> |$seq| $($exp)+
         );
     };
 
     // internal implementation
     (
-        @impl $type:path [$($gen:tt)+] where Item = $ity:ty
+        @impl $type:path [$($gen:tt)*] where Item = $ity:ty
         [ $method:path ] ($($params:tt)*) ($($requires:tt)*) -> |$seq:ident| $($exp:tt)+
     ) => {
         verus! {
-        impl<$($gen)+> IteratorView for $type<$($gen)+> {
+        impl<$($gen)*> IteratorView for $type<$($gen)*> {
             type Item = $ity;
 
             uninterp spec fn view(&self) -> (int, Seq<Self::Item>);
         }
-        pub assume_specification<$($gen)+> [ $method ] ($($params)*) -> (ret: $type<$($gen)+>)
+        pub assume_specification<$($gen)*> [ $method ] ($($params)*) -> (ret: $type<$($gen)*>)
             $($requires)*
             ensures
                 ({
@@ -62,8 +62,8 @@ macro_rules! impl_iterator_default {
                 }),
             no_unwind
         ;
-        pub assume_specification<$($gen)+> [ $type::<$($gen)+>::next ] 
-            (this: &mut $type<$($gen)+>) -> (r: Option<$ity>)
+        pub assume_specification<$($gen)*> [ $type::<$($gen)*>::next ] 
+            (this: &mut $type<$($gen)*>) -> (r: Option<$ity>)
             ensures
                 ({
                     let (old_index, old_seq) = old(this)@;
@@ -90,39 +90,39 @@ macro_rules! impl_iterator_default {
 macro_rules! impl_iterator_verge {
     // no requires clause
     (
-        $type:path [$($gen:tt)+] where Item = $ity:ty
+        $type:path [$($gen:tt)*] where Item = $ity:ty
         [ $method:ident via $implfn:path ] ($($arg:ident : $aty:ty),+) -> |$seq:ident| $($exp:tt)+
     ) => {
         impl_iterator_verge!(
-            @impl $type [$($gen)+] where Item = $ity
+            @impl $type [$($gen)*] where Item = $ity
             [ $method via $implfn ] ($($arg : $aty),+) () -> |$seq| $($exp)+
         );
     };
 
     // with requires clause
     (
-        $type:path [$($gen:tt)+] where Item = $ity:ty
+        $type:path [$($gen:tt)*] where Item = $ity:ty
         [ $method:ident via $implfn:path ] ($($arg:ident : $aty:ty),+) requires($($requires:tt)*) -> |$seq:ident| $($exp:tt)+
     ) => {
         impl_iterator_verge!(
-            @impl $type [$($gen)+] where Item = $ity
+            @impl $type [$($gen)*] where Item = $ity
             [ $method via $implfn ] ($($arg : $aty),+) (requires $($requires)*) -> |$seq| $($exp)+
         );
     };
 
     // internal implementation
     (
-        @impl $type:path [$($gen:tt)+] where Item = $ity:ty
+        @impl $type:path [$($gen:tt)*] where Item = $ity:ty
         [ $method:ident via $implfn:path ] ($($arg:ident : $aty:ty),+) ($($requires:tt)*) -> |$seq:ident| $($exp:tt)+
     ) => {
         verus! {
-        impl<$($gen)+> IteratorView for $type<$($gen)+> {
+        impl<$($gen)*> IteratorView for $type<$($gen)*> {
             type Item = $ity;
 
             uninterp spec fn view(&self) -> (int, Seq<Self::Item>);
         }
         #[verifier::external_body]
-        pub fn $method<$($gen)+>($($arg: $aty),+) -> (ret: $type<$($gen)+>) 
+        pub fn $method<$($gen)*>($($arg: $aty),+) -> (ret: $type<$($gen)*>) 
             $($requires)*
             ensures
                 ({
@@ -134,7 +134,7 @@ macro_rules! impl_iterator_verge {
         {
             $type($implfn($($arg),+))
         } 
-        impl<$($gen)+> core::iter::Iterator for $type<$($gen)+> {
+        impl<$($gen)*> core::iter::Iterator for $type<$($gen)*> {
             type Item = $ity;
             #[verifier::external_body]
             fn next(&mut self) -> (r: Option<Self::Item>)

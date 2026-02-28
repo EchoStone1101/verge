@@ -82,6 +82,8 @@ macro_rules! impl_maybe_generic {
 
 verus! {
 
+pub mod env;
+pub mod fs;
 pub mod iter;
 pub mod io;
 pub mod mem;
