@@ -29,6 +29,7 @@
 #![allow(unused_imports)]
 use vstd::prelude::*;
 use vstd::math::min;
+use vstd::assert_by_contradiction;
 
 pub use std::str::{
     Utf8Error,
@@ -525,6 +526,248 @@ mod tests {
         let ghost tlen = "尾"@.as_bytes().len();
         let ghost len = s@.as_bytes().len();
         assert(s@.as_bytes().subrange(hlen as int, (len - tlen) as int) == old(s)@.as_bytes());
+    }
+
+    fn test_trim_ascii() {
+        broadcast use axiom_str_view;
+
+        proof { 
+            reveal_strlit("  abc  ");
+            reveal_strlit("  abc");
+            reveal_strlit("abc  ");
+            reveal_strlit("abc");
+        }
+
+        let s = "  abc  ";
+        let x = "abc  ";
+        let trim_start = s.trim_ascii_start();
+        let trim_end = s.trim_ascii_end();
+        // assert(trim_start@ =~= x@);
+        let s1 = s.trim_ascii_start().trim_ascii_end();
+        let s2 = s.trim_ascii_end().trim_ascii_start();
+        let s3 = s.trim_ascii();
+        assert(s1@ =~= s3@);
+        assert(s1@.is_prefix_of(trim_start@));
+        // assert(s1@.len() == s2@.len());
+        // assert(s2@.is_prefix_of(trim_start@));
+        // assert(s1@ =~= s2@);
+        // assert(s2@ =~= s3@);
+    }
+
+    fn test_case_sensitive() {
+        broadcast use axiom_str_view;
+        proof { 
+            reveal_strlit("ABC");
+            reveal_strlit("AbC");
+            reveal_strlit("abc");
+        }
+
+        let upper = "ABC";
+        let lower = "abc";
+        let s = "AbC";
+        let mut s1 = s.to_ascii_uppercase();
+        let mut s2 = s.to_ascii_lowercase();
+        assert(s1@ == upper@);
+        assert(s2@ == lower@);
+
+        // Note that `make_ascii_uppercase` and `make_ascii_lowercase` need to be called on `&mut str`, which cannot be easily obtained from `&mut String`. 
+        // s1.make_ascii_lowercase();
+        // s2.make_ascii_uppercase();
+        // assert(s1@ == lower@);
+        // assert(s2@ == upper@);
+    }
+
+    fn test_from_utf8_checked() {
+        broadcast use axiom_str_view;
+        let good = vec![65u8, 66u8, 67u8];
+        let bad = vec![0xffu8];
+        assert(good@.is_utf8());
+
+        let ok = from_utf8_checked(good.as_slice());
+        let err = from_utf8_checked(bad.as_slice());
+
+        assert(ok.is_ok());
+        match err {
+            Ok(_) => assert(bad@.is_utf8()),
+            Err(_) => assert(!bad@.is_utf8()),
+        }
+    }
+
+    fn test_from_utf8_verified() {
+        broadcast use axiom_str_view;
+        let bytes = vec![97u8, 98u8, 99u8];
+        assert(bytes@.is_ascii());
+        assert(bytes@.is_utf8());
+        let s = from_utf8_verified(bytes.as_slice());
+        assert(s@ =~= bytes@.as_str());
+    }
+
+    fn test_str_slice_contains_and_not_found() {
+        broadcast use axiom_str_view;
+        proof {
+            reveal_strlit("abca");
+            reveal_strlit("bca");
+            reveal_strlit("zzz");
+            reveal_strlit("abc");
+        }
+
+        let s = "abca";
+        let contains_bca = StrSliceExecPatternFns::contains(s, "bca");
+        let contains_zzz = StrSliceExecPatternFns::contains(s, "zzz");
+        let find_zzz = StrSliceExecPatternFns::find(s, "zzz");
+        let rfind_zzz = StrSliceExecPatternFns::rfind(s, "zzz");
+
+        assert(exists|i: int|
+            0 <= i <= s@.len() - "bca"@.len()
+            && #[trigger] s@.subrange(i, i + "bca"@.len()) =~= "bca"@
+        ) by {
+            assert(s@.subrange(1, 1 + "bca"@.len() as int) =~= "bca"@);
+        }
+        assert(contains_bca);
+
+        assert(s@.len() == 4 && s@.as_bytes().len() == 4);
+        assert("zzz"@.len() == 3 && "zzz"@.as_bytes().len() == 3);
+        assert(
+            !(exists|i: int|
+                0 <= i <= s@.len() - "zzz"@.len()
+                && #[trigger] s@.subrange(i, i + "zzz"@.len()) =~= "zzz"@
+            )
+            &&
+            !(exists|i: int|
+                0 <= i <= s@.as_bytes().len() - "zzz"@.as_bytes().len()
+                && #[trigger] s@.as_bytes().subrange(i, i + "zzz"@.as_bytes().len()) =~= "zzz"@.as_bytes()
+            )
+        ) by {
+            assert_by_contradiction!(!(exists|i: int|
+                0 <= i <= s@.len() - "zzz"@.len()
+                && #[trigger] s@.subrange(i, i + "zzz"@.len()) =~= "zzz"@
+            ), {
+                let i = choose|i: int|
+                    0 <= i <= s@.len() - "zzz"@.len()
+                    && #[trigger] s@.subrange(i, i + "zzz"@.len()) =~= "zzz"@;
+                assert(0 <= i <= 1);
+                if i == 0 {
+                    assert(s@.subrange(0, 0 + "zzz"@.len() as int) =~= "abc"@);
+                    assert(!("abc"@ =~= "zzz"@)) by {
+                        assert("abc"@[0] == 'a');
+                        assert("zzz"@[0] == 'z');
+                    }
+                } else {
+                    assert(i == 1);
+                    assert(s@.subrange(1, 1 + "zzz"@.len() as int) =~= "bca"@);
+                    assert(!("bca"@ =~= "zzz"@)) by {
+                        assert("bca"@[0] == 'b');
+                        assert("zzz"@[0] == 'z');
+                    }
+                }
+            });
+            assert_by_contradiction!(!(exists|i: int|
+                0 <= i <= s@.as_bytes().len() - "zzz"@.as_bytes().len()
+                && #[trigger] s@.as_bytes().subrange(i, i + "zzz"@.as_bytes().len()) =~= "zzz"@.as_bytes()
+            ), {
+                let i = choose|i: int|
+                    0 <= i <= s@.as_bytes().len() - "zzz"@.as_bytes().len()
+                    && #[trigger] s@.as_bytes().subrange(i, i + "zzz"@.as_bytes().len()) =~= "zzz"@.as_bytes();
+                assert(0 <= i <= 1);
+                if i == 0 {
+                    assert(s@.as_bytes().subrange(0, 0 + "zzz"@.as_bytes().len() as int) =~= "abc"@.as_bytes());
+                    assert(!("abc"@.as_bytes() =~= "zzz"@.as_bytes())) by {
+                        assert("abc"@.as_bytes()[0] == 'a' as u8);
+                        assert("zzz"@.as_bytes()[0] == 'z' as u8);
+                    }
+                } else {
+                    assert(i == 1);
+                    assert(s@.as_bytes().subrange(1, 1 + "zzz"@.as_bytes().len() as int) =~= "bca"@.as_bytes());
+                    assert(!("bca"@.as_bytes() =~= "zzz"@.as_bytes())) by {
+                        assert("bca"@.as_bytes()[0] == 'b' as u8);
+                        assert("zzz"@.as_bytes()[0] == 'z' as u8);
+                    }
+                }
+            })
+        }
+
+        assert(!contains_zzz);
+        assert(rfind_zzz.is_none() && find_zzz.is_none());
+    }
+
+    fn test_str_slice_find_rfind() {
+        broadcast use axiom_str_view;
+        proof {
+            reveal_strlit("aba");
+            reveal_strlit("a");
+        }
+
+        let s = "aba";
+        let found = StrSliceExecPatternFns::find(s, "a");
+        let rfound = StrSliceExecPatternFns::rfind(s, "a");
+        assert(found == Some(0usize)) by {
+            match found {
+                Some(idx) => {
+                    let i = idx as int;
+                    assert(0 <= i <= s@.as_bytes().len() - "a"@.as_bytes().len());
+                    assert(s@.as_bytes().subrange(i, i + "a"@.as_bytes().len()) =~= "a"@.as_bytes());
+                    assert_by_contradiction!(i <= 0, {
+                        assert(s@.as_bytes().subrange(0, 0 + "a"@.as_bytes().len() as int) =~= "a"@.as_bytes());
+                    })
+                }
+                None => {}
+            }
+        }
+        assert(rfound == Some(2usize)) by {
+            match rfound {
+                Some(idx) => {
+                    let i = idx as int;
+                    assert(0 <= i <= s@.as_bytes().len() - "a"@.as_bytes().len());
+                    assert(s@.as_bytes().subrange(i, i + "a"@.as_bytes().len()) =~= "a"@.as_bytes());
+                    assert_by_contradiction!(!(i < 2), {
+                        assert(s@.as_bytes().subrange(2, 2 + "a"@.as_bytes().len() as int) =~= "a"@.as_bytes());
+                    })
+                }
+                None => {}
+            }
+        }
+    }
+
+    fn test_str_slice_starts_with() {
+        broadcast use axiom_str_view;
+        proof {
+            reveal_strlit("abcabc");
+            reveal_strlit("abc");
+            reveal_strlit("bca");
+        }
+
+        let s = "abcabc";
+        let starts_with_abc = StrSliceExecPatternFns::starts_with(s, "abc");
+        let starts_with_bca = StrSliceExecPatternFns::starts_with(s, "bca");
+
+        assert(starts_with_abc == "abc"@.is_prefix_of(s@));
+        assert(starts_with_bca == "bca"@.is_prefix_of(s@));
+        assert(starts_with_abc);
+        assert(!"bca"@.is_prefix_of(s@)) by {
+            assert("bca"@[0] == 'b');
+            assert(s@[0] == 'a');
+        }
+        assert(!starts_with_bca);
+    }
+
+    fn test_str_slice_ends_with() {
+        broadcast use axiom_str_view;
+        proof {
+            reveal_strlit("abcabc");
+            reveal_strlit("abc");
+            reveal_strlit("bca");
+        }
+
+        let s = "abcabc";
+        let ends_with_abc = StrSliceExecPatternFns::ends_with(s, "abc");
+        let ends_with_bca = StrSliceExecPatternFns::ends_with(s, "bca");
+
+        assert(ends_with_abc);
+        assert(!"bca"@.is_suffix_of(s@)) by {
+            assert("bca"@.last() == 'a');
+            assert(s@.last() == 'c');
+        }
+        assert(!ends_with_bca);
     }
 
     // TODO(rilin): test more functions

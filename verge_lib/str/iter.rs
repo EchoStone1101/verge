@@ -267,4 +267,100 @@ impl_iterator_verge!(
     }
 );
 
+mod tests {
+    use super::*;
+
+    fn test_char_indices() {
+        broadcast use crate::str::axiom_str_view;
+        proof {
+            reveal_strlit("ab");
+        }
+
+        let s = "ab";
+        let mut it = s.char_indices();
+
+        match it.next() {
+            Some((i, c)) => {
+                assert(i == 0usize);
+                assert(c == 'a');
+            }
+            None => { assert(false); }
+        }
+        match it.next() {
+            Some((i, c)) => {
+                assert(i == 1usize);
+                assert(c == 'b');
+            }
+            None => { assert(false); }
+        }
+        match it.next() {
+            Some(_) => { assert(false); }
+            None => { }
+        }
+    }
+
+    fn test_split_once() {
+        broadcast use crate::str::axiom_str_view;
+        proof {
+            reveal_strlit("a,b,c");
+            reveal_strlit(",");
+            reveal_strlit(".");
+            reveal_strlit("a");
+            reveal_strlit("b,c");
+        }
+
+        let result = str_split_once("a,b,c", ",");
+        assert(1 + ","@.len() as int == 2);
+        assert("a,b,c"@.subrange(1, 2) =~= ","@) by {
+            assert("a,b,c"@[1] == ',');
+            assert(","@[0] == ',');
+        }
+        assert(result.is_some());
+
+        match result {
+            Some((head, tail)) => {
+                assert("a,b,c"@ =~= head@ + ","@ + tail@);
+                assert(head@ =~= "a"@) by {
+                    assert_by_contradiction!(head@.len() <= 1, {
+                        assert(head@.subrange(1, 2) =~= "a,b,c"@.subrange(1, 2));
+                    });
+                    assert_by_contradiction!(head@.len() > 0, {
+                        assert((head@ + ","@)[0] == ',');
+                        assert("a,b,c"@[0] == 'a');
+                    });
+                    assert(head@.len() == 1);
+                    assert(((head@ + ","@) + tail@)[0] == (head@ + ","@)[0]);
+                    assert((head@ + ","@)[0] == head@[0]);
+                    assert(head@[0] == 'a');
+                }
+                assert(tail@ =~= "b,c"@) by {
+                    assert(((head@ + ","@) + tail@)[2] == tail@[0]);
+                    assert(((head@ + ","@) + tail@)[3] == tail@[1]);
+                    assert(((head@ + ","@) + tail@)[4] == tail@[2]);
+                }
+            }
+            None => { assert(false); }
+        }
+
+        let none = str_split_once("a,b,c", ".");
+        assert(none.is_none()) by {
+            if none.is_some() {
+                match none {
+                    Some((h, t)) => {
+                        assert("a,b,c"@ =~= h@ + "."@ + t@);
+                        assert("a,b,c"@.len() == 5int);
+                        assert("a,b,c"@[0] != '.');
+                        assert("a,b,c"@[1] != '.');
+                        assert("a,b,c"@[2] != '.');
+                        assert("a,b,c"@[3] != '.');
+                        assert("a,b,c"@[4] != '.');
+                    }
+                    None => {}
+                }
+            }
+        }
+    }
+
+}
+
 } // verus!
