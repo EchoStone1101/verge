@@ -51,8 +51,10 @@ pub use std::fs::{
 use std::sync::Once;
 
 mod path;
+mod metadata;
 
 pub use path::*;
+pub use metadata::*;
 
 verus! {
 
@@ -136,6 +138,11 @@ impl Fs {
     /// To enforce this, any attempts to rewind the byte stream (e.g., seeking back via `Seek`) will increment 
     /// the `File`'s epoch, and later access of the `File` yields `Fs::file()` using the new epoch.
     ///
+    /// ### Path Resolution
+    /// Currently, Verge's FS specification does not model any kind of links (hard or symbolic). 
+    /// All FS properties are defined *as if all links are followed*. For example, if `path` is a link
+    /// to `actual`, then `Fs::file(_, path)` refers to the content of `actual`, not the link entity itself.
+    ///
     /// ### Known Limitations 
     /// This specification currently does not support:
     /// - Read-write mode `File`s. Technically the specification can be written, but it would not be
@@ -145,6 +152,9 @@ impl Fs {
     /// necessarily bumps the file epoch, making the specification, again, basically useless. 
     /// In other words, ironically, appending to a file may not yield consequtive bytes (`Fs::file`) because 
     /// later appends can overwrite previous ones.
+    /// - Links (hard or symbolic). All specifications and their underlying system calls follow links, 
+    /// so there is no way to specify or even identify links.
+    /// - Metadata permissions are not modeled.
 
     /// The "no external" assumption. See the top-level comments of this module for details.
     pub uninterp spec fn noext() -> bool;
@@ -182,6 +192,8 @@ impl Fs {
     {
         choose|t: int| #![trigger dummy(t)] pre.epoch() <= t <= post.epoch()
     }
+
+    // FS properties
 
     /// This function encodes whether the file at `path` exists in the file system,
     /// exactly at the time specified by `epoch`.
@@ -439,6 +451,7 @@ impl FileSpec for File {
     uninterp spec fn maxofs(&self) -> int;
 
     open spec fn inv(&self) -> bool {
+        &&& self.path().is_valid()
         &&& self.otime() <= self.atime()
         &&& self.offset() <= self.maxofs()
         // The `isize::MAX` bound allows for calling methods like `Read::read_to_end()`;
@@ -479,10 +492,10 @@ impl Fs {
                     Ok(true) => Fs::file_exists(old(self).epoch(), path),
                     Ok(false) => !Fs::file_exists(old(self).epoch(), path),
                     Err(e) => {
-                        &&& e.kind() != ErrorKind::Interrupted
-                        &&& e.kind() != ErrorKind::AlreadyExists
-                        &&& e.kind() != ErrorKind::IsADirectory
-                        &&& e.kind() != ErrorKind::NotFound
+                        &&& matches!(e.kind(), 
+                            ErrorKind::PermissionDenied | ErrorKind::InvalidFilename | 
+                            ErrorKind::OutOfMemory | ErrorKind::NotADirectory | 
+                            ErrorKind::Other)
                         &&& e.kind() == ErrorKind::NotADirectory
                             ==> Fs::file_not_a_directory(old(self).epoch(), path)
                     },
@@ -495,8 +508,6 @@ impl Fs {
     /// Enables `File::open` (open a file in read-only mode).
     #[verifier::external_body]
     pub fn open(&mut self, path: &str) -> (ret: Result<File>)
-        requires
-            path@.as_path().normalize().len() > 0, // "" or "/" cannot be opened
         ensures
             old(self) <= self,
             old(self).ops() == self.ops(),
@@ -512,7 +523,12 @@ impl Fs {
                         &&& file.maxofs() == 0
                     },
                     Err(e) => {
-                        &&& e.kind() != ErrorKind::AlreadyExists
+                        &&& matches!(e.kind(), 
+                            ErrorKind::PermissionDenied | ErrorKind::FileTooLarge | 
+                            ErrorKind::Interrupted | ErrorKind::InvalidInput | 
+                            ErrorKind::IsADirectory | ErrorKind::InvalidFilename | 
+                            ErrorKind::NotFound | ErrorKind::OutOfMemory | 
+                            ErrorKind::NotADirectory | ErrorKind::Other)
                         &&& e.kind() == ErrorKind::NotFound ==> !Fs::file_exists(old(self).epoch(), path)
                         &&& e.kind() == ErrorKind::NotADirectory 
                             ==> Fs::file_not_a_directory(old(self).epoch(), path)
@@ -533,7 +549,6 @@ impl Fs {
     #[verifier::external_body]
     pub fn create(&mut self, path: &str) -> (ret: Result<File>)
         requires
-            path@.as_path().normalize().len() > 0, // "" or "/" cannot be created
             old(self).read_dir_count() == 0,
         ensures
             old(self) <= self,
@@ -554,7 +569,14 @@ impl Fs {
                     },
                     Err(e) => {
                         &&& self.ops() == old(self).ops()
-                        &&& e.kind() != ErrorKind::AlreadyExists
+                        &&& matches!(e.kind(), 
+                            ErrorKind::PermissionDenied | ErrorKind::QuotaExceeded | 
+                            ErrorKind::FileTooLarge | ErrorKind::Interrupted | 
+                            ErrorKind::InvalidInput | ErrorKind::IsADirectory | 
+                            ErrorKind::InvalidFilename | ErrorKind::NotFound | 
+                            ErrorKind::OutOfMemory | ErrorKind::StorageFull | 
+                            ErrorKind::NotADirectory | ErrorKind::ReadOnlyFilesystem |
+                            ErrorKind::ExecutableFileBusy | ErrorKind::Other)
                         // if the parent existed, the error would not be `NotFound`
                         &&& e.kind() == ErrorKind::NotFound ==> 
                             !Fs::file_exists(old(self).epoch(), path.parent())
@@ -574,7 +596,6 @@ impl Fs {
     #[verifier::external_body]
     pub fn create_new(&mut self, path: &str) -> (ret: Result<File>)
         requires
-            path@.as_path().normalize().len() > 0, // "" or "/" cannot be created
             old(self).read_dir_count() == 0,
         ensures
             old(self) <= self,
@@ -596,13 +617,20 @@ impl Fs {
                     },
                     Err(e) => {
                         &&& self.ops() == old(self).ops()
+                        &&& matches!(e.kind(), 
+                            ErrorKind::PermissionDenied | ErrorKind::ResourceBusy | 
+                            ErrorKind::QuotaExceeded | ErrorKind::FileTooLarge | 
+                            ErrorKind::Interrupted | ErrorKind::InvalidInput | 
+                            ErrorKind::AlreadyExists | ErrorKind::InvalidFilename | 
+                            ErrorKind::NotFound | ErrorKind::OutOfMemory | 
+                            ErrorKind::StorageFull | ErrorKind::NotADirectory | 
+                            ErrorKind::ReadOnlyFilesystem | ErrorKind::Other)
                         &&& e.kind() == ErrorKind::AlreadyExists ==> Fs::file_exists(old(self).epoch(), path) 
                         // if the parent existed, the error would not be `NotFound`
                         &&& e.kind() == ErrorKind::NotFound ==> 
                             !Fs::file_exists(old(self).epoch(), path.parent())
                         &&& e.kind() == ErrorKind::NotADirectory 
                             ==> Fs::file_not_a_directory(old(self).epoch(), path)
-                        &&& e.kind() != ErrorKind::IsADirectory
                     },
                 }
             }),
@@ -613,8 +641,6 @@ impl Fs {
     /// Enable `fs::read` (reads the entire contents of a file into a bytes vector).
     #[verifier::external_body]
     pub fn read(&mut self, path: &str) -> (ret: Result<Vec<u8>>)
-        requires
-            path@.as_path().normalize().len() > 0, // "" or "/" cannot be read
         ensures
             old(self) <= self,
             self.ops() == old(self).ops(),
@@ -627,8 +653,12 @@ impl Fs {
                         &&& Fs::file(old(self).epoch(), path) =~= bytes@
                     },
                     Err(e) => {
-                        &&& e.kind() != ErrorKind::AlreadyExists
-                        &&& e.kind() != ErrorKind::Interrupted
+                        &&& matches!(e.kind(), 
+                            ErrorKind::PermissionDenied | ErrorKind::FileTooLarge | 
+                            ErrorKind::Interrupted | ErrorKind::InvalidInput | 
+                            ErrorKind::IsADirectory | ErrorKind::InvalidFilename | 
+                            ErrorKind::NotFound | ErrorKind::OutOfMemory | 
+                            ErrorKind::NotADirectory | ErrorKind::Other)
                         &&& e.kind() == ErrorKind::NotFound ==> !Fs::file_exists(old(self).epoch(), path)
                         &&& e.kind() == ErrorKind::NotADirectory 
                             ==> Fs::file_not_a_directory(old(self).epoch(), path)
@@ -645,8 +675,6 @@ impl Fs {
     /// Enable `fs::read_to_string` (reads the entire contents of a file into a string).
     #[verifier::external_body]
     pub fn read_to_string(&mut self, path: &str) -> (ret: Result<String>)
-        requires
-            path@.as_path().normalize().len() > 0, // "" or "/" cannot be read
         ensures
             old(self) <= self,
             self.ops() == old(self).ops(),
@@ -659,8 +687,12 @@ impl Fs {
                         &&& Fs::file(old(self).epoch(), path) =~= string@.as_bytes()
                     },
                     Err(e) => {
-                        &&& e.kind() != ErrorKind::AlreadyExists
-                        &&& e.kind() != ErrorKind::Interrupted
+                        &&& matches!(e.kind(), 
+                            ErrorKind::PermissionDenied | ErrorKind::FileTooLarge | 
+                            ErrorKind::Interrupted | ErrorKind::InvalidInput | 
+                            ErrorKind::IsADirectory | ErrorKind::InvalidFilename | 
+                            ErrorKind::NotFound | ErrorKind::OutOfMemory | 
+                            ErrorKind::NotADirectory | ErrorKind::InvalidData | ErrorKind::Other)
                         &&& e.kind() == ErrorKind::NotFound ==> !Fs::file_exists(old(self).epoch(), path)
                         &&& e.kind() == ErrorKind::NotADirectory 
                             ==> Fs::file_not_a_directory(old(self).epoch(), path)
@@ -679,8 +711,6 @@ impl Fs {
     /// This function will create a file if it does not exist, and will entirely replace its contents if it does).
     #[verifier::external_body]
     pub fn write(&mut self, path: &str, contents: &[u8]) -> (ret: Result<()>)
-        requires
-            path@.as_path().normalize().len() > 0, // "" or "/" cannot be written
         ensures
             old(self) <= self,
             ({
@@ -694,8 +724,14 @@ impl Fs {
                     },
                     Err(e) => {
                         &&& self.ops() == old(self).ops()
-                        &&& e.kind() != ErrorKind::AlreadyExists
-                        &&& e.kind() != ErrorKind::Interrupted
+                        &&& matches!(e.kind(), 
+                            ErrorKind::PermissionDenied | ErrorKind::QuotaExceeded | 
+                            ErrorKind::FileTooLarge | ErrorKind::Interrupted | 
+                            ErrorKind::InvalidInput | ErrorKind::IsADirectory | 
+                            ErrorKind::InvalidFilename | ErrorKind::NotFound | 
+                            ErrorKind::OutOfMemory | ErrorKind::StorageFull | 
+                            ErrorKind::NotADirectory | ErrorKind::ReadOnlyFilesystem |
+                            ErrorKind::ExecutableFileBusy | ErrorKind::Other)
                         // if the parent existed, the error would not be `NotFound`
                         &&& e.kind() == ErrorKind::NotFound ==> !Fs::file_exists(old(self).epoch(), path.parent())
                         &&& e.kind() == ErrorKind::NotADirectory 
@@ -713,7 +749,6 @@ impl Fs {
     #[verifier::external_body]
     pub fn remove(&mut self, path: &str) -> (ret: Result<()>)
         requires
-            path@.as_path().normalize().len() > 0, // "" or "/" cannot be removed
             old(self).read_dir_count() == 0,
         ensures
             old(self) <= self,
@@ -728,8 +763,11 @@ impl Fs {
                     },
                     Err(e) => {
                         &&& self.ops() == old(self).ops()
-                        &&& e.kind() != ErrorKind::AlreadyExists
-                        &&& e.kind() != ErrorKind::Interrupted
+                        &&& matches!(e.kind(), 
+                            ErrorKind::PermissionDenied | ErrorKind::ResourceBusy | 
+                            ErrorKind::IsADirectory | ErrorKind::InvalidFilename | 
+                            ErrorKind::NotFound | ErrorKind::OutOfMemory | 
+                            ErrorKind::NotADirectory | ErrorKind::ReadOnlyFilesystem | ErrorKind::Other)
                         &&& e.kind() == ErrorKind::NotFound ==> !Fs::file_exists(old(self).epoch(), path)
                         &&& e.kind() == ErrorKind::NotADirectory 
                             ==> Fs::file_not_a_directory(old(self).epoch(), path)
@@ -746,7 +784,6 @@ impl Fs {
     #[verifier::external_body]
     pub fn create_dir(&mut self, path: &str) -> (ret: Result<()>)
         requires
-            path@.as_path().normalize().len() > 0, // "" or "/" cannot be created
             old(self).read_dir_count() == 0,
         ensures
             old(self) <= self,
@@ -763,13 +800,17 @@ impl Fs {
                     },
                     Err(e) => {
                         &&& self.ops() == old(self).ops()
+                        &&& matches!(e.kind(), 
+                            ErrorKind::PermissionDenied | ErrorKind::QuotaExceeded | 
+                            ErrorKind::AlreadyExists | ErrorKind::InvalidInput | 
+                            ErrorKind::InvalidFilename | ErrorKind::NotFound | 
+                            ErrorKind::OutOfMemory | ErrorKind::StorageFull | 
+                            ErrorKind::NotADirectory | ErrorKind::ReadOnlyFilesystem | ErrorKind::Other)
                         &&& e.kind() == ErrorKind::AlreadyExists ==> Fs::file_exists(old(self).epoch(), path)
-                        &&& e.kind() != ErrorKind::Interrupted
                         // if the parent existed, the error would not be `NotFound`
                         &&& e.kind() == ErrorKind::NotFound ==> !Fs::file_exists(old(self).epoch(), path.parent())
                         &&& e.kind() == ErrorKind::NotADirectory 
                             ==> Fs::file_not_a_directory(old(self).epoch(), path)
-                        &&& e.kind() != ErrorKind::IsADirectory
                     },
                 }
             }),
@@ -781,7 +822,6 @@ impl Fs {
     #[verifier::external_body]
     pub fn remove_dir(&mut self, path: &str) -> (ret: Result<()>)
         requires
-            path@.as_path().normalize().len() > 0, // "" or "/" cannot be removed
             old(self).read_dir_count() == 0,
         ensures
             old(self) <= self,
@@ -798,8 +838,12 @@ impl Fs {
                     },
                     Err(e) => {
                         &&& self.ops() == old(self).ops()
-                        &&& e.kind() != ErrorKind::AlreadyExists
-                        &&& e.kind() != ErrorKind::Interrupted
+                        &&& matches!(e.kind(), 
+                            ErrorKind::PermissionDenied | ErrorKind::ResourceBusy | 
+                            ErrorKind::InvalidInput | ErrorKind::InvalidFilename | 
+                            ErrorKind::NotFound | ErrorKind::OutOfMemory | 
+                            ErrorKind::NotADirectory | ErrorKind::DirectoryNotEmpty | 
+                            ErrorKind::ReadOnlyFilesystem | ErrorKind::Other)
                         &&& e.kind() == ErrorKind::NotFound ==> !Fs::file_exists(old(self).epoch(), path)
                         &&& e.kind() == ErrorKind::NotADirectory ==> {
                             // `path` itself is not a directory
@@ -830,8 +874,6 @@ impl Fs {
     /// a `ReadDir`-referenced directory, even if the path appears lexically different. 
     #[verifier::external_body]
     pub fn read_dir(&mut self, path: &str) -> (ret: Result<ReadDir>)
-        requires
-            path@.as_path().normalize().len() > 0 || path@.as_path().abs, // "" cannot be read
         ensures
             old(self) <= self,
             self.ops() == old(self).ops(),
@@ -861,8 +903,12 @@ impl Fs {
                     },
                     Err(e) => {
                         &&& self.read_dir_count() == old(self).read_dir_count()
-                        &&& e.kind() != ErrorKind::AlreadyExists
-                        &&& e.kind() != ErrorKind::Interrupted
+                        &&& matches!(e.kind(), 
+                            ErrorKind::PermissionDenied | ErrorKind::FileTooLarge | 
+                            ErrorKind::Interrupted | ErrorKind::InvalidInput | 
+                            ErrorKind::InvalidFilename | ErrorKind::NotFound | 
+                            ErrorKind::OutOfMemory | ErrorKind::NotADirectory | 
+                            ErrorKind::Other)
                         &&& e.kind() == ErrorKind::NotFound ==> !Fs::file_exists(old(self).epoch(), path)
                         &&& e.kind() == ErrorKind::NotADirectory ==> {
                             // `path` itself is not a directory
@@ -870,12 +916,39 @@ impl Fs {
                             // part of `path` is not a directory
                             ||| Fs::file_not_a_directory(old(self).epoch(), path)
                         }
-                        &&& e.kind() != ErrorKind::IsADirectory
                     },
                 }
             })
     {
         std::fs::read_dir(path)
+    }
+
+    /// Enables `fs::metadata` (queries the file system to get information about a file).
+    #[verifier::external_body]
+    pub fn metadata(&mut self, path: &str) -> (ret: Result<Metadata>)
+        ensures
+            old(self) <= self,
+            self.ops() == old(self).ops(),
+            ({
+                let path = path@.as_path().normalize();
+                match ret {
+                    Ok(m) => {
+                        &&& m.inv()
+                        &&& m.epoch() == old(self).epoch()
+                        &&& m.path() == path
+                    },
+                    Err(e) => {
+                        &&& matches!(e.kind(), 
+                            ErrorKind::PermissionDenied | ErrorKind::InvalidFilename | 
+                            ErrorKind::NotFound | ErrorKind::OutOfMemory | 
+                            ErrorKind::NotADirectory | ErrorKind::Other)
+                        &&& e.kind() == ErrorKind::NotFound ==> !Fs::file_exists(old(self).epoch(), path)
+                        &&& e.kind() == ErrorKind::NotADirectory ==> Fs::file_not_a_directory(old(self).epoch(), path)
+                    },
+                }
+            }),
+    {
+        std::fs::metadata(path)
     }
 
 }
@@ -952,10 +1025,6 @@ pub assume_specification [ DirEntry::path ] (dir: &DirEntry) -> (ret: PathBuf)
         ret@ == dir@,
 ;
 
-// TODO: metadata: file_type, is_*, len, permissions
-
-// TODO: env: cur_dir
-
-// TODO: ToString 
+// TODO(rilin): tests
 
 } // verus!

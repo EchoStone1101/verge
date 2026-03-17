@@ -44,6 +44,7 @@ pub mod string;
 pub use ascii::*;
 pub use iter::*;
 pub use string::*;
+// TODO(xyx): a `fmt` module that specifies `ToString` for common types (and a way to add custom implementation)
 
 /// This trait allows viewing a type as a string (sequence of `char`s).
 pub trait StrView {
