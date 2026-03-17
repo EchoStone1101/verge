@@ -1,6 +1,10 @@
 //! The Verge library for [Verus](https://github.com/verus-lang/verus).
 //! Contains extensions of the `vstd` standard library in various domains.
 //!
+//! # Unix-Only Support
+//! Because of the semantic difference in APIs across various targets, supporting multiple 
+//! targets burdens specification. Verge is currently a Unix-only crate.
+//!
 //! # `std` Specification
 //! A core part of Verge is exposing much more of the Rust standard library API 
 //! to Verus than supported in `vstd`. This process is deliberately kept minimal:
@@ -62,6 +66,9 @@
 #![allow(unused_attributes)]
 #![allow(rustdoc::invalid_rust_codeblocks)]
 
+#[cfg(not(unix))]
+compile_error!("Verge is a Unix-only library.");
+
 use vstd::prelude::*;
 
 #[macro_export]
@@ -91,6 +98,24 @@ pub mod nt;
 // pub mod open;
 pub mod set;
 pub mod str;
+
+/// Enable the `AsRef` trait.
+#[verifier::external_trait_specification]
+pub trait ExAsRef<T: std::marker::PointeeSized>: std::marker::PointeeSized {
+    type ExternalTraitSpecificationFor: std::convert::AsRef<T>;
+}
+
+/// Enable the `AsMut` trait.
+#[verifier::external_trait_specification]
+pub trait ExAsMut<T: std::marker::PointeeSized>: std::marker::PointeeSized {
+    type ExternalTraitSpecificationFor: std::convert::AsMut<T>;
+}
+
+/// Used for a dummy one-term trigger.
+pub uninterp spec fn dummy<A>(a: A) -> ();
+
+/// Used for a dummy two-term trigger.
+pub uninterp spec fn dummy2<A, B>(a: A, b: B) -> ();
 
 }
 

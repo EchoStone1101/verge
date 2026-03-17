@@ -277,13 +277,13 @@ pub trait Read: ReadSpec {
 /// reading bytes from a source.
 /// 
 /// This trait should be implemented by types that also implement `std::io::Read`. 
-/// Implementors should customize the following functions for instance-specific semantics:
+/// Implementors should customize the following basic functions for instance-specific semantics:
 /// 
 /// * `bytes()`: the remaining bytes that can be read from this source;
 /// 
 /// * `read_inv()`: invariants of this instance; 
 /// 
-/// * `read_ok()`: extra post-conditions for a successful read; 
+/// * `read_ok()`: extra *composable* post-conditions for a successful read; 
 /// 
 /// * `read_err()`: post-conditions for an erroneous read; can be `false` if `read()` cannot fail;
 /// 
@@ -310,12 +310,15 @@ pub trait ReadSpec {
     ) -> bool { true }
 
     proof fn read_ok_is_reflexive(inst: &Self)
+        requires
+            inst.read_inv(),
         ensures
             Self::read_ok(inst, inst),
     ;
 
     proof fn read_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self)
         requires
+            pre_self.read_inv() && mid_self.read_inv() && post_self.read_inv(),
             Self::read_ok(pre_self, mid_self),
             Self::read_ok(mid_self, post_self),
         ensures 
@@ -324,6 +327,7 @@ pub trait ReadSpec {
 
     proof fn read_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error)
         requires
+            pre_self.read_inv() && mid_self.read_inv() && post_self.read_inv(),
             Self::read_ok(pre_self, mid_self),
             Self::read_err(error, mid_self, post_self),
         ensures
@@ -600,7 +604,7 @@ pub trait Write: WriteSpec + Sized {
 /// writing bytes to a (potentially buffered) sink.
 ///
 /// This trait should be implemented by types that also implement `std::io::Write`. 
-/// Implementors should customize the following functions for instance-specific semantics:
+/// Implementors should customize the following basic functions for instance-specific semantics:
 /// 
 /// * `bytes()`: the bytes currently in the sink.
 ///
@@ -608,7 +612,7 @@ pub trait Write: WriteSpec + Sized {
 /// 
 /// * `write_inv()`: invariants of this instance; 
 /// 
-/// * `write_ok()`: extra post-conditions for a successful write;
+/// * `write_ok()`: extra *composable* post-conditions for a successful write;
 /// 
 /// * `write_err()`: post-conditions for an erroneous write; can be `false` if `write()` cannot fail;
 ///
@@ -644,12 +648,15 @@ pub trait WriteSpec {
     ;
 
     proof fn write_ok_is_reflexive(inst: &Self)
+        requires
+            inst.write_inv(),
         ensures
             Self::write_ok(inst, inst),
     ;
 
     proof fn write_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self)
         requires
+            pre_self.write_inv() && mid_self.write_inv() && post_self.write_inv(),
             Self::write_ok(pre_self, mid_self),
             Self::write_ok(mid_self, post_self),
         ensures 
@@ -658,6 +665,7 @@ pub trait WriteSpec {
 
     proof fn write_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error)
         requires
+            pre_self.write_inv() && mid_self.write_inv() && post_self.write_inv(),
             Self::write_ok(pre_self, mid_self),
             Self::write_err(error, mid_self, post_self),
         ensures
@@ -666,7 +674,7 @@ pub trait WriteSpec {
 
 }
 
-// TODO: Seek & Cursor?
+// TODO: Seek & Cursor? IsTerminal?
 
 /// Enables `std::io::Empty`.
 #[verifier::external_body]

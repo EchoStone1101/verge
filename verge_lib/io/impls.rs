@@ -2,8 +2,10 @@
 
 #[allow(unused_imports)]
 use crate::impl_maybe_generic;
+use crate::fs::{Fs, File, FileSpec};
 use super::*;
-use vstd::math::min;
+use vstd::math::{min, max};
+use vstd::calc;
 
 verus! {
 
@@ -257,7 +259,7 @@ impl ReadSpec for Stdin<'_> {
         { true } 
     
     open spec fn read_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
-        { true } // TODO(xyx): stdin read errors
+        { true } // No error semantics modeled yet
 
     open spec fn read_eof(&self) -> bool 
         { true } // EOF does not imply input stream is exhausted forever 
@@ -270,6 +272,65 @@ impl ReadSpec for Stdin<'_> {
 
 }
 impl_read_for!(Stdin<'_>);
+
+impl ReadSpec for File {
+    /// This works by moving `self.offset()` over `Fs::file()`.
+
+    open spec fn bytes(&self) -> Seq<u8> 
+        { Fs::file(self.otime(), self.path()).skip(self.offset()) }
+
+    open spec fn read_inv(&self) -> bool 
+        { self.inv() }
+
+    open spec fn read_ok(pre_self: &Self, post_self: &Self) -> bool { 
+        // the precise change to `offset` is implied by the change to `bytes()`
+        &&& post_self.offset() >= pre_self.offset()
+        &&& post_self.otime() == pre_self.otime()
+        &&& post_self.atime() >= pre_self.atime()
+        &&& post_self.path() == pre_self.path()
+        &&& post_self.maxofs() == max(post_self.offset(), pre_self.maxofs())
+    } 
+    
+    open spec fn read_err(error: Error, pre_self: &Self, post_self: &Self) -> bool { 
+        // XXX: This does not mention `ErrorKind::IsADirectory` and it's by design: 
+        // Verge performs checks against opening directories at `open`.
+        true
+    } 
+    
+    open spec fn read_eof(&self) -> bool { 
+        // EOF does not imply file is exhausted forever 
+        Fs::file_when(self.atime(), self.path()).len() == self.offset() 
+    } 
+
+    #[verifier::inline]
+    open spec fn read_ok_extra_ensures(
+        pre_self: &Self, post_self: &Self, 
+        pre_buf: Seq<u8>, post_buf: Seq<u8>, 
+        range: Option<Range<usize>>, res: Result<usize>,
+    ) -> bool 
+    { 
+        // late-bind `Fs::file` with `Fs::file_when`
+        &&& Fs::file(post_self.otime(), post_self.path()).subrange(pre_self.offset(), post_self.offset()) 
+            =~= Fs::file_when(pre_self.atime(), pre_self.path()).subrange(pre_self.offset(), post_self.offset()) 
+        // `File` guarantees no short reads
+        &&& {
+            let (start, end) = match range {
+                Some(range) => (range.start as int, range.end as int),
+                _ => (0int, post_buf.len() as int),
+            }; 
+            let rem = Fs::file_when(pre_self.atime(), pre_self.path()).len() - pre_self.offset();
+            spec_unwrap(res) == min(rem, end - start)
+        }
+    }
+
+    proof fn read_ok_is_reflexive(inst: &Self) {}
+
+    proof fn read_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {}
+
+    proof fn read_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {}
+
+}
+impl_read_for!(File);
 
 impl<R: Read + ?Sized> ReadSpec for Box<R> {
 
@@ -523,10 +584,10 @@ impl WriteSpec for Stdout<'_> {
         { true } 
     
     open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
-        { true } // TODO(xyx): stdout read errors
+        { true } // No error semantics modeled yet
 
     open spec fn write_eof(&self) -> bool 
-        { true } // TODO(xyx): stdout eof conditions
+        { true } // Typically not for TTY or files, so not modeled yet
 
     proof fn buffer_is_suffix_of_bytes(inst: &Self) {}
 
@@ -556,10 +617,10 @@ impl WriteSpec for Stderr<'_> {
         { true } 
     
     open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
-        { true } // TODO(xyx): stderr read errors
+        { true } // No error semantics modeled yet
 
     open spec fn write_eof(&self) -> bool 
-        { true } // TODO(xyx): stderr eof conditions
+        { true } // Typically not for TTY or files, so not modeled yet
 
     proof fn buffer_is_suffix_of_bytes(inst: &Self) {}
 
@@ -571,6 +632,51 @@ impl WriteSpec for Stderr<'_> {
 
 }
 impl_write_for!(Stderr<'_>);
+
+impl WriteSpec for File {
+    /// This works by moving `self.offset()` over `Fs::file()`.
+
+    open spec fn bytes(&self) -> Seq<u8> 
+        { Fs::file(self.otime(), self.path()).take(self.offset()) }
+
+    open spec fn buffer(&self) -> Seq<u8> 
+        { Seq::<u8>::empty() } // `File` is unbuffered
+
+    open spec fn write_inv(&self) -> bool 
+        { self.inv() }
+
+    open spec fn write_ok(pre_self: &Self, post_self: &Self) -> bool { 
+        // the precise change to `offset` is implied by the change to `bytes()`
+        &&& post_self.offset() >= pre_self.offset()
+        &&& post_self.otime() == pre_self.otime()
+        &&& post_self.atime() >= pre_self.atime()
+        &&& post_self.path() == pre_self.path() 
+        &&& post_self.maxofs() == max(post_self.offset(), pre_self.maxofs())
+    } 
+    
+    open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool 
+        { true }
+
+    open spec fn write_eof(&self) -> bool 
+        { true } // Typically not for TTY or files, so not modeled yet
+
+    #[verifier::inline]
+    open spec fn write_ok_extra_ensures(pre_self: &Self, post_self: &Self, buf: Seq<u8>, res: Result<usize>) -> bool { 
+        // late-bind `Fs::file` with `Fs::file_when`
+        &&& Fs::file(post_self.otime(), post_self.path()).subrange(pre_self.offset(), post_self.offset()) 
+            =~= Fs::file_when(post_self.atime(), post_self.path()).subrange(pre_self.offset(), post_self.offset()) 
+    }
+
+    proof fn buffer_is_suffix_of_bytes(inst: &Self) {}
+
+    proof fn write_ok_is_reflexive(inst: &Self) {}
+
+    proof fn write_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {}
+
+    proof fn write_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {}
+
+}
+impl_write_for!(File);
 
 impl<W: Write> WriteSpec for Box<W> {
 
@@ -718,9 +824,6 @@ impl<W: Write + std::io::Write> WriteSpec for LineWriter<W> {
 
 }
 impl_write_for!(LineWriter<W> where W: Write + std::io::Write);
-
-
-// TODO: write for Stdout, Stderr
 
 mod tests {
     use super::*;
