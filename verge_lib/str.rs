@@ -40,11 +40,14 @@ verus! {
 pub mod ascii;
 pub mod iter;
 pub mod string;
+pub mod parse;
+pub mod fmt;
 
 pub use ascii::*;
 pub use iter::*;
 pub use string::*;
-// TODO(xyx): a `fmt` module that specifies `ToString` for common types (and a way to add custom implementation)
+pub use parse::*;
+pub use fmt::*;
 
 /// This trait allows viewing a type as a string (sequence of `char`s).
 pub trait StrView {
@@ -104,7 +107,6 @@ pub broadcast group axiom_str_view {
     axiom_ascii_str_as_bytes,
 }
 
-// TODO(xyx): this should be in a seq module
 pub broadcast proof fn lemma_subrange_self<T>(s: Seq<T>)
     ensures (#[trigger] s.subrange(0, s.len() as int)) =~= s {}
 

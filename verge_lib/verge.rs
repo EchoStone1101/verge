@@ -65,11 +65,14 @@
 #![allow(dead_code)]
 #![allow(unused_attributes)]
 #![allow(rustdoc::invalid_rust_codeblocks)]
+#![feature(allocator_api)]
 
 #[cfg(not(unix))]
 compile_error!("Verge is a Unix-only library.");
 
 use vstd::prelude::*;
+use core::alloc::Allocator;
+use std::rc::Rc;
 
 #[macro_export]
 macro_rules! impl_maybe_generic {
@@ -116,6 +119,24 @@ pub uninterp spec fn dummy<A>(a: A) -> ();
 
 /// Used for a dummy two-term trigger.
 pub uninterp spec fn dummy2<A, B>(a: A, b: B) -> ();
+
+/// Enables `Box::<T>::as_ref`.
+pub uninterp spec fn box_as_ref<T: ?Sized, A: Allocator>(ptr: &Box<T, A>) -> &T;
+#[verifier::when_used_as_spec(box_as_ref)]
+pub assume_specification<T: ?Sized, A: Allocator>[ Box::<T, A>::as_ref ](this: &Box<T, A>) -> (ret: &T)
+    ensures
+        this == ret,
+    no_unwind
+;
+
+/// Enables `Rc::<T>::as_ref`.
+pub uninterp spec fn rc_as_ref<T: ?Sized, A: Allocator>(ptr: &Rc<T, A>) -> &T;
+#[verifier::when_used_as_spec(rc_as_ref)]
+pub assume_specification<T: ?Sized, A: Allocator>[ Rc::<T, A>::as_ref ](this: &Rc<T, A>) -> (ret: &T)
+    ensures
+        this == ret,
+    no_unwind
+;
 
 }
 
