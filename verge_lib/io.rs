@@ -17,8 +17,8 @@ use crate::str::{StrView, BytesView};
 use core::ops::Range;
 use std::collections::VecDeque;
 pub use std::io::{
-    Error, ErrorKind, Empty, Repeat, 
-    BufReader, BufWriter, LineWriter, IntoInnerError,
+    Error, ErrorKind, Empty, Repeat,
+    BufReader, BufWriter, LineWriter, Cursor, IntoInnerError,
     empty, repeat,
 };
 
@@ -674,8 +674,6 @@ pub trait WriteSpec {
 
 }
 
-// TODO: Seek & Cursor? IsTerminal?
-
 /// Enables `std::io::Empty`.
 #[verifier::external_body]
 #[verifier::external_type_specification]
@@ -977,6 +975,95 @@ impl<W: Write + std::io::Write> LineWriterIntoInnerFns<W> for LineWriter<W> {
     }
 }
 
+/// Enables `std::io::Cursor`.
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(T)]
+pub struct ExCursor<T>(Cursor<T>);
+pub trait CursorSpec<T> {
+
+    /// Invariant of `Cursor`.
+    /// 
+    /// NOTE: Verge restricts the cursor to always fit within `usize`, not `u64`.
+    open spec fn inv(&self) -> bool {
+        self.pos() <= usize::MAX
+    }
+
+    /// The current cursor position of the in-memory buffer.
+    spec fn pos(&self) -> nat;
+
+    /// Underlying buffer instance.
+    spec fn inner(&self) -> &T;
+}
+impl<T> CursorSpec<T> for Cursor<T> {
+    uninterp spec fn pos(&self) -> nat;
+    uninterp spec fn inner(&self) -> &T;
+}
+
+/// Enables `Cursor::<T>::new()`.
+pub assume_specification<T>[ Cursor::new ](inner: T) -> (ret: Cursor<T>)
+    ensures
+        ret.inv(),
+        ret.pos() == 0,
+        *ret.inner() == inner,
+    no_unwind
+;
+
+/// Enables `Cursor::<T>::into_inner()`.
+pub assume_specification<T>[ Cursor::into_inner ](this: Cursor<T>) -> (ret: T)
+    requires
+        this.inv(),
+    ensures
+        ret == *this.inner(),
+    no_unwind
+;
+
+/// Enables `Cursor::<T>::get_ref()`.
+pub assume_specification<T>[ Cursor::get_ref ](this: &Cursor<T>) -> (ret: &T)
+    requires
+        this.inv(),
+    ensures
+        *ret == *this.inner(),
+    no_unwind
+;
+
+/// Enables `Cursor::<T>::position()`.
+pub assume_specification<T>[ Cursor::position ](this: &Cursor<T>) -> (ret: u64)
+    requires
+        this.inv(),
+    ensures
+        ret == this.pos(),
+    no_unwind
+;
+
+/// Enables `Cursor::<T>::set_position()`.
+pub assume_specification<T>[ Cursor::set_position ](this: &mut Cursor<T>, pos: u64) 
+    requires
+        old(this).inv(),
+        pos <= usize::MAX,
+    ensures
+        this.inv(),
+        this.pos() == pos,
+        *this.inner() == *old(this).inner(),
+    no_unwind
+;
+
+// `Clone` for I/O types
+
+pub assume_specification[ <ErrorKind as Clone>::clone ](this: &ErrorKind) -> (ret: ErrorKind) 
+    ensures
+        ret == *this,
+;
+
+pub assume_specification[ <Empty as Clone>::clone ](this: &Empty) -> (ret: Empty) 
+    ensures
+        ret == *this,
+;
+
+pub assume_specification<T: Clone>[ <Cursor<T> as Clone>::clone ](this: &Cursor<T>) -> (ret: Cursor<T>) 
+    ensures
+        ret == *this,
+;
 
 mod tests {
     use super::*;

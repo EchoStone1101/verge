@@ -415,6 +415,48 @@ impl<R: Read> ReadSpec for BufReader<R> {
 }
 impl_read_for!(BufReader<R> where R: Read + std::io::Read);
 
+impl<T: AsRef<[u8]> + View<V = Seq<u8>>> ReadSpec for Cursor<T> {
+    /// This works by moving the cursor within the buffer.
+
+    open spec fn bytes(&self) -> Seq<u8> 
+        { self.inner()@.skip(min(self.inner()@.len() as int, self.pos() as int)) }
+    
+    open spec fn read_inv(&self) -> bool 
+        { self.inv() }
+
+    open spec fn read_ok(pre_self: &Self, post_self: &Self) -> bool 
+        { post_self.inner()@.len() == pre_self.inner()@.len() } 
+    
+    open spec fn read_err(error: Error, pre_self: &Self, post_self: &Self) -> bool 
+        { false } // never fails
+
+    open spec fn read_eof(&self) -> bool 
+        { self.pos() >= self.inner()@.len() }
+
+    #[verifier::inline]
+    open spec fn read_ok_extra_ensures(
+        pre_self: &Self, post_self: &Self, 
+        pre_buf: Seq<u8>, post_buf: Seq<u8>, 
+        range: Option<Range<usize>>, res: Result<usize>,
+    ) -> bool 
+    { 
+        // no short reads
+        let (start, end) = match range {
+            Some(range) => (range.start as int, range.end as int),
+            _ => (0int, post_buf.len() as int),
+        }; 
+        spec_unwrap(res) == min(pre_self.bytes().len() as int, end - start)
+    }
+
+    proof fn read_ok_is_reflexive(inst: &Self) {}
+
+    proof fn read_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {}
+
+    proof fn read_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {}
+
+}
+impl_read_for!(Cursor<T> where T: AsRef<[u8]> + View<V = Seq<u8>>);
+
 
 // `BufRead` implementations
 
@@ -480,6 +522,24 @@ impl<R: Read> BufReadSpec for BufReader<R> {
 }
 impl_buf_read_for!(BufReader<R> where R: Read + std::io::Read);
 
+impl<T: AsRef<[u8]> + View<V = Seq<u8>>> BufReadSpec for Cursor<T> {
+    /// This works by using the unread part itself as the buffer.
+
+    open spec fn buffer(&self) -> Seq<u8> {
+        self.bytes()
+    }
+
+    open spec fn consume_extra_ensures(
+        pre_self: &Self, post_self: &Self, amt: usize
+    ) -> bool 
+    { 
+        pre_self.inner() == post_self.inner()
+    }
+
+    proof fn buffer_is_prefix_of_bytes(inst: &Self) {}
+}
+impl_buf_read_for!(Cursor<T> where T: AsRef<[u8]> + View<V = Seq<u8>>);
+
 
 // `Write` implementations
 
@@ -511,7 +571,7 @@ impl WriteSpec for Vec<u8> {
     #[verifier::inline]
     open spec fn flush_extra_ensures(pre_self: &Self, post_self: &Self, res: Result<()>) -> bool { 
         // flush cannot fail 
-        res.is_ok() 
+        res.is_ok() && *post_self == *pre_self
     }
 
     proof fn buffer_is_suffix_of_bytes(inst: &Self) {}
@@ -553,7 +613,7 @@ impl WriteSpec for VecDeque<u8> {
     #[verifier::inline]
     open spec fn flush_extra_ensures(pre_self: &Self, post_self: &Self, res: Result<()>) -> bool { 
         // flush cannot fail 
-        res.is_ok() 
+        res.is_ok() && *post_self == *pre_self
     }
 
     proof fn buffer_is_suffix_of_bytes(inst: &Self) {}
@@ -824,6 +884,144 @@ impl<W: Write + std::io::Write> WriteSpec for LineWriter<W> {
 
 }
 impl_write_for!(LineWriter<W> where W: Write + std::io::Write);
+
+impl<const N: usize> WriteSpec for Cursor<[u8; N]> {
+    /// This works by moving the cursor within the buffer.
+
+    open spec fn bytes(&self) -> Seq<u8> 
+        { self.inner()@.take(self.pos() as int) }
+
+    open spec fn buffer(&self) -> Seq<u8> 
+        { Seq::<u8>::empty() } // `Cursor` is unbuffered
+    
+    open spec fn write_inv(&self) -> bool 
+        { self.inv() && self.pos() <= N } // Verge requires `pos()` to be in-range for `write`
+
+    open spec fn write_ok(pre_self: &Self, post_self: &Self) -> bool 
+        { true } // no extra post-conditions 
+    
+    open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool 
+        { false } // never fails
+    
+    open spec fn write_eof(&self) -> bool 
+        { self.pos() >= N } 
+
+    #[verifier::inline]
+    open spec fn write_ok_extra_ensures(pre_self: &Self, post_self: &Self, buf: Seq<u8>, res: Result<usize>) -> bool { 
+        // no short writes up to N 
+        spec_unwrap(res) == min(buf.len() as int, N - pre_self.pos())
+    }
+
+    #[verifier::inline]
+    open spec fn flush_extra_ensures(pre_self: &Self, post_self: &Self, res: Result<()>) -> bool { 
+        // flush cannot fail 
+        res.is_ok() && *post_self == *pre_self
+    }
+
+    proof fn buffer_is_suffix_of_bytes(inst: &Self) {}
+
+    proof fn write_ok_is_reflexive(inst: &Self) {}
+
+    proof fn write_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {}
+
+    proof fn write_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {}
+
+}
+impl_write_for!(Cursor<[u8; N]> where const N: usize);
+
+impl WriteSpec for Cursor<Box<[u8]>> {
+    /// This works by moving the cursor within the buffer.
+
+    open spec fn bytes(&self) -> Seq<u8> 
+        { self.inner()@.take(self.pos() as int) }
+
+    open spec fn buffer(&self) -> Seq<u8> 
+        { Seq::<u8>::empty() } // `Cursor` is unbuffered
+    
+    open spec fn write_inv(&self) -> bool 
+        { self.inv() && self.pos() <= self.inner()@.len() } // Verge requires `pos()` to be in-range for `write`
+
+    open spec fn write_ok(pre_self: &Self, post_self: &Self) -> bool 
+        {  post_self.inner()@.len() == pre_self.inner()@.len() } 
+    
+    open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool 
+        { false } // never fails
+    
+    open spec fn write_eof(&self) -> bool 
+        { self.pos() >= self.inner()@.len() } 
+
+    #[verifier::inline]
+    open spec fn write_ok_extra_ensures(pre_self: &Self, post_self: &Self, buf: Seq<u8>, res: Result<usize>) -> bool { 
+        // no short writes up to N 
+        spec_unwrap(res) == min(buf.len() as int, pre_self.inner()@.len() - pre_self.pos())
+    }
+
+    #[verifier::inline]
+    open spec fn flush_extra_ensures(pre_self: &Self, post_self: &Self, res: Result<()>) -> bool { 
+        // flush cannot fail 
+        res.is_ok() && *post_self == *pre_self
+    }
+
+    proof fn buffer_is_suffix_of_bytes(inst: &Self) {}
+
+    proof fn write_ok_is_reflexive(inst: &Self) {}
+
+    proof fn write_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {}
+
+    proof fn write_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {}
+
+}
+impl_write_for!(Cursor<Box<[u8]>>);
+
+impl WriteSpec for Cursor<Vec<u8>> {
+    /// This works by moving the cursor within the buffer, growing the vector if needed.
+
+    open spec fn bytes(&self) -> Seq<u8> 
+        { self.inner()@.take(self.pos() as int) }
+
+    open spec fn buffer(&self) -> Seq<u8> 
+        { Seq::<u8>::empty() } // `Cursor` is unbuffered
+    
+    open spec fn write_inv(&self) -> bool 
+        { self.inv() && self.pos() <= self.inner()@.len() } // Verge requires `pos()` to be in-range for `write`
+
+    open spec fn write_ok(pre_self: &Self, post_self: &Self) -> bool { 
+        &&& pre_self.pos() <= post_self.pos()
+        &&& pre_self.inner()@.len() <= post_self.inner()@.len()
+        &&& post_self.pos() <= pre_self.inner()@.len() 
+            ==> post_self.inner()@.len() == pre_self.inner()@.len() 
+        &&& post_self.pos() > pre_self.inner()@.len() 
+            ==> post_self.inner()@.len() == post_self.pos()
+    } 
+    
+    open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool 
+        { false } // never fails, so long as `pos()` is within `usize` (guaranteed by `inv()`)
+    
+    open spec fn write_eof(&self) -> bool 
+        { false } // never EOF
+
+    #[verifier::inline]
+    open spec fn write_ok_extra_ensures(pre_self: &Self, post_self: &Self, buf: Seq<u8>, res: Result<usize>) -> bool { 
+        // no short writes 
+        spec_unwrap(res) == buf.len()
+    }
+
+    #[verifier::inline]
+    open spec fn flush_extra_ensures(pre_self: &Self, post_self: &Self, res: Result<()>) -> bool { 
+        // flush cannot fail 
+        res.is_ok() && *post_self == *pre_self
+    }
+
+    proof fn buffer_is_suffix_of_bytes(inst: &Self) {}
+
+    proof fn write_ok_is_reflexive(inst: &Self) {}
+
+    proof fn write_ok_is_composable(pre_self: &Self, mid_self: &Self, post_self: &Self) {}
+
+    proof fn write_ok_err_are_composable(pre_self: &Self, mid_self: &Self, post_self: &Self, error: Error) {}
+
+}
+impl_write_for!(Cursor<Vec<u8>>);
 
 mod tests {
     use super::*;

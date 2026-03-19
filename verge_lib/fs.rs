@@ -455,7 +455,6 @@ impl FileSpec for File {
         &&& self.otime() <= self.atime()
         &&& self.offset() <= self.maxofs()
         // The `isize::MAX` bound allows for calling methods like `Read::read_to_end()`;
-        // it is also ridiculously large for an actual file
         &&& 0 <= self.offset() <= Fs::file(self.otime(), self.path()).len() <= isize::MAX
         &&& self.offset() <= Fs::file_when(self.atime(), self.path()).len()
     }
