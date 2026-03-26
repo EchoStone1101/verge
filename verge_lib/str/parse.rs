@@ -46,6 +46,8 @@ pub use define_spec_from_str;
 #[verifier::external_type_specification]
 pub struct ExParseBoolError(ParseBoolError);
 
+impl ErrorSpec for ParseBoolError {}
+
 /// Enable `bool::from_str`.
 pub assume_specification [ bool::from_str ] (s: &str) -> (ret: Result<bool, ParseBoolError>)
     returns
@@ -63,6 +65,8 @@ define_spec_from_str!(
 #[verifier::external_body]
 #[verifier::external_type_specification]
 pub struct ExParseIntError(ParseIntError);
+
+impl ErrorSpec for ParseIntError {}
 
 #[verifier::external_type_specification]
 pub struct ExIntErrorKind(IntErrorKind);
@@ -160,6 +164,7 @@ pub open spec fn spec_signed_int_from_str<T: Ord + Integer + Debug>(
 ) -> bool {
     &&& res.is_ok() && spec_unwrap(res) as int == spec_int_from_str(s)
         <==> str_is_valid_int(s) && (min as int) <= spec_int_from_str(s) <= (max as int)
+    &&& res.is_err() ==> spec_unwrap_err(res).is_str_parse_error()
     &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::Empty
         <==> s.len() == 0
     // caveat: i8::from_str("128n") might be `Err(PosOverflow)`
@@ -178,6 +183,7 @@ pub open spec fn spec_signed_int_from_str_hex<T: Ord + Integer + Debug>(
 ) -> bool {
     &&& res.is_ok() && spec_unwrap(res) as int == spec_int_from_str_hex(s)
         <==> str_is_valid_int_hex(s) && (min as int) <= spec_int_from_str_hex(s) <= (max as int)
+    &&& res.is_err() ==> spec_unwrap_err(res).is_str_parse_error()
     &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::Empty
         <==> s.len() == 0
     &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::InvalidDigit
@@ -195,6 +201,7 @@ pub open spec fn spec_unsigned_int_from_str<T: Ord + Integer + Debug>(
 ) -> bool {
     &&& res.is_ok() && spec_unwrap(res) as int == spec_int_from_str(s)
         <==> str_is_valid_int(s) && s.first() != '-' && 0int <= spec_int_from_str(s) <= (max as int)
+    &&& res.is_err() ==> spec_unwrap_err(res).is_str_parse_error()
     &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::Empty
         <==> s.len() == 0
     &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::InvalidDigit
@@ -211,6 +218,7 @@ pub open spec fn spec_unsigned_int_from_str_hex<T: Ord + Integer + Debug>(
 ) -> bool {
     &&& res.is_ok() && spec_unwrap(res) as int == spec_int_from_str_hex(s)
         <==> str_is_valid_int_hex(s) && s.first() != '-' && 0int <= spec_int_from_str_hex(s) <= (max as int)
+    &&& res.is_err() ==> spec_unwrap_err(res).is_str_parse_error()
     &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::Empty
         <==> s.len() == 0
     &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::InvalidDigit

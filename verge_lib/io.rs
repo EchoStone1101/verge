@@ -13,6 +13,7 @@ use vstd::prelude::*;
 use vstd::slice::{slice_subrange, spec_slice_len};
 use vstd::std_specs::result::spec_unwrap;
 use crate::str::{StrView, BytesView};
+use crate::error::ErrorSpec;
 
 use core::ops::Range;
 use std::collections::VecDeque;
@@ -92,6 +93,8 @@ pub trait ExWrite {
 #[verifier::external_body]
 #[verifier::external_type_specification]
 pub struct ExError(Error);
+
+impl ErrorSpec for Error {}
 
 #[verifier::external_type_specification]
 pub struct ExErrorKind(ErrorKind);

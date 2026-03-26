@@ -30,6 +30,7 @@
 use vstd::prelude::*;
 use vstd::math::min;
 use vstd::assert_by_contradiction;
+use crate::error::ErrorSpec;
 
 pub use std::str::{
     Utf8Error,
@@ -194,6 +195,8 @@ pub broadcast axiom fn axiom_ascii_str_as_bytes(s: Seq<char>)
 #[verifier::external_type_specification]
 pub struct ExUtf8Error(Utf8Error);
 
+impl ErrorSpec for Utf8Error {}
+
 /// Enable `std::str::from_utf8`.
 #[verifier::external_body]
 pub fn from_utf8_checked(v: &[u8]) -> (res: Result<&str, Utf8Error>)
@@ -201,7 +204,10 @@ pub fn from_utf8_checked(v: &[u8]) -> (res: Result<&str, Utf8Error>)
         ({
             match res {
                 Ok(s) => v@.is_utf8() && s@.as_bytes() =~= v@,
-                _ => !v@.is_utf8(),
+                Err(e) => {
+                    &&& !v@.is_utf8() 
+                    &&& e.is_str_utf8_error()
+                },
             }
         }),
     no_unwind

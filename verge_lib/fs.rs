@@ -35,15 +35,16 @@
 //! Hence, Verge also provides an opt-in assumption, `Fs::no_ext()`, that neglects *any external interference*.
 //! This assumption, if assumed as a pre-condition, will unlock a series of further conditions that assert 
 //! association between file system states across epochs.
-//! TODO(xyx): this is currently not yet implemented and needs more consideration to do right.
+//! TODO: this is currently not yet implemented and needs more consideration to do right.
 
 use vstd::prelude::*;
 use vstd::view::View;
-use vstd::std_specs::result::spec_unwrap;
+use vstd::std_specs::result::{spec_unwrap, spec_unwrap_err};
 use crate::{dummy, dummy2};
 use crate::io::{Error, ErrorKind, Result};
 use crate::str::*;
 use crate::iter::IteratorView;
+use crate::error::ErrorSpec;
 
 pub use std::fs::{
     File, ReadDir, DirEntry,
@@ -180,8 +181,10 @@ impl Fs {
         { self.read_dir_count@ }
 
     /// Enables the use of `<=` on `Fs`.
-    pub open spec fn spec_le(&self, other: &Fs) -> bool 
-        { self.epoch() <= other.epoch() }
+    pub open spec fn spec_le(&self, other: &Fs) -> bool { 
+        &&& self.epoch() <= other.epoch() 
+        &&& self.ops().is_prefix_of(other.ops())
+    }
 
     /// This function encodes some time `t` between two file system states `pre` and `post`.
     ///
@@ -491,6 +494,7 @@ impl Fs {
                     Ok(true) => Fs::file_exists(old(self).epoch(), path),
                     Ok(false) => !Fs::file_exists(old(self).epoch(), path),
                     Err(e) => {
+                        &&& e.is_fs_error()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::InvalidFilename | 
                             ErrorKind::OutOfMemory | ErrorKind::NotADirectory | 
@@ -522,6 +526,7 @@ impl Fs {
                         &&& file.maxofs() == 0
                     },
                     Err(e) => {
+                        &&& e.is_fs_error()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::FileTooLarge | 
                             ErrorKind::Interrupted | ErrorKind::InvalidInput | 
@@ -567,6 +572,7 @@ impl Fs {
                         &&& Fs::file_when(old(self).epoch(), path).len() == 0
                     },
                     Err(e) => {
+                        &&& e.is_fs_error()
                         &&& self.ops() == old(self).ops()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::QuotaExceeded | 
@@ -615,6 +621,7 @@ impl Fs {
                         &&& Fs::file_when(t, path).len() == 0
                     },
                     Err(e) => {
+                        &&& e.is_fs_error()
                         &&& self.ops() == old(self).ops()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::ResourceBusy | 
@@ -652,6 +659,7 @@ impl Fs {
                         &&& Fs::file(old(self).epoch(), path) =~= bytes@
                     },
                     Err(e) => {
+                        &&& e.is_fs_error()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::FileTooLarge | 
                             ErrorKind::Interrupted | ErrorKind::InvalidInput | 
@@ -686,6 +694,7 @@ impl Fs {
                         &&& Fs::file(old(self).epoch(), path) =~= string@.as_bytes()
                     },
                     Err(e) => {
+                        &&& e.is_fs_error()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::FileTooLarge | 
                             ErrorKind::Interrupted | ErrorKind::InvalidInput | 
@@ -722,6 +731,7 @@ impl Fs {
                         &&& Fs::file(old(self).epoch(), path) =~= contents@
                     },
                     Err(e) => {
+                        &&& e.is_fs_error()
                         &&& self.ops() == old(self).ops()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::QuotaExceeded | 
@@ -761,6 +771,7 @@ impl Fs {
                         &&& !Fs::file_is_dir(old(self).epoch(), path) // `remove` does not remove directories
                     },
                     Err(e) => {
+                        &&& e.is_fs_error()
                         &&& self.ops() == old(self).ops()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::ResourceBusy | 
@@ -798,6 +809,7 @@ impl Fs {
                         &&& Fs::files_in_dir(t, path).is_empty()
                     },
                     Err(e) => {
+                        &&& e.is_fs_error()
                         &&& self.ops() == old(self).ops()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::QuotaExceeded | 
@@ -836,6 +848,7 @@ impl Fs {
                         &&& Fs::files_in_dir(old(self).epoch(), path).is_empty()
                     },
                     Err(e) => {
+                        &&& e.is_fs_error()
                         &&& self.ops() == old(self).ops()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::ResourceBusy | 
@@ -891,6 +904,8 @@ impl Fs {
                             &&& seq.len() <= Fs::files_in_dir(old(self).epoch(), path).len()
                             // only the last item could be an error
                             &&& forall|i: int| 0 <= i < seq.len() - 1 ==> #[trigger] seq[i].is_ok()
+                            // error semantics
+                            &&& seq.last().is_err() ==> spec_unwrap_err(seq.last()).is_fs_error()
                             // non-error item is an entry
                             &&& forall|i: int| 0 <= i < seq.len() && #[trigger] seq[i].is_ok() 
                                 ==> Fs::files_in_dir(old(self).epoch(), path)
@@ -901,6 +916,7 @@ impl Fs {
                         }
                     },
                     Err(e) => {
+                        &&& e.is_fs_error()
                         &&& self.read_dir_count() == old(self).read_dir_count()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::FileTooLarge | 
@@ -937,6 +953,7 @@ impl Fs {
                         &&& m.path() == path
                     },
                     Err(e) => {
+                        &&& e.is_fs_error()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::InvalidFilename | 
                             ErrorKind::NotFound | ErrorKind::OutOfMemory | 
