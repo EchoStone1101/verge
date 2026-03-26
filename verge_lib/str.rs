@@ -116,6 +116,7 @@ pub broadcast group lemma_str_view {
     lemma_ascii_is_utf8,
     lemma_ascii_bytes_as_str,
     lemma_ascii_str_as_bytes,
+    lemma_char_boundary_iff_utf8,
 }
 
 pub broadcast proof fn lemma_subrange_self<T>(s: Seq<T>)
@@ -257,6 +258,37 @@ pub broadcast proof fn lemma_ascii_str_as_bytes(s: Seq<char>)
     is_ascii_chars_encode_utf8(s);
 }
 
+/// Proof that `index` is at char boundary in `bytes` iff the splits are UTF-8 byte sequences.
+pub broadcast proof fn lemma_char_boundary_iff_utf8(bytes: Seq<u8>, index: int)
+    requires
+        bytes.is_utf8(),
+        0 <= index <= bytes.len(),
+    ensures 
+        #![trigger is_char_boundary(bytes, index)] 
+        is_char_boundary(bytes, index) <==> bytes.take(index).is_utf8(),
+        is_char_boundary(bytes, index) <==> bytes.skip(index).is_utf8(),
+{
+    reveal(<Seq<u8> as StrView>::is_utf8);
+    if is_char_boundary(bytes, index) {
+        valid_utf8_split(bytes, index);
+        assert(bytes.take(index).is_utf8());
+        assert(bytes.skip(index).is_utf8());
+    } 
+    if bytes.take(index).is_utf8() {
+        assert_by_contradiction!(bytes.skip(index).is_utf8(), {
+            partial_valid_partial_invalid_utf8(bytes, index);
+        });
+    }
+    if bytes.skip(index).is_utf8() {
+        if index < bytes.len() {
+            is_char_boundary_iff_is_leading_byte(bytes, index);
+        } else {
+            is_char_boundary_start_end_of_seq(bytes);
+        }
+    }
+}
+
+
 #[verifier::external_body]
 #[verifier::external_type_specification]
 pub struct ExUtf8Error(Utf8Error);
@@ -293,30 +325,23 @@ pub fn from_utf8_verified(v: &[u8]) -> (s: &str)
     unsafe { std::str::from_utf8_unchecked(v) }
 }
 
-// /// Enable `str::is_char_boundary`.
-// pub assume_specification [ str::is_char_boundary ] (s: &str, index: usize) -> (ret: bool)
-//     returns
-//         index <= s@.as_bytes().len() && s@.as_bytes().take(index as int).is_utf8(),
-//     no_unwind
-// ;
+/// Enable `str::floor_char_boundary`.
+pub assume_specification [ str::floor_char_boundary ] (s: &str, index: usize) -> (ret: usize)
+    ensures
+        ret <= s@.as_bytes().len() && ret <= index,
+        is_char_boundary(s@.as_bytes(), ret as int),
+        !exists|i: int| ret < i <= index && #[trigger] is_char_boundary(s@.as_bytes(), i),
+    no_unwind
+;
 
-// /// Enable `str::floor_char_boundary`.
-// pub assume_specification [ str::floor_char_boundary ] (s: &str, index: usize) -> (ret: usize)
-//     ensures
-//         ret <= s@.as_bytes().len() && ret <= index,
-//         s@.as_bytes().take(ret as int).is_utf8(),
-//         !exists|i: int| ret < i <= index && #[trigger] s@.as_bytes().take(i as int).is_utf8(),
-//     no_unwind
-// ;
-
-// /// Enable `str::ceil_char_boundary`.
-// pub assume_specification [ str::ceil_char_boundary ] (s: &str, index: usize) -> (ret: usize)
-//     ensures
-//         ret <= s@.as_bytes().len() && ret >= min(index as int, s@.as_bytes().len() as int),
-//         s@.as_bytes().take(ret as int).is_utf8(),
-//         !exists|i: int| index <= i < ret && #[trigger] s@.as_bytes().take(i as int).is_utf8(),
-//     no_unwind
-// ;
+/// Enable `str::ceil_char_boundary`.
+pub assume_specification [ str::ceil_char_boundary ] (s: &str, index: usize) -> (ret: usize)
+    ensures
+        ret <= s@.as_bytes().len() && ret >= min(index as int, s@.as_bytes().len() as int),
+        s@.as_bytes().take(ret as int).is_utf8(),
+        !exists|i: int| index <= i < ret && #[trigger] is_char_boundary(s@.as_bytes(), i),
+    no_unwind
+;
 
 /// Enable basic (`&str`) pattern matching for `&str`.
 pub trait StrSliceExecPatternFns {
@@ -801,8 +826,6 @@ mod tests {
         }
         assert(!ends_with_bca);
     }
-
-    // TODO(rilin): test more functions
 }
 
     

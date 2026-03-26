@@ -1095,8 +1095,6 @@ mod tests {
             assert(buf[0] != delim);
         }
     }
-
-    // TODO(rilin): test more functions
 }
 
 } // verus!

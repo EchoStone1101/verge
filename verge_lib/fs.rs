@@ -1,46 +1,44 @@
 //! Specifications and lemmas for the file system.
 //!
 //! ### Specification of File I/O, not File Systems
-//! Currently, Verge exposes a minimal yet generally complete subset of Rust's
-//! file system APIs, so that file I/O can be specified in `spec`.
+//! Currently, Verge exposes a minimal yet functionally complete subset of Rust's
+//! file system APIs, so that file I/O can be specified in specs.
 //! Note that this is different from fully specifying the underlying file system (FS), 
 //! which would require much more consideration and might even demand a custom 
 //! Verus-friendly FS implementation in the future.
 //!
-//! Here is an example to demonstrate the gap: file I/O specification only works 
-//! with abstract file objects, while FS specification needs to go deep 
-//! into the stack (e.g., inodes in POSIX) and reason about what really happens 
-//! with I/O and other FS operations (which, arguably, should be a separate 
-//! undertaking for FS developers).
+//! To demonstrate the gap: file I/O specification only works with abstract file objects, 
+//! while FS specification needs to go deep into the stack (e.g., inodes in POSIX) and 
+//! reason about what really happens with I/O and other FS operations (which, arguably, 
+//! should be a separate undertaking for FS developers).
 //!
 //! The downside, however, is that specifications in this module generally 
 //! only appears as post-conditions for describing behaviors, but never as pre-conditions
 //! for predicting the results of FS APIs. For example, knowing `<File as Write>::bytes(f)` 
-//! does not give any information to the result of a subsequent `f.read()`.
+//! does not give any information about the result of a subsequent `f.read()`.
 //! 
 //! ### Non-UTF-8 File Paths
-//! In native Rust, `Path`s is represented by `OsStr` which might not be UTF-8 strings
-//! (indeed, Unix systems would accept any byte sequences that do not contain the NUL byte
-//! as file paths). For the sake of simplicity, however, Verge currently supports only 
+//! In native Rust, `Path`s is represented by `OsStr` which might not be UTF-8 strings.
+//! For the sake of simplicity, however, Verge currently supports only 
 //! UTF-8 paths, essentially treating them as strings.
 //!
-//! ### Excluding Externals
-//! By default, the epoch-based FS specification in Verge assumes *arbitrary external interference*;
+//! ### Excluding Externals (WIP)
+//! By default, the epoch-based FS specification (see `impl Fs`) in Verge assumes *arbitrary external interference*;
 //! namely, the entire file system and the content of any file may completely change between 
-//! multiple FS APIs. A common type of error - TOCTOU (time-of-check to time-of use) - occurs
+//! FS interactions. A common type of error - TOCTOU (time-of-check to time-of use) - occurs
 //! because of incorrectly neglecting external interference.
 //!
 //! Of course, this is an over-estimation in many cases, and it disallows some common use cases of the 
 //! file system (e.g., caching some intermediate results).
-//! Hence, Verge also provides an opt-in assumption, `Fs::no_ext()`, that neglects *any external interference*.
+//! Hence, in the future, Verge plans to provide an opt-in assumption, `Fs::no_ext()`, that neglects 
+//! *any external interference*.
 //! This assumption, if assumed as a pre-condition, will unlock a series of further conditions that assert 
 //! association between file system states across epochs.
-//! TODO: this is currently not yet implemented and needs more consideration to do right.
 
 use vstd::prelude::*;
 use vstd::view::View;
 use vstd::std_specs::result::{spec_unwrap, spec_unwrap_err};
-use crate::{dummy, dummy2};
+use crate::dummy;
 use crate::io::{Error, ErrorKind, Result};
 use crate::str::*;
 use crate::iter::IteratorView;
@@ -61,7 +59,7 @@ verus! {
 
 /// A singleton handle representing the state of the entire file system.
 /// 
-/// `Fs` is represented mainly as a combination of the entire file system state (check comments 
+/// `Fs` is characterized mainly as a combination of the entire file system state (check comments 
 /// in the `impl` block for details) and a ghost `ops` sequence that tracks mutation operations to
 /// the file system (i.e., creating/removing files, or opening files with the write permission).
 /// The latter allows for specifying the program's local effect on the file system - 
@@ -83,27 +81,23 @@ pub enum FsMutOp {
 
 impl Fs {
     /// ### `spec` Abstraction of `Fs` and `File`s
-    /// Verge models the file system simply as a `Map` from paths (`PathView`) to files, where each file 
+    /// Verge models the file system simply as a mapping from paths (`PathView`) to files, where each file 
     /// is essentially a collection of epoch-controlled byte sequences:
     /// ```
     /// Fs::file(0, "foo")
     ///     0   1   2   3   4   5   6   7   8
     ///   +-----------------------------------> offset
-    /// 0 |[x] [x] [x] [x] [x] [x] [x] [x] [x]
-    /// 1 |[ ] [ ] [ ] [x] [x] [x] [x] [x] [x]
-    /// 2 |[ ] [x] [x] [x] [x] [x] [x] [x] [x]
-    /// 3 |[ ] [ ] [ ] [ ] [ ] [ ] [ ] [ ] [ ]
+    /// 0 |[x] [x] [x] [x] [x] [x] [x] [x] [x] (0 bytes)
+    /// 1 |[ ] [ ] [ ] [x] [x] [x] [x] [x] [x] (3 bytes)
+    /// 2 |[ ] [x] [x] [x] [x] [x] [x] [x] [x] (1 bytes)
+    /// 3 |[ ] [ ] [ ] [ ] [ ] [ ] [ ] [ ] [ ] (...)
     ///   v
     /// epoch 
     /// ```
     /// Epoch is required to account for external changes made to the file system
     /// (i.e., a file is never owned by a `File` in the sense of Rust ownership; its content 
-    /// can be changed by other programs at any time). It is only ever incremented by
+    /// can be changed by other programs at any time). It is monotonically incremented by
     /// Verge's FS APIs, which means "the FS might have changed" since the last epoch.
-    /// This representation also unifies both non-existent files and non-existent ranges in a file:
-    /// - "foo.txt" does not exist yet at epoch 0; the entry for this path still exists in `Fs`, 
-    /// but the value is just all non-existent bytes;
-    /// - "foo.txt" gets truncated at epoch 2; its byte at offset 1 goes from existent to non-existent;
     /// 
     /// Theoretically, this representation, a.k.a. `Fs::file_when()`, is already an accurate specifiction 
     /// of `File`s for Verge's FS APIs. However, using it as-is would be quite inconvenient. 
@@ -127,14 +121,13 @@ impl Fs {
     ///
     /// Hence, Verge also provides an alternative view for each `File` as *one* epoch-controlled `Seq<u8>`, 
     /// a.k.a. `Fs::file`, as the default representation.
-    /// The precise definition of `Fs::file(epoch, path)` is: for the file determined by `epoch` and `path`
+    /// The precise definition of `Fs::file(epoch, path)` is: for the file determined by `path`
     /// in the file system, all the bytes that could be accessed *since* `epoch`.
     /// Essentially, `Fs::file` abstracts over `File::file_when` by late-binding and hiding the actual
-    /// epoch of access for the bytes. For instance, `Fs::file(1, "foo")` can be either cases
-    /// in the above.
+    /// epoch of access. For instance, `Fs::file(1, "foo")` can be either cases in the above.
     /// 
-    /// Of course, special care is taken to ensure Verus's spec equality does not introduce unsound conditions.
-    /// In general, `file(e1, ...)` soundly abstracts any single `file_when(e2, ...)` (`e2 >= e1`), 
+    /// Special care is taken to ensure Verus's spec equality does not introduce unsound conditions.
+    /// In general, `file(e1, ...)` soundly abstracts `file_when(e2, ...)` (`e2 >= e1`) for any single epoch `e2`,
     /// but not for multiple epochs (otherwise, we allow `file_when(e2, ...)` == ``file_when(e3, ...)`).
     /// To enforce this, any attempts to rewind the byte stream (e.g., seeking back via `Seek`) will increment 
     /// the `File`'s epoch, and later access of the `File` yields `Fs::file()` using the new epoch.
@@ -147,7 +140,7 @@ impl Fs {
     /// ### Known Limitations 
     /// This specification currently does not support:
     /// - Read-write mode `File`s. Technically the specification can be written, but it would not be
-    /// able to distinguish in `spec` whether any byte in `Fs::file` is read from the file or written by the program, 
+    /// able to distinguish in spec whether any byte in `Fs::file` is read from the file or written to by the program, 
     /// and hence basically useless.
     /// - Append-mode `File`s. The semantics of append-mode involves "seeking" (to the current EOF), which
     /// necessarily bumps the file epoch, making the specification, again, basically useless. 
@@ -157,7 +150,7 @@ impl Fs {
     /// so there is no way to specify or even identify links.
     /// - Metadata permissions are not modeled.
 
-    /// The "no external" assumption. See the top-level comments of this module for details.
+    /// WIP: The "no external" assumption. See the top-level comments of this module for details.
     pub uninterp spec fn noext() -> bool;
 
     #[verifier::type_invariant]
@@ -431,7 +424,7 @@ pub trait FileSpec {
 
     /// Drops the file and asserts that it is accessed up to its max offset.
     /// 
-    /// This is essentially explicitly calling `drop`, but with `spec` to mark the range 
+    /// This is essentially explicitly calling `drop`, but with specs to mark the range 
     /// of mutation for file; otherwise there is no way to specify that bytes beyond the 
     /// max offset is not modified.
     /// Note also that this works on only one instance (`File`) of a file. If a file is 
@@ -1040,7 +1033,5 @@ pub assume_specification [ DirEntry::path ] (dir: &DirEntry) -> (ret: PathBuf)
     ensures
         ret@ == dir@,
 ;
-
-// TODO(rilin): tests
 
 } // verus!

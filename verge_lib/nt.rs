@@ -1,4 +1,4 @@
-//! Definitions and lemmas for (N)umber (T)heory in Verus.
+//! Specifications and lemmas for (N)umber (T)heory in Verus.
 
 #[allow(unused_imports)]
 use vstd::prelude::*;

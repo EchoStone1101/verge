@@ -64,10 +64,12 @@
 
 #![allow(unused_parens)]
 #![allow(unused_imports)]
+#![allow(unused_doc_comments)]
 #![allow(dead_code)]
 #![allow(unused_attributes)]
 #![allow(rustdoc::invalid_rust_codeblocks)]
 #![feature(allocator_api)]
+#![feature(sized_hierarchy)]
 
 #[cfg(not(unix))]
 compile_error!("Verge is a Unix-only library.");

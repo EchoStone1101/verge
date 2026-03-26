@@ -1,6 +1,6 @@
 //! Specifications for errors and error semantics in Verus.
 //!
-//! By the nature of errors, error semantics (a.k.a., the precise pre- and post-conditions of an error)
+//! By the nature of errors, error semantics (a.k.a., the precise pre- and post-conditions of errors)
 //! is often incomplete. At some point the specification must call it a day and accept under-specified
 //! errors. 
 //! In this case, Verge uses the `is_*_error()` spec functions on the `ErrorSpec` trait to convery a little 
@@ -8,7 +8,7 @@
 //! be complete up to Verge's API boundary (in many cases, also the `std` and OS boundary); any error 
 //! beyond is at least tagged by the `is_*_error()` predicates. For example, for a program that does file I/O, 
 //! Verge allows its spec to be "either returns `Ok` (success semantics), or returns `Err` and the error 
-//! is a file system error".
+//! is a file system error (incomplete error semantics)".
 
 use vstd::prelude::*;
 pub use std::error::Error;

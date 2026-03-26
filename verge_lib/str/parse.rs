@@ -493,6 +493,4 @@ pub assume_specification [ usize::from_str_radix ] (s: &str, radix: u32) -> (ret
     no_unwind
 ;
 
-// TODO(rilin): tests
-
 } // verus!

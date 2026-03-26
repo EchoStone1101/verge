@@ -1,4 +1,4 @@
-//! Specifications and lemmas for file system metadata.
+//! Specifications for file system metadata.
 
 use super::*;
 

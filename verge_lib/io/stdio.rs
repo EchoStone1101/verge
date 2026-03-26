@@ -1,10 +1,13 @@
 //! Specifications and lemmas for standard I/O.
 //!
+//! Note that Verge requires any function that does standard I/O to have `&mut Stdin/Stdout/Stderr<'_>` as
+//! an argument.
+//!
 //! Example usage:
 //! ```rust
 //! let (stdin, stdout, stderr) = verge::io::stdio::init();
 //! let mut buf = vec![0u8; 32];
-//! stdin.read(&mut buf);
+//! stdin.read(&mut buf, None);
 //! stdout.write(&buf);
 //! stderr.write("no error\n");
 //! ```
