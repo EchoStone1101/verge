@@ -1,5 +1,6 @@
 //! Specifications for `std::env`, the program's environment.
 
+#![allow(unused)]
 use vstd::prelude::*;
 use crate::iter::{IteratorView, impl_iterator_default};
 

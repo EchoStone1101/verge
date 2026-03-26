@@ -1,6 +1,6 @@
 [package]
 name = "verge"
-version = "0.0.1"
+version = "0.0.0-2026-03-26"
 edition = "2024"
 license = "MIT"
 description = "Verge Library: Sound specifications and lemmas for Verus"
@@ -12,7 +12,7 @@ name = "verge"
 path = "verge.rs"
 
 [dependencies]
-vstd = "0.0.0-2026-01-04-0057"
+vstd = "0.0.0-2026-03-22-0106"
 
 [package.metadata.verus]
 verify = true

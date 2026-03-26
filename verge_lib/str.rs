@@ -9,10 +9,11 @@
 //! views strings as `Seq<char>`, and this module follows that paradigm. Generally, any added 
 //! specification for string operations should be based on the `char` level.
 //!
-//! Meanwhile, it is common to construct a string from raw bytes, using the `str::from_utf8()` 
-//! method. In this case, this module also provides the `as_str()` and `as_bytes` functions to 
-//! enable the conversion between the two views in `spec`, which involves the `is_utf8()` predicate. 
-//! There is also basic support for ASCII strings where the byte-view and `char`-view unify.
+//! Conversion between the byte- and char-views is done via `vstd::utf8` methods, particularly
+//! `encode_utf8()` (`Seq<char>` to `Seq<u8>`) and `decode_utf8()` (`Seq<u8>` to `Seq<char>`). 
+//! However, directly using these as `open` specs can slow verification; hence they are wrapped 
+//! in `as_bytes()` and `as_str()` with `#[verifier::opaque]`. Use lemmas provided by Verge for 
+//! lightweight common-case reasoning, or `reveal` and use `vstd::utf8` if needed.
 //!
 //! ### `Deref` Methods
 //! In native Rust, `String` inherits all `&self` methods from `str` because it implements `Deref<Target=str>`.
@@ -26,10 +27,11 @@
 //! Because of the UTF-8 nature of Rust strings, mid-string mutation (e.g., updating a character in the middle of 
 //! a string) is already awkward. In Verge, such APIs are generally not exposed on purpose.
 //! This essentially forces strings to be grow-only containers, which is the typical use case anyway.
-#![allow(unused_imports)]
+#![allow(unused)]
 use vstd::prelude::*;
 use vstd::math::min;
 use vstd::assert_by_contradiction;
+use vstd::utf8::*;
 use crate::error::ErrorSpec;
 
 pub use std::str::{
@@ -54,24 +56,28 @@ pub use fmt::*;
 pub trait StrView {
 
     /// Casts `self` as a `char` sequence.
-    spec fn as_str(&self) -> Seq<char>
+    spec fn as_str(self) -> Seq<char>
         recommends self.is_utf8(),
     ;
 
     /// Predicate for asserting `self` can be viewed as a valid UTF-8 string.
-    spec fn is_utf8(&self) -> bool;
+    spec fn is_utf8(self) -> bool;
 
     /// Predicate for asserting `self` can be viewed as a valid ASCII string.
-    spec fn is_ascii(&self) -> bool;
+    spec fn is_ascii(self) -> bool;
 }
 
 impl StrView for Seq<u8> {
 
-    uninterp spec fn as_str(&self) -> Seq<char>;
+    #[verifier::opaque]
+    open spec fn as_str(self) -> Seq<char> 
+        { decode_utf8(self) }
 
-    uninterp spec fn is_utf8(&self) -> bool;
+    #[verifier::opaque]
+    open spec fn is_utf8(self) -> bool
+        { valid_utf8(self) }
 
-    open spec fn is_ascii(&self) -> bool {
+    open spec fn is_ascii(self) -> bool {
         forall |i: int| #![auto] 0 <= i < self.len() ==> self[i] <= 0x7f
     }
 }
@@ -79,117 +85,177 @@ impl StrView for Seq<u8> {
 /// This trait allows viewing a type as a byte sequence.
 pub trait BytesView {
     /// Casts `self` as a `u8` sequence.
-    spec fn as_bytes(&self) -> Seq<u8>;
+    spec fn as_bytes(self) -> Seq<u8>;
 
     /// Predicate for asserting `self` can be viewed as a valid sequence of ASCII bytes.
-    spec fn is_ascii(&self) -> bool;
+    spec fn is_ascii(self) -> bool;
 }
 
 impl BytesView for Seq<char> {
-    uninterp spec fn as_bytes(&self) -> Seq<u8>;
 
-    #[verifier::inline]
-    open spec fn is_ascii(&self) -> bool {
+    #[verifier::opaque]
+    open spec fn as_bytes(self) -> Seq<u8> 
+        { encode_utf8(self) }
+
+    open spec fn is_ascii(self) -> bool {
         forall |i: int| 0 <= i < self.len() ==> 0 <= #[trigger] self[i] <= 0x7f
     }
 }
 
-pub broadcast group axiom_str_view {
+/// Lightweight lemmas for strings. 
+/// Note that by default, `as_bytes()` and `as_str()` are fully specified for ASCII strings only 
+/// (in which case the specs are verification-friendly). For non-ASCII UTF-8 strings, `vstd::utf8` 
+/// can be used, but the full UTF8 spec might be expensive to reason about.
+pub broadcast group lemma_str_view {
     lemma_subrange_self,
-    axiom_str_lower_lift,
-    axiom_bytes_lift_lower,
-    axiom_bytes_concat_lift,
-    axiom_str_concat_lower,
-    axiom_str_is_utf8,
-    axiom_ascii_is_utf8,
-    axiom_str_slice_is_ascii,
-    axiom_string_is_ascii,
-    axiom_ascii_bytes_as_str,
-    axiom_ascii_str_as_bytes,
+    lemma_str_lower_lift,
+    lemma_bytes_lift_lower,
+    lemma_bytes_concat_lift,
+    lemma_str_concat_lower,
+    lemma_str_is_utf8,
+    lemma_ascii_is_utf8,
+    lemma_ascii_bytes_as_str,
+    lemma_ascii_str_as_bytes,
 }
 
 pub broadcast proof fn lemma_subrange_self<T>(s: Seq<T>)
     ensures (#[trigger] s.subrange(0, s.len() as int)) =~= s {}
 
-/// Lowering a string as bytes then lifting back is no-op.
-#[verifier::external_body]
-pub broadcast axiom fn axiom_str_lower_lift(s: Seq<char>)
+/// Proof that lowering a string as bytes then lifting back is no-op.
+pub broadcast proof fn lemma_str_lower_lift(s: Seq<char>)
     ensures #[trigger] s.as_bytes().as_str() =~= s,
-;
+{
+    reveal(<Seq<char> as BytesView>::as_bytes);
+    reveal(<Seq<u8> as StrView>::as_str);
+    encode_utf8_decode_utf8(s);
+}
 
-/// Lifting a UTF-8 byte sequence then lowering is no-op.
-#[verifier::external_body]
-pub broadcast axiom fn axiom_bytes_lift_lower(bytes: Seq<u8>)
+/// Proof that lifting a UTF-8 byte sequence then lowering is no-op.
+pub broadcast proof fn lemma_bytes_lift_lower(bytes: Seq<u8>)
     requires
         bytes.is_utf8(),
     ensures 
         #[trigger] bytes.as_str().as_bytes() =~= bytes,
-;
+{
+    reveal(<Seq<char> as BytesView>::as_bytes);
+    reveal(<Seq<u8> as StrView>::as_str);
+    reveal(<Seq<u8> as StrView>::is_utf8);
+    decode_utf8_encode_utf8(bytes);
+}
 
-/// Concatenation of UTF-8 byte sequences can be lifted as concatenation of strings.
-#[verifier::external_body]
-pub broadcast axiom fn axiom_bytes_concat_lift(b1: Seq<u8>, b2: Seq<u8>)
+/// Proof that concatenation of UTF-8 byte sequences can be lifted as concatenation of strings.
+pub broadcast proof fn lemma_bytes_concat_lift(b1: Seq<u8>, b2: Seq<u8>)
     requires
         b1.is_utf8() && b2.is_utf8(),
     ensures
         #![trigger b1 + b2]
         (b1 + b2).is_utf8(),
         (b1 + b2).as_str() =~= b1.as_str() + b2.as_str(),
-;
+{
+    reveal(<Seq<char> as BytesView>::as_bytes);
+    reveal(<Seq<u8> as StrView>::as_str);
+    reveal(<Seq<u8> as StrView>::is_utf8);
+    assert((b1 + b2).is_utf8()) by { valid_utf8_concat(b1, b2) };
+    assert(is_char_boundary(b1 + b2, b1.len() as int)) by {
+        if b2.len() == 0 {
+            assert(b1 + b2 == b1);
+            is_char_boundary_start_end_of_seq(b1);
+        }
+        else {
+            assert((b1 + b2)[b1.len() as int] == b2[0]);
+            is_char_boundary_iff_is_leading_byte(b1 + b2, b1.len() as int);
+        }
+    };
+    assert(b1 == (b1 + b2).subrange(0, b1.len() as int));
+    assert(b2 == (b1 + b2).subrange(b1.len() as int, (b1 + b2).len() as int));
+    decode_utf8_split(b1 + b2, b1.len() as int);
+}
 
-/// Concatenation of strings can be lowered as concatenation of UTF-8 byte sequences.
-#[verifier::external_body]
-pub broadcast axiom fn axiom_str_concat_lower(s1: Seq<char>, s2: Seq<char>)
+/// Proof that concatenation of strings can be lowered as concatenation of UTF-8 byte sequences.
+pub broadcast proof fn lemma_str_concat_lower(s1: Seq<char>, s2: Seq<char>)
     ensures
         #[trigger] (s1 + s2).as_bytes() =~= s1.as_bytes() + s2.as_bytes(),
-;
+    decreases
+        s1.len(),
+{
+    reveal(<Seq<char> as BytesView>::as_bytes);
+    reveal(<Seq<u8> as StrView>::as_str);
+    reveal(<Seq<u8> as StrView>::is_utf8);
+    if s1.len() == 0 {
+        assert(s1 + s2 == s2);
+    } else {
+        assert((s1 + s2).drop_first() =~= s1.drop_first() + s2);
+        assert((s1 + s2)[0] =~= s1[0]);
+        assert((s1 + s2).as_bytes() == encode_scalar((s1 + s2)[0] as u32) + (s1.drop_first() + s2).as_bytes());
+        lemma_str_concat_lower(s1.drop_first(), s2);
+    }
+}
 
-/// Any string can be viewed as a valid UTF-8 byte sequence.
-#[verifier::external_body]
-pub broadcast axiom fn axiom_str_is_utf8(s: Seq<char>)
+/// Proof that any string can be viewed as a valid UTF-8 byte sequence.
+pub broadcast proof fn lemma_str_is_utf8(s: Seq<char>)
     ensures (#[trigger] s.as_bytes()).is_utf8(),
-;
+{
+    reveal(<Seq<char> as BytesView>::as_bytes);
+    reveal(<Seq<u8> as StrView>::as_str);
+    reveal(<Seq<u8> as StrView>::is_utf8);
+    encode_utf8_valid_utf8(s);
+}
 
-/// Any valid ASCII byte sequence is also UTF-8.
-#[verifier::external_body]
-pub broadcast axiom fn axiom_ascii_is_utf8(bytes: Seq<u8>)
+/// Proof that any valid ASCII byte sequence is also UTF-8.
+pub broadcast proof fn lemma_ascii_is_utf8(bytes: Seq<u8>)
     requires
         bytes.is_ascii(),
     ensures
         #[trigger] bytes.is_utf8(),
-;
+    decreases
+        bytes.len(),
+{
+    reveal(<Seq<char> as BytesView>::as_bytes);
+    reveal(<Seq<u8> as StrView>::as_str);
+    reveal(<Seq<u8> as StrView>::is_utf8);
+    if bytes.len() == 0 {}
+    else {
+        assert(valid_first_scalar(bytes));
+        assert(length_of_first_scalar(bytes) == 1);
+        lemma_ascii_is_utf8(pop_first_scalar(bytes));
+    }
+}
 
-/// Any ASCII string slice can be viewed as a valid ASCII `char` sequence.
-#[verifier::external_body]
-pub broadcast axiom fn axiom_str_slice_is_ascii(s: &str)
-    ensures 
-        (#[trigger] s.is_ascii()) <==> s@.is_ascii(),
-;
-
-/// Any ASCII string can be viewed as a valid ASCII `char` sequence.
-#[verifier::external_body]
-pub broadcast axiom fn axiom_string_is_ascii(s: &String)
-    ensures 
-        (#[trigger] s.is_ascii()) <==> s@.is_ascii(),
-;
-
-/// Conversion of ASCII bytes into strings is fully specified.
-#[verifier::external_body]
-pub broadcast axiom fn axiom_ascii_bytes_as_str(bytes: Seq<u8>)
+/// Proof that conversion of ASCII bytes into strings is fully specified.
+pub broadcast proof fn lemma_ascii_bytes_as_str(bytes: Seq<u8>)
     requires
         bytes.is_ascii(),
     ensures 
         (#[trigger] bytes.as_str()) =~= Seq::new(bytes.len(), |i: int| bytes[i] as char),
-;
+    decreases
+        bytes.len(),
+{
+    reveal(<Seq<char> as BytesView>::as_bytes);
+    reveal(<Seq<u8> as StrView>::as_str);
+    reveal(<Seq<u8> as StrView>::is_utf8);
+    if bytes.len() == 0 {}
+    else {
+        assert(valid_first_scalar(bytes));
+        assert(length_of_first_scalar(bytes) == 1);
+        assert(pop_first_scalar(bytes) == bytes.drop_first());
+        lemma_ascii_is_utf8(bytes.drop_first());
+        let b = bytes[0]; assert(b & 0x7f == b) by(bit_vector) requires b <= 0x7f;
+        lemma_ascii_bytes_as_str(pop_first_scalar(bytes));
+    }
+}
 
-/// Conversion of ASCII strings into bytes is fully specified.
-#[verifier::external_body]
-pub broadcast axiom fn axiom_ascii_str_as_bytes(s: Seq<char>)
+/// Proof that conversion of ASCII strings into bytes is fully specified.
+pub broadcast proof fn lemma_ascii_str_as_bytes(s: Seq<char>)
     requires
         s.is_ascii(),
     ensures 
         (#[trigger] s.as_bytes()) =~= Seq::new(s.len(), |i: int| s[i] as u8),
-;
+{
+    reveal(<Seq<char> as BytesView>::as_bytes);
+    reveal(<Seq<u8> as StrView>::as_str);
+    reveal(<Seq<u8> as StrView>::is_utf8);
+    is_ascii_chars_encode_utf8(s);
+}
 
 #[verifier::external_body]
 #[verifier::external_type_specification]
@@ -227,70 +293,55 @@ pub fn from_utf8_verified(v: &[u8]) -> (s: &str)
     unsafe { std::str::from_utf8_unchecked(v) }
 }
 
-/// Enable `str::as_bytes`.
-pub assume_specification [ str::as_bytes ] (s: &str) -> (bytes: &[u8])
-    ensures
-        bytes@ =~= s@.as_bytes(),
-    no_unwind
-;
+// /// Enable `str::is_char_boundary`.
+// pub assume_specification [ str::is_char_boundary ] (s: &str, index: usize) -> (ret: bool)
+//     returns
+//         index <= s@.as_bytes().len() && s@.as_bytes().take(index as int).is_utf8(),
+//     no_unwind
+// ;
 
-/// Enable `str::len`. Note that this returns length in bytes.
-pub assume_specification [ str::len ] (s: &str) -> (ret: usize)
-    ensures
-        ret == s@.as_bytes().len(),
-    no_unwind
-;
+// /// Enable `str::floor_char_boundary`.
+// pub assume_specification [ str::floor_char_boundary ] (s: &str, index: usize) -> (ret: usize)
+//     ensures
+//         ret <= s@.as_bytes().len() && ret <= index,
+//         s@.as_bytes().take(ret as int).is_utf8(),
+//         !exists|i: int| ret < i <= index && #[trigger] s@.as_bytes().take(i as int).is_utf8(),
+//     no_unwind
+// ;
 
-/// Enable `str::is_char_boundary`.
-pub assume_specification [ str::is_char_boundary ] (s: &str, index: usize) -> (ret: bool)
-    returns
-        index <= s@.as_bytes().len() && s@.as_bytes().take(index as int).is_utf8(),
-    no_unwind
-;
-
-/// Enable `str::floor_char_boundary`.
-pub assume_specification [ str::floor_char_boundary ] (s: &str, index: usize) -> (ret: usize)
-    ensures
-        ret <= s@.as_bytes().len() && ret <= index,
-        s@.as_bytes().take(ret as int).is_utf8(),
-        !exists|i: int| ret < i <= index && #[trigger] s@.as_bytes().take(i as int).is_utf8(),
-    no_unwind
-;
-
-/// Enable `str::ceil_char_boundary`.
-pub assume_specification [ str::ceil_char_boundary ] (s: &str, index: usize) -> (ret: usize)
-    ensures
-        ret <= s@.as_bytes().len() && ret >= min(index as int, s@.as_bytes().len() as int),
-        s@.as_bytes().take(ret as int).is_utf8(),
-        !exists|i: int| index <= i < ret && #[trigger] s@.as_bytes().take(i as int).is_utf8(),
-    no_unwind
-;
+// /// Enable `str::ceil_char_boundary`.
+// pub assume_specification [ str::ceil_char_boundary ] (s: &str, index: usize) -> (ret: usize)
+//     ensures
+//         ret <= s@.as_bytes().len() && ret >= min(index as int, s@.as_bytes().len() as int),
+//         s@.as_bytes().take(ret as int).is_utf8(),
+//         !exists|i: int| index <= i < ret && #[trigger] s@.as_bytes().take(i as int).is_utf8(),
+//     no_unwind
+// ;
 
 /// Enable basic (`&str`) pattern matching for `&str`.
 pub trait StrSliceExecPatternFns {
 
-    fn contains(&self, pat: &str) -> bool
+    fn contains_str(&self, pat: &str) -> bool
         no_unwind;
 
-    fn starts_with(&self, pat: &str) -> bool
+    fn starts_with_str(&self, pat: &str) -> bool
         no_unwind;
 
-    fn ends_with(&self, pat: &str) -> bool
+    fn ends_with_str(&self, pat: &str) -> bool
         no_unwind;
 
-    fn find(&self, pat: &str) -> Option<usize>
+    fn find_str(&self, pat: &str) -> Option<usize>
         no_unwind;
 
-    fn rfind(&self, pat: &str) -> Option<usize>
+    fn rfind_str(&self, pat: &str) -> Option<usize>
         no_unwind;
     
-    fn strip_prefix(&self, prefix: &str) -> Option<&str>
+    fn strip_prefix_str(&self, prefix: &str) -> Option<&str>
         no_unwind;
     
-    fn strip_suffix(&self, suffix: &str) -> Option<&str>
+    fn strip_suffix_str(&self, suffix: &str) -> Option<&str>
         no_unwind;
-
-    // TODO(rilin): trim_matches methods 
+        
 }
 
 /// Enables `&[start..end]` indexing for `&str`.
@@ -314,7 +365,7 @@ impl StrSliceExecPatternFns for str {
 
     /// Enable `str::contains`.
     #[verifier::external_body]
-    fn contains(&self, pat: &str) -> (ret: bool) 
+    fn contains_str(&self, pat: &str) -> (ret: bool) 
         returns 
             exists|i: int| 
                 0 <= i <= self@.len() - pat@.len()
@@ -325,7 +376,7 @@ impl StrSliceExecPatternFns for str {
 
     /// Enable `str::starts_with`.
     #[verifier::external_body]
-    fn starts_with(&self, pat: &str) -> (ret: bool)
+    fn starts_with_str(&self, pat: &str) -> (ret: bool)
         returns
             pat@.is_prefix_of(self@),
     {
@@ -334,7 +385,7 @@ impl StrSliceExecPatternFns for str {
 
     /// Enable `str::ends_with`.
     #[verifier::external_body]
-    fn ends_with(&self, pat: &str) -> (ret: bool)
+    fn ends_with_str(&self, pat: &str) -> (ret: bool)
         returns
             pat@.is_suffix_of(self@),
     {
@@ -343,7 +394,7 @@ impl StrSliceExecPatternFns for str {
 
     /// Enable `str::find`.
     #[verifier::external_body]
-    fn find(&self, pat: &str) -> (ret: Option<usize>)
+    fn find_str(&self, pat: &str) -> (ret: Option<usize>)
         ensures
             ({
                 let slen = self@.as_bytes().len();
@@ -369,7 +420,7 @@ impl StrSliceExecPatternFns for str {
 
     /// Enable `str::rfind`.
     #[verifier::external_body]
-    fn rfind(&self, pat: &str) -> (ret: Option<usize>)
+    fn rfind_str(&self, pat: &str) -> (ret: Option<usize>)
         ensures
             ({
                 let slen = self@.as_bytes().len();
@@ -395,7 +446,7 @@ impl StrSliceExecPatternFns for str {
 
     /// Enable `str::strip_prefix`.
     #[verifier::external_body]
-    fn strip_prefix(&self, prefix: &str) -> (ret: Option<&str>)
+    fn strip_prefix_str(&self, prefix: &str) -> (ret: Option<&str>)
         ensures
             ({
                 match ret {
@@ -412,7 +463,7 @@ impl StrSliceExecPatternFns for str {
 
     /// Enable `str::strip_suffix`.
     #[verifier::external_body]
-    fn strip_suffix(&self, suffix: &str) -> (ret: Option<&str>)
+    fn strip_suffix_str(&self, suffix: &str) -> (ret: Option<&str>)
         ensures
             ({
                 match ret {
@@ -427,22 +478,6 @@ impl StrSliceExecPatternFns for str {
         self.strip_suffix(suffix)
     }
 }
-
-/// Enable `str::make_ascii_lowercase`.
-pub assume_specification [ str::make_ascii_lowercase ] (s: &mut str)
-    ensures
-        s@ =~= Seq::<char>::new(
-            old(s)@.len(), |i: int| old(s)@[i].to_ascii_lowercase()),
-    no_unwind
-;
-
-/// Enable `str::make_ascii_uppercase`.
-pub assume_specification [ str::make_ascii_uppercase ] (s: &mut str)
-    ensures
-        s@ =~= Seq::<char>::new(
-            old(s)@.len(), |i: int| old(s)@[i].to_ascii_uppercase()),
-    no_unwind
-;
 
 /// Enable `str::to_ascii_lowercase`.
 pub assume_specification [ str::to_ascii_lowercase ] (s: &str) -> (ret: String)
@@ -494,7 +529,7 @@ mod tests {
     use super::*;
 
     fn test_empty() {
-        broadcast use axiom_str_view;
+        broadcast use lemma_str_view;
         let s = String::new();
         assert(s@.as_bytes().is_utf8());
         assert(Seq::<u8>::empty().is_utf8());
@@ -503,7 +538,7 @@ mod tests {
     fn test_string_literal() -> (ret: String) 
         ensures ret@ =~= "abcd"@,
     {
-        broadcast use axiom_str_view;
+        broadcast use lemma_str_view;
         proof { 
             reveal_strlit("abd");
             reveal_strlit("c");
@@ -520,12 +555,12 @@ mod tests {
             old(s).is_ascii(),
             old(s)@.len() > 1024,
     {
-        broadcast use axiom_str_view;
+        broadcast use lemma_str_view;
         s.truncate(512);
     }
 
     fn test_utf8(s: &mut String) {
-        broadcast use axiom_str_view;
+        broadcast use lemma_str_view;
 
         s.insert_str(0, "头");
         s.insert_str(s.len(), "尾");
@@ -538,7 +573,7 @@ mod tests {
     }
 
     fn test_trim_ascii() {
-        broadcast use axiom_str_view;
+        broadcast use lemma_str_view;
 
         proof { 
             reveal_strlit("  abc  ");
@@ -551,20 +586,15 @@ mod tests {
         let x = "abc  ";
         let trim_start = s.trim_ascii_start();
         let trim_end = s.trim_ascii_end();
-        // assert(trim_start@ =~= x@);
         let s1 = s.trim_ascii_start().trim_ascii_end();
         let s2 = s.trim_ascii_end().trim_ascii_start();
         let s3 = s.trim_ascii();
         assert(s1@ =~= s3@);
         assert(s1@.is_prefix_of(trim_start@));
-        // assert(s1@.len() == s2@.len());
-        // assert(s2@.is_prefix_of(trim_start@));
-        // assert(s1@ =~= s2@);
-        // assert(s2@ =~= s3@);
     }
 
     fn test_case_sensitive() {
-        broadcast use axiom_str_view;
+        broadcast use lemma_str_view;
         proof { 
             reveal_strlit("ABC");
             reveal_strlit("AbC");
@@ -578,16 +608,10 @@ mod tests {
         let mut s2 = s.to_ascii_lowercase();
         assert(s1@ == upper@);
         assert(s2@ == lower@);
-
-        // Note that `make_ascii_uppercase` and `make_ascii_lowercase` need to be called on `&mut str`, which cannot be easily obtained from `&mut String`. 
-        // s1.make_ascii_lowercase();
-        // s2.make_ascii_uppercase();
-        // assert(s1@ == lower@);
-        // assert(s2@ == upper@);
     }
 
     fn test_from_utf8_checked() {
-        broadcast use axiom_str_view;
+        broadcast use lemma_str_view;
         let good = vec![65u8, 66u8, 67u8];
         let bad = vec![0xffu8];
         assert(good@.is_utf8());
@@ -603,16 +627,15 @@ mod tests {
     }
 
     fn test_from_utf8_verified() {
-        broadcast use axiom_str_view;
+        broadcast use lemma_str_view;
         let bytes = vec![97u8, 98u8, 99u8];
-        assert(bytes@.is_ascii());
         assert(bytes@.is_utf8());
         let s = from_utf8_verified(bytes.as_slice());
         assert(s@ =~= bytes@.as_str());
     }
 
     fn test_str_slice_contains_and_not_found() {
-        broadcast use axiom_str_view;
+        broadcast use lemma_str_view;
         proof {
             reveal_strlit("abca");
             reveal_strlit("bca");
@@ -621,10 +644,10 @@ mod tests {
         }
 
         let s = "abca";
-        let contains_bca = StrSliceExecPatternFns::contains(s, "bca");
-        let contains_zzz = StrSliceExecPatternFns::contains(s, "zzz");
-        let find_zzz = StrSliceExecPatternFns::find(s, "zzz");
-        let rfind_zzz = StrSliceExecPatternFns::rfind(s, "zzz");
+        let contains_bca = s.contains_str("bca");
+        let contains_zzz = s.contains_str("zzz");
+        let find_zzz = s.find_str("zzz");
+        let rfind_zzz = s.rfind_str("zzz");
 
         assert(exists|i: int|
             0 <= i <= s@.len() - "bca"@.len()
@@ -700,15 +723,15 @@ mod tests {
     }
 
     fn test_str_slice_find_rfind() {
-        broadcast use axiom_str_view;
+        broadcast use lemma_str_view;
         proof {
             reveal_strlit("aba");
             reveal_strlit("a");
         }
 
         let s = "aba";
-        let found = StrSliceExecPatternFns::find(s, "a");
-        let rfound = StrSliceExecPatternFns::rfind(s, "a");
+        let found = s.find_str("a");
+        let rfound = s.rfind_str("a");
         assert(found == Some(0usize)) by {
             match found {
                 Some(idx) => {
@@ -738,7 +761,7 @@ mod tests {
     }
 
     fn test_str_slice_starts_with() {
-        broadcast use axiom_str_view;
+        broadcast use lemma_str_view;
         proof {
             reveal_strlit("abcabc");
             reveal_strlit("abc");
@@ -746,8 +769,8 @@ mod tests {
         }
 
         let s = "abcabc";
-        let starts_with_abc = StrSliceExecPatternFns::starts_with(s, "abc");
-        let starts_with_bca = StrSliceExecPatternFns::starts_with(s, "bca");
+        let starts_with_abc = s.starts_with_str("abc");
+        let starts_with_bca = s.starts_with_str("bca");
 
         assert(starts_with_abc == "abc"@.is_prefix_of(s@));
         assert(starts_with_bca == "bca"@.is_prefix_of(s@));
@@ -760,7 +783,7 @@ mod tests {
     }
 
     fn test_str_slice_ends_with() {
-        broadcast use axiom_str_view;
+        broadcast use lemma_str_view;
         proof {
             reveal_strlit("abcabc");
             reveal_strlit("abc");
@@ -768,8 +791,8 @@ mod tests {
         }
 
         let s = "abcabc";
-        let ends_with_abc = StrSliceExecPatternFns::ends_with(s, "abc");
-        let ends_with_bca = StrSliceExecPatternFns::ends_with(s, "bca");
+        let ends_with_abc = s.ends_with_str("abc");
+        let ends_with_bca = s.ends_with_str("bca");
 
         assert(ends_with_abc);
         assert(!"bca"@.is_suffix_of(s@)) by {

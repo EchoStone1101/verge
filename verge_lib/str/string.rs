@@ -25,13 +25,6 @@ pub assume_specification [ String::len ] (s: &String) -> (ret: usize)
     no_unwind
 ;
 
-/// Enable `String::new`.
-pub assume_specification [ String::new ] () -> (s: String)
-    ensures
-        s@ =~= Seq::<char>::empty(),
-    no_unwind
-;
-
 /// Enable `String::with_capacity`.
 pub assume_specification [ String::with_capacity ] (cap: usize) -> (s: String)
     ensures

@@ -271,7 +271,7 @@ mod tests {
     use super::*;
 
     fn test_char_indices() {
-        broadcast use crate::str::axiom_str_view;
+        broadcast use crate::str::lemma_str_view;
         proof {
             reveal_strlit("ab");
         }
@@ -300,7 +300,7 @@ mod tests {
     }
 
     fn test_split_once() {
-        broadcast use crate::str::axiom_str_view;
+        broadcast use crate::str::lemma_str_view;
         proof {
             reveal_strlit("a,b,c");
             reveal_strlit(",");

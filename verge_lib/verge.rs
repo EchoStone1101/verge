@@ -25,8 +25,8 @@
 //! a pre-condition that cannot be checked by the compiler, whereas Verus is fully 
 //! capable of proving soundness given proper conditions. Thus, the API is renamed
 //! to `str::from_utf8_verified` in Verge and is no longer `unsafe`.
-//! For another, `String::find` takes a `pat: P where P: Pattern` argument in `std`, 
-//! but specifying this API form adds unnecessary burden to the prover. Verge changes `String::find` 
+//! For another, `str::find` takes a `pat: P where P: Pattern` argument in `std`, 
+//! but specifying this API form adds unnecessary burden to the prover. Verge changes `str::find` 
 //! to accept `pat: &str` - the most common case. 
 //!
 //! ## Specifying traits
