@@ -2,8 +2,7 @@
 //!
 //! The `verge::io` module lays down the general abstraction for inputting 
 //! and outputting data from various sources. The overall API design mimicks 
-//! `std::io` (https://doc.rust-lang.org/std/io/index.html), but the interface 
-//! is kept deliberately minimal.
+//! `std::io` (https://doc.rust-lang.org/std/io/index.html).
 //! 
 //! The core of this module includes the `ReadSpec` and `WriteSpec` traits, as well as 
 //! the access to `stdin`, `stdout`, and `stderr`.
@@ -13,6 +12,7 @@ use vstd::prelude::*;
 use vstd::slice::{slice_subrange, spec_slice_len};
 use vstd::std_specs::result::spec_unwrap;
 use crate::str::{StrView, BytesView};
+use crate::error::ErrorSpec;
 
 use core::ops::Range;
 use std::collections::VecDeque;
@@ -92,6 +92,8 @@ pub trait ExWrite {
 #[verifier::external_body]
 #[verifier::external_type_specification]
 pub struct ExError(Error);
+
+impl ErrorSpec for Error {}
 
 #[verifier::external_type_specification]
 pub struct ExErrorKind(ErrorKind);
@@ -290,10 +292,10 @@ pub trait Read: ReadSpec {
 /// * `read_eof()`: post-conditions after an EOF read; 
 /// 
 /// ### Understanding EOF
-/// `ReadSpec::read_eof()` is intended to *not* be a terminal state (i.e., `read_eof(*old(self))` does not 
-/// necessarily imply `read_eof(old(self))`; although for specifc implemenators it does, for example 
+/// `ReadSpec::read_eof()` is intended to *not* be a terminal state (i.e., `old(self).read_eof()` does not 
+/// necessarily imply `self.read_eof()`; although for specific implemenatation it does, for example 
 /// when `read_eof() <==> self.bytes().len() == 0`). 
-/// In fact, `ReadSpec::read_eof(*self)` doesn't even guarantee that the next `read()` will return 0 bytes; 
+/// In fact, `ReadSpec::read_eof()` doesn't even guarantee that the next `read()` will return 0 bytes; 
 /// its whole purpose is to expose some extra post-conditions to the caller of `read()`.
 pub trait ReadSpec {
 
@@ -787,8 +789,8 @@ impl<R: Read + Sized> BufReaderIntoInnerFns<R> for BufReader<R> {
 /// ### `Drop` and Flushing
 /// In native Rust, the buffer of a `BufWriter` is flushed whenever the writer itself goes out of scope, 
 /// using a custom `Drop::drop` implementation, which Verus does not yet support.
-/// While this does potentially creates a discrepancy between specification and actual program states, 
-/// it will only matter when those inner sink states are part of some `spec`. And when they are, `Write`'s
+/// While this does potentially create a discrepancy between specification and actual program states, 
+/// it will only matter when those inner sink states are part of the spec. And when they are, `Write`'s
 /// specification will in fact not derive anything specific about the inner sink (e.g., how much bytes are 
 /// truly written) without inspecting or flushing the buffer in `exec` code; thus there is no real soundness issue here.
 #[verifier::external_body]
@@ -1064,10 +1066,5 @@ pub assume_specification<T: Clone>[ <Cursor<T> as Clone>::clone ](this: &Cursor<
     ensures
         ret == *this,
 ;
-
-mod tests {
-    use super::*;
-    // TODO(rilin): test more functions
-}
 
 } // verus!

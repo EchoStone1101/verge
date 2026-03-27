@@ -3,6 +3,7 @@
 #[allow(unused_imports)]
 use crate::impl_maybe_generic;
 use crate::fs::{Fs, File, FileSpec};
+use crate::error::ErrorSpec;
 use super::*;
 use vstd::math::{min, max};
 use vstd::calc;
@@ -259,7 +260,7 @@ impl ReadSpec for Stdin<'_> {
         { true } 
     
     open spec fn read_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
-        { true } // No error semantics modeled yet
+        { error.is_stdio_error() } 
 
     open spec fn read_eof(&self) -> bool 
         { true } // EOF does not imply input stream is exhausted forever 
@@ -294,7 +295,7 @@ impl ReadSpec for File {
     open spec fn read_err(error: Error, pre_self: &Self, post_self: &Self) -> bool { 
         // XXX: This does not mention `ErrorKind::IsADirectory` and it's by design: 
         // Verge performs checks against opening directories at `open`.
-        true
+        error.is_fs_error()
     } 
     
     open spec fn read_eof(&self) -> bool { 
@@ -644,7 +645,7 @@ impl WriteSpec for Stdout<'_> {
         { true } 
     
     open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
-        { true } // No error semantics modeled yet
+        { error.is_stdio_error() } 
 
     open spec fn write_eof(&self) -> bool 
         { true } // Typically not for TTY or files, so not modeled yet
@@ -677,7 +678,7 @@ impl WriteSpec for Stderr<'_> {
         { true } 
     
     open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool
-        { true } // No error semantics modeled yet
+        { error.is_stdio_error() } 
 
     open spec fn write_eof(&self) -> bool 
         { true } // Typically not for TTY or files, so not modeled yet
@@ -715,7 +716,7 @@ impl WriteSpec for File {
     } 
     
     open spec fn write_err(error: Error, pre_self: &Self, post_self: &Self) -> bool 
-        { true }
+        { error.is_fs_error() }
 
     open spec fn write_eof(&self) -> bool 
         { true } // Typically not for TTY or files, so not modeled yet
@@ -1094,8 +1095,6 @@ mod tests {
             assert(buf[0] != delim);
         }
     }
-
-    // TODO(rilin): test more functions
 }
 
 } // verus!

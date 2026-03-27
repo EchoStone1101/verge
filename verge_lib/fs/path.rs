@@ -1,4 +1,7 @@
 //! Specifications and lemmas for file system paths.
+//!
+//! Verge models paths lexically with `PathView`; see the documentation of `PathView` 
+//! for details.
 
 use super::*;
 use crate::iter::{IteratorView, impl_iterator_verge};
@@ -29,7 +32,7 @@ pub broadcast axiom fn axiom_main_separator_literal()
     ensures (#[trigger] MAIN_SEPARATOR) == '/'
 ;
 
-/// The `PathView` type represents a path in `spec`. For example, `path_view!["/", "verge/", "lib/"]`.
+/// The `PathView` type represents a path in `spec`. For example, `path_view![/ "verge/", "lib/"]`.
 /// It also enables *lexical* reasoning about path relations.
 /// 
 /// Note that lexically valid paths can still be invalid for the actual file system; e.g., a `Path` on Unix systems 
@@ -46,17 +49,19 @@ impl PathView {
     pub open spec fn len(self) -> nat 
         { self.path.len() }
 
-    /// Whether the path is lexically valid.
-    /// 
-    /// Segments in a path view must end with separators. Further, segments cannot contain separators 
-    /// in any other position, as it maps into an impossible file system entity. 
-    /// For example, `path_view!["a/"@, "b/c/"@]` can never exist as a file.
+    /// Whether the path is lexically valid:
+    /// - segments in a path view must end with separators; 
+    /// - segments cannot contain separators in any other position;
+    /// - for a relative path, segments cannot be `/` at the front (in which case the path should be absolute);
+    /// For example, `path_view!["a"@, "b/"@, "c/"@]`, `path_view!["a/"@, "b/c/"@]`, and
+    /// `path_view!["/"@, "a/"@, "b/"@, "c/"@]` are all invalid.
     pub open spec fn is_valid(self) -> bool {
         forall|i: int| #![trigger self.path[i]] 0 <= i < self.path.len()
             ==> {
                 &&& self.path[i].len() > 0 
                 &&& self.path[i].last() == MAIN_SEPARATOR
                 &&& !self.path[i].drop_last().contains(MAIN_SEPARATOR)
+                &&& (self.path[i] == seq![MAIN_SEPARATOR] && !self.abs) ==> i > 0
             }
     }
 
@@ -92,8 +97,8 @@ impl PathView {
 
     /// This function encodes the parent of a path, if there is one.
     /// 
-    /// Notably, the parent of the root directory (`/`) does *not* exist; not to be confused 
-    /// with `/..` which is lexically a different path.
+    /// Notably, the parent of the root directory (`/`) does *not* exist - not to be confused 
+    /// with `/../`, which is lexically a different path.
     pub open spec fn parent(self) -> PathView
         recommends
             self.is_normalized(),
@@ -125,7 +130,7 @@ impl PathView {
         }
     }
 
-    /// This function encodes the `i`-th ancestor of a path, numbered from the left.
+    /// This function encodes the `i`-th ancestor of a path, numbered from the root.
     pub open spec fn ancestor(self, i: int) -> PathView 
         recommends
             0 <= i <= self.len(),
@@ -219,7 +224,7 @@ pub axiom fn lemma_str_as_path_trailing_sep(s: Seq<char>)
         s.as_path() == s.push(MAIN_SEPARATOR).as_path(),
 ;
 
-/// `as_path` works by splitting at the separator for separator-terminated strings.
+/// `as_path` works by splitting at the separator for a separator-terminated string.
 #[verifier::external_body]
 pub axiom fn lemma_str_as_path_split(s: Seq<char>, p: PathView)
     requires 
@@ -232,7 +237,7 @@ pub axiom fn lemma_str_as_path_split(s: Seq<char>, p: PathView)
         !p.abs ==> s == p.path.flatten(),
 ;
 
-/// Proof that any `s.as_path()` is lexically valid for any `s`.
+/// Proof that any `s.as_path()` is lexically valid for any string `s`.
 pub broadcast proof fn lemma_str_as_path_valid(s: Seq<char>)
     ensures
         #[trigger] s.as_path().is_valid(),
@@ -649,7 +654,5 @@ pub assume_specification<'a, 'b> [ <String as PartialEq<PathBuf>>::eq ] (this: &
         this@.as_path().normalize() == other@.normalize(),
     no_unwind
 ;
-
-// TODO(rilin): tests
 
 } // verus!

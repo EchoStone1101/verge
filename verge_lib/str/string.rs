@@ -9,6 +9,8 @@ verus! {
 #[verifier::external_type_specification]
 pub struct ExFromUtf8Error(FromUtf8Error);
 
+impl ErrorSpec for FromUtf8Error {}
+
 /// Enable `String::as_bytes`.
 pub assume_specification [ String::as_bytes ] (s: &String) -> (bytes: &[u8])
     ensures
@@ -20,13 +22,6 @@ pub assume_specification [ String::as_bytes ] (s: &String) -> (bytes: &[u8])
 pub assume_specification [ String::len ] (s: &String) -> (ret: usize)
     ensures
         ret == s@.as_bytes().len(),
-    no_unwind
-;
-
-/// Enable `String::new`.
-pub assume_specification [ String::new ] () -> (s: String)
-    ensures
-        s@ =~= Seq::<char>::empty(),
     no_unwind
 ;
 
@@ -152,7 +147,7 @@ impl StringExecFromUtf8Fns for String {
             ({
                 match res {
                     Ok(s) => s@ =~= vec@.as_str(),
-                    _ => true,
+                    Err(e) => e.is_str_utf8_error(),
                 }
             }),
     {

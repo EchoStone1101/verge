@@ -1,4 +1,4 @@
-//! Definitions and lemmas for (N)umber (T)heory in Verus.
+//! Specifications and lemmas for (N)umber (T)heory in Verus.
 
 #[allow(unused_imports)]
 use vstd::prelude::*;
@@ -31,7 +31,7 @@ verus! {
 /// in number theory.
 /// WARNING: avoid using this and `mul::group_mul_properties` together; it likely 
 /// blows up error diagnostics.
-/// TODO(echostone): deprecate this to improve proof efficiency.
+/// TODO: deprecate this to improve proof efficiency
 broadcast group group_mod_properties_nt {
     group_mod_properties,
     group_fundamental_div_mod_converse,

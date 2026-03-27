@@ -1,6 +1,6 @@
 //! Specifications and lemmas for formatting types into strings.
 //!
-//! Currently, Verge adds support for a selection of primitive `Display` types by further specifying 
+//! Currently, Verge provides support for a selection of primitive `Display` types by further specifying 
 //! their `to_string()` method. The `format!` macro and formatters remain external.
 //! The `Debug` trait is also exposed, but the specification is left deliberately uninterpreted
 //! because of its volatile nature.
@@ -198,8 +198,6 @@ pub uninterp spec fn debug_format_ensures<T: Debug + ?Sized>(
     t: &T,
     s: String,
 ) -> bool;
-
-// TODO(rilin): tests; also prove int -> to_string -> from_str is id
 
 } // verus!
 

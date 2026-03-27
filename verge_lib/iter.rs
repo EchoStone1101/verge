@@ -15,8 +15,6 @@ pub trait IteratorView {
     spec fn view(&self) -> (int, Seq<Self::Item>);
 }
 
-// TODO: enumerate and Enumerate
-
 /// Use for `#[external_type_specification]` types.
 macro_rules! impl_iterator_default {
     // no requires clause

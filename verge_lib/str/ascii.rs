@@ -1,4 +1,4 @@
-//! ASCII-related specifications.
+//! ASCII-related string specifications.
 
 use super::*;
 
