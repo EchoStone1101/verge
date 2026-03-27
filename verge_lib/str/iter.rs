@@ -360,7 +360,7 @@ mod tests {
     }
 
     fn test_splitn() {
-        broadcast use crate::str::axiom_str_view;
+        broadcast use crate::str::lemma_str_view;
         proof {
             reveal_strlit("a,b,c");
             reveal_strlit(",");

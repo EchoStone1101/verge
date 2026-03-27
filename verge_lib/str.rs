@@ -683,7 +683,7 @@ mod tests {
     }
 
     fn test_trim_ascii_order_independent(s: &str) {
-        broadcast use axiom_str_view;
+        broadcast use lemma_str_view;
 
         let trim_start = s.trim_ascii_start();
         let trim_end = s.trim_ascii_end();
