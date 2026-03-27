@@ -543,18 +543,147 @@ mod tests {
 
         let s = "  abc  ";
         let x = "abc  ";
+        let y = "  abc";
+        let z = "abc";
         let trim_start = s.trim_ascii_start();
         let trim_end = s.trim_ascii_end();
-        // assert(trim_start@ =~= x@);
+        assert(trim_start@ =~= x@) by {
+            let ghost start = s@.len() - trim_start@.len();
+            assert(trim_start@ =~= s@.skip(start));
+            assert_by_contradiction!(start <= 2, {
+                assert(start > 2);
+                // assert(s@[2] == 'a');
+                assert(s@[2].is_ascii_whitespace());
+            });
+            assert_by_contradiction!(start >= 2, {
+                assert(start < 2);
+                assert(s@[start].is_ascii_whitespace());
+            });
+            assert(start == 2);
+            assert(trim_start@ =~= s@.skip(2));
+            assert(x@ =~= s@.skip(2));
+        }
+        assert(trim_end@ =~= y@) by {
+            let ghost end = trim_end@.len();
+            assert_by_contradiction!(end >= 5, {
+                // assert(s@[4] == 'c');
+                assert(s@[4].is_ascii_whitespace());
+            });
+            assert_by_contradiction!(end <= 5, {
+                assert(end > 5);
+                assert(s@[end as int].is_ascii_whitespace());
+            });
+            assert(end == 5);
+            assert(trim_end@ =~= s@.take(5));
+            assert(y@ =~= s@.take(5));
+        }
         let s1 = s.trim_ascii_start().trim_ascii_end();
         let s2 = s.trim_ascii_end().trim_ascii_start();
         let s3 = s.trim_ascii();
+        assert(s1@ =~= z@) by {
+            let ghost end = s1@.len();
+            assert(s1@ =~= trim_start@.take(end as int));
+            assert_by_contradiction!(end >= 3, {
+                assert(end < 3);
+                assert(trim_start@[2].is_ascii_whitespace());
+            });
+            assert_by_contradiction!(end <= 3, {
+                assert(end > 3);
+                assert(s1@[end - 1] == trim_start@[end - 1]);
+                assert(trim_start@[end - 1].is_ascii_whitespace());
+            });
+            assert(end == 3);
+            assert(s1@ =~= trim_start@.take(3));
+            assert(z@ =~= trim_start@.take(3));
+        }
+        assert(s2@ =~= z@) by {
+            let ghost start = trim_end@.len() - s2@.len();
+            assert(s2@ =~= trim_end@.skip(start));
+            assert_by_contradiction!(start <= 2, {
+                assert(start > 2);
+                assert(trim_end@[2].is_ascii_whitespace());
+            });
+            assert_by_contradiction!(start >= 2, {
+                assert(start < 2);
+                assert(trim_end@[start].is_ascii_whitespace());
+            });
+            assert(start == 2);
+            assert(s2@ =~= trim_end@.skip(2));
+            assert(z@ =~= trim_end@.skip(2));
+        }
         assert(s1@ =~= s3@);
-        assert(s1@.is_prefix_of(trim_start@));
-        // assert(s1@.len() == s2@.len());
-        // assert(s2@.is_prefix_of(trim_start@));
-        // assert(s1@ =~= s2@);
-        // assert(s2@ =~= s3@);
+        assert(s1@ =~= s2@);
+        assert(s2@ =~= s3@);
+    }
+
+    fn test_trim_ascii_order_independent(s: &str) {
+        broadcast use axiom_str_view;
+
+        let trim_start = s.trim_ascii_start();
+        let trim_end = s.trim_ascii_end();
+        let s1 = trim_start.trim_ascii_end();
+        let s2 = trim_end.trim_ascii_start();
+        let s3 = s.trim_ascii();
+        assert(s1@ =~= s3@);
+
+        let ghost start1 = s@.len() - trim_start@.len();
+        let ghost end1 = start1 + s1@.len();
+        let ghost start2 = trim_end@.len() - s2@.len();
+        let ghost end2 = trim_end@.len() as int;
+
+        assert(s1@ =~= s@.subrange(start1, end1));
+        assert(s2@ =~= s@.subrange(start2, end2));
+
+
+        proof {
+            if s1@.len() == 0 {
+                assert(forall |i: int| 0 <= i < s@.len() ==> #[trigger] s@[i].is_ascii_whitespace());
+                assert(s2@.len() == 0);
+            } else {
+                assert(exists |i: int| 0 <= i < s@.len() && #[trigger] s@[i].is_ascii_whitespace() == false);
+                assert(s2@.len() > 0);
+
+                assert_by_contradiction!(start1 == start2, {
+                    if start1 < start2 {
+                        //   s        = [ ... | s[start1] ...  | s[start2] ... ]
+                        //                    ^                ^
+                        //                  start1           start2
+                        //   s1       =       [ s[start1] ... ]
+                        //   trim_end = [ s[0] ... ... ... ... ... ... ... ... s[end2 - 1] ]
+                        //   s2       =                        [ s[start2] ... s[end2 - 1] ]
+                        //
+                        // Since start1 < start2, the char at `s[start1]` is still in the
+                        // prefix removed by `trim_end.trim_ascii_start()`, so it must be
+                        // ASCII whitespace. But the same char is also the first char of
+                        // `s1`, and a nonempty `trim_ascii_start()` result cannot start
+                        // with ASCII whitespace. Contradiction.
+                        assert(trim_end@[start1] == s@[start1]);
+                        assert(trim_end@[start1].is_ascii_whitespace()) by { assert(start1 < start2); };
+                        assert(s1@.first() == s@[start1]);
+                        assert(!s1@.first().is_ascii_whitespace());
+                    } else {
+                        assert(s@[start2].is_ascii_whitespace()) by { assert(start2 < start1); };
+                        assert(s2@.first() == s@[start2]);
+                        assert(!s2@.first().is_ascii_whitespace());
+                    }
+                });
+
+                assert_by_contradiction!(end1 == end2, {
+                    if end1 < end2 {
+                        let j = end2 - 1 - start1;
+                        assert(trim_start@[j] == s@[end2 - 1]);
+                        assert(trim_start@[j].is_ascii_whitespace()) by { assert(end1 < end2); };
+                        assert(s2@.last() == s@[end2 - 1]);
+                        assert(!s2@.last().is_ascii_whitespace());
+                    } else {
+                        assert(s@[end1 - 1].is_ascii_whitespace()) by { assert(end1 > end2); };
+                        assert(s1@.last() == s@[end1 - 1]);
+                        assert(!s1@.last().is_ascii_whitespace());
+                    }
+                });
+            }
+        }
+        assert(s1@ =~= s2@);
     }
 
     fn test_case_sensitive() {
@@ -630,17 +759,16 @@ mod tests {
 
         assert(s@.len() == 4 && s@.as_bytes().len() == 4);
         assert("zzz"@.len() == 3 && "zzz"@.as_bytes().len() == 3);
-        assert(
-            !(exists|i: int|
-                0 <= i <= s@.len() - "zzz"@.len()
-                && #[trigger] s@.subrange(i, i + "zzz"@.len()) =~= "zzz"@
-            )
-            &&
-            !(exists|i: int|
-                0 <= i <= s@.as_bytes().len() - "zzz"@.as_bytes().len()
-                && #[trigger] s@.as_bytes().subrange(i, i + "zzz"@.as_bytes().len()) =~= "zzz"@.as_bytes()
-            )
-        ) by {
+        
+        assert(s@.subrange(0, 0 + "zzz"@.len() as int) =~= "abc"@);
+        assert(s@.subrange(1, 1 + "zzz"@.len() as int) =~= "bca"@);
+        assert(!("abc"@ =~= "zzz"@) && !("bca"@ =~= "zzz"@)) by {
+            assert("abc"@[0] == 'a');
+            assert("bca"@[0] == 'b');
+            assert("zzz"@[0] == 'z');
+        }
+
+        proof {
             assert_by_contradiction!(!(exists|i: int|
                 0 <= i <= s@.len() - "zzz"@.len()
                 && #[trigger] s@.subrange(i, i + "zzz"@.len()) =~= "zzz"@
@@ -649,21 +777,21 @@ mod tests {
                     0 <= i <= s@.len() - "zzz"@.len()
                     && #[trigger] s@.subrange(i, i + "zzz"@.len()) =~= "zzz"@;
                 assert(0 <= i <= 1);
-                if i == 0 {
-                    assert(s@.subrange(0, 0 + "zzz"@.len() as int) =~= "abc"@);
-                    assert(!("abc"@ =~= "zzz"@)) by {
-                        assert("abc"@[0] == 'a');
-                        assert("zzz"@[0] == 'z');
-                    }
-                } else {
-                    assert(i == 1);
-                    assert(s@.subrange(1, 1 + "zzz"@.len() as int) =~= "bca"@);
-                    assert(!("bca"@ =~= "zzz"@)) by {
-                        assert("bca"@[0] == 'b');
-                        assert("zzz"@[0] == 'z');
-                    }
-                }
+                let subrange = s@.subrange(i, i + "zzz"@.len());
+                // assert(s@.subrange(i, i + "zzz"@.len()) =~= "zzz"@);
+                assert(subrange =~= "abc"@ || subrange =~= "bca"@);
             });
+        }
+
+        assert(s@.as_bytes().subrange(0, 0 + "zzz"@.as_bytes().len() as int) =~= "abc"@.as_bytes());
+        assert(s@.as_bytes().subrange(1, 1 + "zzz"@.as_bytes().len() as int) =~= "bca"@.as_bytes());
+        assert(!("abc"@.as_bytes() =~= "zzz"@.as_bytes()) && !("bca"@.as_bytes() =~= "zzz"@.as_bytes())) by {
+            assert("abc"@.as_bytes()[0] == 'a' as u8);
+            assert("bca"@.as_bytes()[0] == 'b' as u8);
+            assert("zzz"@.as_bytes()[0] == 'z' as u8);
+        }
+
+        proof {
             assert_by_contradiction!(!(exists|i: int|
                 0 <= i <= s@.as_bytes().len() - "zzz"@.as_bytes().len()
                 && #[trigger] s@.as_bytes().subrange(i, i + "zzz"@.as_bytes().len()) =~= "zzz"@.as_bytes()
@@ -672,21 +800,10 @@ mod tests {
                     0 <= i <= s@.as_bytes().len() - "zzz"@.as_bytes().len()
                     && #[trigger] s@.as_bytes().subrange(i, i + "zzz"@.as_bytes().len()) =~= "zzz"@.as_bytes();
                 assert(0 <= i <= 1);
-                if i == 0 {
-                    assert(s@.as_bytes().subrange(0, 0 + "zzz"@.as_bytes().len() as int) =~= "abc"@.as_bytes());
-                    assert(!("abc"@.as_bytes() =~= "zzz"@.as_bytes())) by {
-                        assert("abc"@.as_bytes()[0] == 'a' as u8);
-                        assert("zzz"@.as_bytes()[0] == 'z' as u8);
-                    }
-                } else {
-                    assert(i == 1);
-                    assert(s@.as_bytes().subrange(1, 1 + "zzz"@.as_bytes().len() as int) =~= "bca"@.as_bytes());
-                    assert(!("bca"@.as_bytes() =~= "zzz"@.as_bytes())) by {
-                        assert("bca"@.as_bytes()[0] == 'b' as u8);
-                        assert("zzz"@.as_bytes()[0] == 'z' as u8);
-                    }
-                }
-            })
+                let subrange = s@.as_bytes().subrange(i, i + "zzz"@.as_bytes().len());
+                // assert(s@.as_bytes().subrange(i, i + "zzz"@.as_bytes().len()) =~= "zzz"@.as_bytes());
+                assert(subrange =~= "abc"@.as_bytes() || subrange =~= "bca"@.as_bytes());
+            });
         }
 
         assert(!contains_zzz);
