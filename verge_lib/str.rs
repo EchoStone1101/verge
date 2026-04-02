@@ -106,7 +106,8 @@ impl BytesView for Seq<char> {
 /// Note that by default, `as_bytes()` and `as_str()` are fully specified for ASCII strings only 
 /// (in which case the specs are verification-friendly). For non-ASCII UTF-8 strings, `vstd::utf8` 
 /// can be used, but the full UTF8 spec might be expensive to reason about.
-pub broadcast group lemma_str_view {
+#[verifier::broadcast_use_by_default_when_this_crate_is_imported]
+pub broadcast group group_str_view {
     lemma_subrange_self,
     lemma_str_lower_lift,
     lemma_bytes_lift_lower,
@@ -554,7 +555,7 @@ mod tests {
     use super::*;
 
     fn test_empty() {
-        broadcast use lemma_str_view;
+        broadcast use group_str_view;
         let s = String::new();
         assert(s@.as_bytes().is_utf8());
         assert(Seq::<u8>::empty().is_utf8());
@@ -563,7 +564,7 @@ mod tests {
     fn test_string_literal() -> (ret: String) 
         ensures ret@ =~= "abcd"@,
     {
-        broadcast use lemma_str_view;
+        broadcast use group_str_view;
         proof { 
             reveal_strlit("abd");
             reveal_strlit("c");
@@ -580,12 +581,12 @@ mod tests {
             old(s).is_ascii(),
             old(s)@.len() > 1024,
     {
-        broadcast use lemma_str_view;
+        broadcast use group_str_view;
         s.truncate(512);
     }
 
     fn test_utf8(s: &mut String) {
-        broadcast use lemma_str_view;
+        broadcast use group_str_view;
 
         s.insert_str(0, "头");
         s.insert_str(s.len(), "尾");
@@ -598,7 +599,7 @@ mod tests {
     }
 
     fn test_trim_ascii() {
-        broadcast use lemma_str_view;
+        broadcast use group_str_view;
 
         proof { 
             reveal_strlit("  abc  ");
@@ -683,7 +684,7 @@ mod tests {
     }
 
     fn test_trim_ascii_order_independent(s: &str) {
-        broadcast use lemma_str_view;
+        broadcast use group_str_view;
 
         let trim_start = s.trim_ascii_start();
         let trim_end = s.trim_ascii_end();
@@ -753,7 +754,7 @@ mod tests {
     }
 
     fn test_case_sensitive() {
-        broadcast use lemma_str_view;
+        broadcast use group_str_view;
         proof { 
             reveal_strlit("ABC");
             reveal_strlit("AbC");
@@ -770,7 +771,7 @@ mod tests {
     }
 
     fn test_from_utf8_checked() {
-        broadcast use lemma_str_view;
+        broadcast use group_str_view;
         let good = vec![65u8, 66u8, 67u8];
         let bad = vec![0xffu8];
         assert(good@.is_utf8());
@@ -786,7 +787,7 @@ mod tests {
     }
 
     fn test_from_utf8_verified() {
-        broadcast use lemma_str_view;
+        broadcast use group_str_view;
         let bytes = vec![97u8, 98u8, 99u8];
         assert(bytes@.is_utf8());
         let s = from_utf8_verified(bytes.as_slice());
@@ -794,7 +795,7 @@ mod tests {
     }
 
     fn test_str_slice_contains_and_not_found() {
-        broadcast use lemma_str_view;
+        broadcast use group_str_view;
         proof {
             reveal_strlit("abca");
             reveal_strlit("bca");
@@ -870,7 +871,7 @@ mod tests {
     }
 
     fn test_str_slice_find_rfind() {
-        broadcast use lemma_str_view;
+        broadcast use group_str_view;
         proof {
             reveal_strlit("aba");
             reveal_strlit("a");
@@ -908,7 +909,7 @@ mod tests {
     }
 
     fn test_str_slice_starts_with() {
-        broadcast use lemma_str_view;
+        broadcast use group_str_view;
         proof {
             reveal_strlit("abcabc");
             reveal_strlit("abc");
@@ -930,7 +931,7 @@ mod tests {
     }
 
     fn test_str_slice_ends_with() {
-        broadcast use lemma_str_view;
+        broadcast use group_str_view;
         proof {
             reveal_strlit("abcabc");
             reveal_strlit("abc");
