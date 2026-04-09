@@ -3,3 +3,4 @@
 *.DS_Store
 libverge.rlib
 libverge.meta
+__pycache__
