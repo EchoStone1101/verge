@@ -46,8 +46,6 @@ pub use define_spec_from_str;
 #[verifier::external_type_specification]
 pub struct ExParseBoolError(ParseBoolError);
 
-impl ErrorSpec for ParseBoolError {}
-
 /// Enable `bool::from_str`.
 pub assume_specification [ bool::from_str ] (s: &str) -> (ret: Result<bool, ParseBoolError>)
     returns
@@ -65,8 +63,6 @@ define_spec_from_str!(
 #[verifier::external_body]
 #[verifier::external_type_specification]
 pub struct ExParseIntError(ParseIntError);
-
-impl ErrorSpec for ParseIntError {}
 
 #[verifier::external_type_specification]
 pub struct ExIntErrorKind(IntErrorKind);

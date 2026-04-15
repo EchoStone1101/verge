@@ -294,8 +294,6 @@ pub broadcast proof fn lemma_char_boundary_iff_utf8(bytes: Seq<u8>, index: int)
 #[verifier::external_type_specification]
 pub struct ExUtf8Error(Utf8Error);
 
-impl ErrorSpec for Utf8Error {}
-
 /// Enable `std::str::from_utf8`.
 #[verifier::external_body]
 pub fn from_utf8_checked(v: &[u8]) -> (res: Result<&str, Utf8Error>)

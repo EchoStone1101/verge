@@ -95,6 +95,11 @@ pub assume_specification<T: ?Sized, A: Allocator>[ Rc::<T, A>::as_ref ](this: &R
     no_unwind
 ;
 
+// TODO: 
+// - hash (obeys_key_model)
+// - char::to_digit
+// - ...
+
 }
 
 #[cfg(not(verus_verify_core))]

@@ -11,7 +11,6 @@
 //! is a file system error (incomplete error semantics)".
 
 use vstd::prelude::*;
-pub use std::error::Error;
 use std::fmt::{Display, Debug};
 
 verus! {
@@ -25,25 +24,23 @@ verus! {
 pub trait ErrorSpec: Sized {
 
     /// Tags this error as a file system error.
-    closed spec fn is_fs_error(self) -> bool 
-        { is_fs_error(self) }
+    spec fn is_fs_error(self) -> bool;
 
     /// Tags this error as a standard I/O error.
-    closed spec fn is_stdio_error(self) -> bool
-        { is_stdio_error(self) }
+    spec fn is_stdio_error(self) -> bool;
 
     /// Tags this error as a string UTF-8 conversion error.
-    closed spec fn is_str_utf8_error(self) -> bool
-        { is_str_utf8_error(self) }
+    spec fn is_str_utf8_error(self) -> bool;
 
     /// Tags this error as a string parsing error.
-    closed spec fn is_str_parse_error(self) -> bool
-        { is_str_parse_error(self) }
+    spec fn is_str_parse_error(self) -> bool;
 }
 
-uninterp spec fn is_fs_error<T>(t: T) -> bool;
-uninterp spec fn is_stdio_error<T>(t: T) -> bool;
-uninterp spec fn is_str_utf8_error<T>(t: T) -> bool;
-uninterp spec fn is_str_parse_error<T>(t: T) -> bool;
+impl<T: Sized> ErrorSpec for T {
+    uninterp spec fn is_fs_error(self) -> bool;
+    uninterp spec fn is_stdio_error(self) -> bool;
+    uninterp spec fn is_str_utf8_error(self) -> bool;
+    uninterp spec fn is_str_parse_error(self) -> bool;
+}
 
 } // verus!
