@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 Convert vstd source HTML (from third-party/vstd-raw/src/vstd/) into
-per-module markdown files under third-party/vstd/.
+per-module markdown files under third-party/vstd-docs/.
 
 Source files are the rustdoc "source view" pages (*.rs.html) which contain the
 full Rust/Verus source. We strip the HTML and parse the plain source to
 extract documented items.
 
 Layout produced:
-    /tmp/vstd-md-{VERSION}/
+    third-party/vstd-docs/
     ├── seq.md
     ├── seq_lib.md
     ├── map.md
@@ -21,8 +21,8 @@ Layout produced:
 
 Usage:
     python3 tools/generate_vstd_md.py \
-        [--input  /tmp/vstd-raw-{VERSION}/src/vstd] \
-        [--output /tmp/vstd-md-{VERSION}]
+        [--input  third-party/vstd-raw/src/vstd] \
+        [--output third-party/vstd-docs]
 """
 
 import argparse
@@ -413,55 +413,22 @@ def process_file(src_file: Path, src_root: Path, out_root: Path) -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Convert vstd source HTML to markdown")
-    parser.add_argument("--input", default=None,
-                        help="Path to vstd source HTML dir (default: /tmp/vstd-raw-{VERSION}/src/vstd, requires --version)")
-    parser.add_argument("--version", default=None,
-                        help="vstd version string (used to derive default --input and --output paths)")
+    parser.add_argument("--input", default="third-party/vstd-raw/src/vstd",
+                        help="Path to vstd source HTML dir (default: third-party/vstd-raw/src/vstd)")
     parser.add_argument(
-        "--output", default=None,
-        help="Output directory (default: /tmp/vstd-md-{VERSION})",
+        "--output", default="third-party/vstd-docs",
+        help="Output directory (default: third-party/vstd-docs)",
     )
     args = parser.parse_args()
 
-    # Resolve input path
-    if args.input:
-        src_root = Path(args.input)
-    elif args.version:
-        src_root = Path(f"/tmp/vstd-raw-{args.version}/src/vstd")
-    else:
-        # Fall back to reading version from a VERSION file if it exists
-        version_file = Path("/tmp/vstd-raw/VERSION")
-        if version_file.exists():
-            version = version_file.read_text(encoding="utf-8").strip()
-            src_root = Path(f"/tmp/vstd-raw-{version}/src/vstd")
-        else:
-            print("Error: supply --input or --version", file=sys.stderr)
-            sys.exit(1)
-
+    src_root = Path(args.input)
     if not src_root.exists():
         print(f"Error: input path not found: {src_root}", file=sys.stderr)
         sys.exit(1)
 
-    # Resolve output path
-    if args.output:
-        out_root = Path(args.output)
-    elif args.version:
-        out_root = Path(f"/tmp/vstd-md-{args.version}")
-        print(f"  vstd version: {args.version}", file=sys.stderr)
-        print(f"  Output:       {out_root}", file=sys.stderr)
-    else:
-        version_file = src_root.parent.parent / "VERSION"
-        if not version_file.exists():
-            print(
-                f"Error: cannot auto-detect output path: {version_file} not found.\n"
-                f"Supply --output explicitly.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        version = version_file.read_text(encoding="utf-8").strip()
-        out_root = Path(f"/tmp/vstd-md-{version}")
-        print(f"  vstd version: {version}", file=sys.stderr)
-        print(f"  Output:       {out_root}", file=sys.stderr)
+    out_root = Path(args.output)
+    print(f"  Input:  {src_root}", file=sys.stderr)
+    print(f"  Output: {out_root}", file=sys.stderr)
 
     out_root.mkdir(parents=True, exist_ok=True)
 

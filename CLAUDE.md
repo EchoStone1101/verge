@@ -18,6 +18,15 @@ Tests are `exec fn`s inside `mod tests` blocks. They run as part of verification
 
 See `verge_lib/docs/internal/DEV.md` for the authoritative module overview and specification patterns. Run `/update-dev-doc` after any significant code change to keep it current.
 
+## Reference Materials
+
+The `third-party/` directory (git-ignored) contains reference docs — your primary source of information when developing this library:
+
+- **`third-party/vstd-docs/`** — vstd standard library API docs as markdown (one file per module). Generated from source HTML by `tools/generate_vstd_md.py`. 
+- **`third-party/verus-guide/`** — The Verus language guide as markdown. 
+
+Consult these docs when you need to understand vstd types/functions or Verus language features.
+
 ## Conventions
 
 - All Verus code is wrapped in `verus! { ... }`.
