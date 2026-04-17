@@ -12,7 +12,10 @@ name = "verge"
 path = "verge.rs"
 
 [dependencies]
-vstd = "0.0.0-2026-03-22-0106"
+vstd = "=0.0.0-2026-04-12-0118"
+verus_builtin = "=0.0.0-2026-04-12-0118"
+verus_builtin_macros = "=0.0.0-2026-04-12-0118"
+verge_macros = { path = "../verge_macros" }
 
 [package.metadata.verus]
 verify = true

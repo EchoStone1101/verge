@@ -1,8 +1,9 @@
 /target
 .verus-solver-log/
 *.DS_Store
-libverge.rlib
-libverge.meta
+/*.rlib
+/*.meta
 __pycache__
 /verus-release/
 /third-party/
+/playground/

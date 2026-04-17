@@ -4,7 +4,7 @@
 
 The workspace has two crates:
 - **`verge_lib/`** — the main library (`verge_lib/verge.rs` is the root)
-- **`verge_macros/`** — procedural macros (WIP, currently minimal)
+- **`verge_macros/`** — procedural macros (currently: `hash_key` attribute for `obeys_key_model`)
 
 ## Modules
 
@@ -19,6 +19,13 @@ The workspace has two crates:
 | `mem` | `forget`, `replace`, `copy_from_slice` |
 | `nt` | Number theory: GCD, LCM, Euler's totient |
 | `set` | Extended set ops: Cartesian product, fold |
+
+## Defensive Spec Design
+
+Much like Rust's `unsafe` code cannot blindly trust safe code, the Verge library, due to its nature as a trusted expansion of `vstd`, **must not** leave its soundness dependent on how it is used. 
+On the contrary, Verge's spec design must be fully defensive against any unintended usage, such that unsound assertions remain impossible to prove. 
+
+This principle is to be followed even at the cost of completeness and expressiveness. For example, Verge's current epoch-based FS spec design, while hopefully sound, is very much not helpful to prove anything. Compared to letting a user accidently (and falsely) prove that a file's content does not change, it is better to not letting them prove anything concrete about the file content. 
 
 ## Key Specification Patterns
 
