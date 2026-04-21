@@ -109,7 +109,7 @@ impl_iterator_verge!(
         &&& seq.len() > 0
         // `split + pat` (apart from the last) cannot have `pat` as a prefix or infix
         &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() - 1 ==> 
-                forall |j: int| #![trigger seq[i]@.subrange(j, j + pat@.len())] 0 <= j < seq[i]@.len() ==> 
+                forall |j: int| #![trigger (seq[i]@ + pat@).subrange(j, j + pat@.len())] 0 <= j < seq[i]@.len() ==> 
                     !((seq[i]@ + pat@).subrange(j, j + pat@.len()) =~= pat@)
         // last split cannot have `pat` as a substring
         &&& forall |j: int| #![trigger seq.last()@.subrange(j, j + pat@.len())] 0 <= j <= seq.last()@.len() - pat@.len() ==> 
@@ -165,18 +165,28 @@ impl_iterator_verge!(
         requires(pat@.len() > 0) -> |seq| {
         // `split + pat` (apart from the last) cannot have `pat` as a prefix or infix
         &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() - 1 ==> 
-                forall |j: int| #![trigger seq[i]@.subrange(j, j + pat@.len())] 0 <= j < seq[i]@.len() ==> 
+                forall |j: int| #![trigger (seq[i]@ + pat@).subrange(j, j + pat@.len())] 0 <= j < seq[i]@.len() ==> 
                     !((seq[i]@ + pat@).subrange(j, j + pat@.len()) =~= pat@)
-        // last split (if existent) is not empty, and cannot have `pat` as a substring
+        // the last returned split cannot have `pat` as a substring
         &&& seq.len() > 0 ==> {
-            &&& seq.last()@.len() > 0
             &&& forall |j: int| #![trigger seq.last()@.subrange(j, j + pat@.len())] 0 <= j <= seq.last()@.len() - pat@.len() ==> 
                     !(seq.last()@.subrange(j, j + pat@.len()) =~= pat@)
+            // `split_terminator` either matches `split`, or drops one trailing empty split
+            &&& (
+                (
+                    seq.last()@.len() > 0
+                    && s@ =~= seq.drop_first().fold_left(
+                        seq.first()@, |sum: Seq<char>, ss: &'a str| sum + pat@ + ss@
+                    )
+                )
+                ||
+                s@ =~= seq.drop_first().fold_left(
+                    seq.first()@, |sum: Seq<char>, ss: &'a str| sum + pat@ + ss@
+                ) + pat@
+            )
         }
-        // delimeters and splits make up the original string
+        // the empty input still yields no splits
         &&& seq.len() == 0 ==> s@.len() == 0
-        &&& seq.len() > 0 ==> s@ =~= seq.drop_first().fold_left(
-                seq.first()@, |sum: Seq<char>, ss: &'a str| sum + pat@ + ss@)
     }
 );
 
@@ -254,21 +264,206 @@ impl_iterator_verge!(
         let slen = s@.as_bytes().len() as int;
         let plen = pat@.as_bytes().len() as int;
         let indices = seq.map(|_i: int, p: (usize, &'a str)| p.0 as int);
-        let mismatches = (seq![0int] + indices).zip_with(indices + seq![(s@.as_bytes().len() - plen + 1) as int]);
+        let ends = indices.map(|_i: int, idx: int| idx + plen);
+        let mismatches = (seq![0int] + ends).zip_with(indices + seq![(s@.as_bytes().len() - plen + 1) as int]);
         // indices points to matches
         &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() ==> {
             &&& indices[i] + plen <= slen
             &&& s@.as_bytes().subrange(indices[i], indices[i] + plen) =~= pat@.as_bytes()
+            &&& seq[i].1@ =~= pat@
         }
+        // matches are disjoint and ordered
+        &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() - 1 ==> indices[i] + plen <= indices[i + 1]
         // mismatches cannot have matches
-        &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() ==> 
-                forall |j: int| #![trigger s@.as_bytes()[j]] mismatches[i].0 <= j < mismatches[i].1 ==> 
+        &&& forall |i: int| #![trigger mismatches[i]] 0 <= i < mismatches.len() ==> 
+                forall |j: int| #![trigger s@.as_bytes().subrange(j, j + plen)] mismatches[i].0 <= j < mismatches[i].1 ==> 
                     !(s@.as_bytes().subrange(j, j + plen) =~= pat@.as_bytes())
     }
 );
 
 mod tests {
     use super::*;
+
+    proof fn lemma_fold_left_keeps_prefix<'a>(xs: Seq<&'a str>, init: Seq<char>, pat: Seq<char>, k: int)
+        requires
+            0 <= k <= init.len(),
+        ensures
+            xs.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + pat + ss@).subrange(0, k) =~=
+                init.subrange(0, k),
+        decreases xs.len(),
+    {
+        if xs.len() == 0 {
+            assert(xs.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + pat + ss@) =~= init) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 2);
+            }
+        } else {
+            xs.lemma_fold_left_split(init, |sum: Seq<char>, ss: &'a str| sum + pat + ss@, 1);
+            assert(xs.subrange(0, 1).len() == 1);
+            assert(xs.subrange(0, 1)[0] == xs[0]);
+            assert(xs.subrange(0, 1).fold_left(
+                init,
+                |sum: Seq<char>, ss: &'a str| sum + pat + ss@
+            ) =~= init + pat + xs[0]@) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 3);
+            }
+            lemma_fold_left_keeps_prefix(
+                xs.subrange(1, xs.len() as int),
+                init + pat + xs[0]@,
+                pat,
+                k,
+            );
+            assert((init + pat + xs[0]@).subrange(0, k) =~= init.subrange(0, k));
+        }
+    }
+
+    proof fn lemma_fold_left_len_ge_init<'a>(xs: Seq<&'a str>, init: Seq<char>, pat: Seq<char>)
+        ensures
+            xs.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + pat + ss@).len() >= init.len(),
+        decreases xs.len(),
+    {
+        if xs.len() == 0 {
+            assert(xs.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + pat + ss@) =~= init) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 2);
+            }
+        } else {
+            xs.lemma_fold_left_split(init, |sum: Seq<char>, ss: &'a str| sum + pat + ss@, 1);
+            assert(xs.subrange(0, 1).len() == 1);
+            assert(xs.subrange(0, 1)[0] == xs[0]);
+            assert(xs.subrange(0, 1).fold_left(
+                init,
+                |sum: Seq<char>, ss: &'a str| sum + pat + ss@
+            ) =~= init + pat + xs[0]@) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 3);
+            }
+            lemma_fold_left_len_ge_init(
+                xs.subrange(1, xs.len() as int),
+                init + pat + xs[0]@,
+                pat,
+            );
+        }
+    }
+
+    proof fn lemma_concat_fold_left_keeps_prefix<'a>(xs: Seq<&'a str>, init: Seq<char>, k: int)
+        requires
+            0 <= k <= init.len(),
+        ensures
+            xs.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + ss@).subrange(0, k) =~=
+                init.subrange(0, k),
+        decreases xs.len(),
+    {
+        if xs.len() == 0 {
+            assert(xs.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + ss@) =~= init) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 2);
+            }
+        } else {
+            xs.lemma_fold_left_split(init, |sum: Seq<char>, ss: &'a str| sum + ss@, 1);
+            assert(xs.subrange(0, 1).len() == 1);
+            assert(xs.subrange(0, 1)[0] == xs[0]);
+            assert(xs.subrange(0, 1).fold_left(
+                init,
+                |sum: Seq<char>, ss: &'a str| sum + ss@
+            ) =~= init + xs[0]@) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 3);
+            }
+            lemma_concat_fold_left_keeps_prefix(
+                xs.subrange(1, xs.len() as int),
+                init + xs[0]@,
+                k,
+            );
+            assert((init + xs[0]@).subrange(0, k) =~= init.subrange(0, k));
+        }
+    }
+
+    proof fn lemma_concat_fold_left_len_ge_init<'a>(xs: Seq<&'a str>, init: Seq<char>)
+        ensures
+            xs.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + ss@).len() >= init.len(),
+        decreases xs.len(),
+    {
+        if xs.len() == 0 {
+            assert(xs.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + ss@) =~= init) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 2);
+            }
+        } else {
+            xs.lemma_fold_left_split(init, |sum: Seq<char>, ss: &'a str| sum + ss@, 1);
+            assert(xs.subrange(0, 1).len() == 1);
+            assert(xs.subrange(0, 1)[0] == xs[0]);
+            assert(xs.subrange(0, 1).fold_left(
+                init,
+                |sum: Seq<char>, ss: &'a str| sum + ss@
+            ) =~= init + xs[0]@) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 3);
+            }
+            lemma_concat_fold_left_len_ge_init(
+                xs.subrange(1, xs.len() as int),
+                init + xs[0]@,
+            );
+        }
+    }
+
+    proof fn lemma_pair_fold_left_keeps_prefix<'a>(xs: Seq<(&'a str, Seq<char>)>, init: Seq<char>, k: int)
+        requires
+            0 <= k <= init.len(),
+        ensures
+            xs.fold_left(init, |sum: Seq<char>, p: (&'a str, Seq<char>)| sum + p.0@ + p.1).subrange(0, k) =~=
+                init.subrange(0, k),
+        decreases xs.len(),
+    {
+        if xs.len() == 0 {
+            assert(xs.fold_left(init, |sum: Seq<char>, p: (&'a str, Seq<char>)| sum + p.0@ + p.1) =~= init) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 2);
+            }
+        } else {
+            xs.lemma_fold_left_split(
+                init,
+                |sum: Seq<char>, p: (&'a str, Seq<char>)| sum + p.0@ + p.1,
+                1,
+            );
+            assert(xs.subrange(0, 1).len() == 1);
+            assert(xs.subrange(0, 1)[0] == xs[0]);
+            assert(xs.subrange(0, 1).fold_left(
+                init,
+                |sum: Seq<char>, p: (&'a str, Seq<char>)| sum + p.0@ + p.1
+            ) =~= init + xs[0].0@ + xs[0].1) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 3);
+            }
+            lemma_pair_fold_left_keeps_prefix(
+                xs.subrange(1, xs.len() as int),
+                init + xs[0].0@ + xs[0].1,
+                k,
+            );
+            assert((init + xs[0].0@ + xs[0].1).subrange(0, k) =~= init.subrange(0, k));
+        }
+    }
+
+    proof fn lemma_pair_fold_left_len_ge_init<'a>(xs: Seq<(&'a str, Seq<char>)>, init: Seq<char>)
+        ensures
+            xs.fold_left(init, |sum: Seq<char>, p: (&'a str, Seq<char>)| sum + p.0@ + p.1).len() >= init.len(),
+        decreases xs.len(),
+    {
+        if xs.len() == 0 {
+            assert(xs.fold_left(init, |sum: Seq<char>, p: (&'a str, Seq<char>)| sum + p.0@ + p.1) =~= init) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 2);
+            }
+        } else {
+            xs.lemma_fold_left_split(
+                init,
+                |sum: Seq<char>, p: (&'a str, Seq<char>)| sum + p.0@ + p.1,
+                1,
+            );
+            assert(xs.subrange(0, 1).len() == 1);
+            assert(xs.subrange(0, 1)[0] == xs[0]);
+            assert(xs.subrange(0, 1).fold_left(
+                init,
+                |sum: Seq<char>, p: (&'a str, Seq<char>)| sum + p.0@ + p.1
+            ) =~= init + xs[0].0@ + xs[0].1) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 3);
+            }
+            lemma_pair_fold_left_len_ge_init(
+                xs.subrange(1, xs.len() as int),
+                init + xs[0].0@ + xs[0].1,
+            );
+        }
+    }
 
     fn test_char_indices() {
         broadcast use crate::str::group_str_view;
@@ -296,6 +491,713 @@ mod tests {
         match it.next() {
             Some(_) => { assert(false); }
             None => { }
+        }
+    }
+
+    fn test_lines() {
+        broadcast use crate::str::group_str_view;
+        proof {
+            reveal_strlit("a\nb");
+            reveal_strlit("a");
+            reveal_strlit("b");
+        }
+
+        let s = "a\nb";
+        assert(s@.len() == 3);
+        assert(s@[0] == 'a');
+        assert(s@[1] == '\n');
+        assert(s@[2] == 'b');
+
+        let mut it = s.lines();
+        let ghost seq = it@.1;
+        let ghost nls = choose |nls: Seq<Seq<char>>| {
+            &&& #[trigger] nls.len() == seq.len()
+            &&& forall |i: int| #![trigger nls[i]] 0 <= i < nls.len() ==> {
+                &&& nls[i] == seq!['\n'] || nls[i] == seq!['\r', '\n'] || (i == nls.len() - 1 && nls[i].len() == 0 )
+                &&& nls[i] == seq!['\n'] ==> !seq!['\r'].is_suffix_of(seq[i]@)
+            }
+            &&& s@ =~= seq.zip_with(nls).fold_left(
+                Seq::<char>::empty(), |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+            )
+        };
+        let ghost pairs = seq.zip_with(nls);
+
+        proof {
+            assert(nls.len() == seq.len());
+            assert(pairs.len() == seq.len());
+
+            assert_by_contradiction!(seq.len() > 0, {
+                assert(seq.len() == 0);
+                assert(pairs.len() == 0);
+                assert(pairs.fold_left(
+                    Seq::<char>::empty(),
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+                ) =~= Seq::<char>::empty()) by {
+                    reveal_with_fuel(Seq::<_>::fold_left, 2);
+                }
+            });
+
+            assert_by_contradiction!(seq.len() >= 2, {
+                assert(seq.len() == 1);
+                assert(nls.len() == 1);
+                assert(pairs.len() == 1);
+                assert(pairs[0] == (seq[0], nls[0]));
+                assert(pairs.fold_left(
+                    Seq::<char>::empty(),
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+                ) =~= seq[0]@ + nls[0]) by {
+                    reveal_with_fuel(Seq::<_>::fold_left, 3);
+                }
+                assert(s@ =~= seq[0]@ + nls[0]);
+
+                if nls[0].len() == 0 {
+                    assert(seq[0]@.len() == 3);
+                    assert(seq[0]@[1] == s@[1]);
+                } else if nls[0].len() == 1 {
+                    assert(nls[0] == seq!['\n']);
+                    assert(seq[0]@.len() == 2);
+                    assert((seq[0]@ + nls[0])[1] == s@[1]);
+                    assert((seq[0]@ + nls[0])[1] == seq[0]@[1]);
+                    assert(seq[0]@[1] == '\n');
+                } else {
+                    assert(nls[0].len() == 2);
+                    assert(nls[0] == seq!['\r', '\n']);
+                    assert(seq[0]@.len() == 1);
+                    assert((seq[0]@ + nls[0])[1] == s@[1]);
+                    assert((seq[0]@ + nls[0])[1] == nls[0][0]);
+                    assert(nls[0][0] == '\r');
+                }
+            });
+
+            pairs.lemma_fold_left_split(
+                Seq::<char>::empty(),
+                |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1,
+                1,
+            );
+            assert(pairs.subrange(0, 1).len() == 1);
+            assert(pairs.subrange(0, 1)[0] == (seq[0], nls[0]));
+            assert(pairs.subrange(0, 1).fold_left(
+                Seq::<char>::empty(),
+                |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+            ) =~= seq[0]@ + nls[0]) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 3);
+            }
+
+            let ghost tail = pairs.subrange(1, pairs.len() as int);
+            assert(tail.fold_left(
+                seq[0]@ + nls[0],
+                |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+            ) =~= s@);
+            assert(nls[0] == seq!['\n'] || nls[0] == seq!['\r', '\n']);
+
+            assert_by_contradiction!(seq[0]@.len() > 0, {
+                assert(seq[0]@.len() == 0);
+                lemma_pair_fold_left_keeps_prefix(tail, nls[0], 1);
+                assert(s@.subrange(0, 1) =~=
+                    tail.fold_left(nls[0], |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1).subrange(0, 1));
+                assert(tail.fold_left(
+                    nls[0],
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+                ).subrange(0, 1) =~= nls[0].subrange(0, 1));
+                assert(s@.subrange(0, 1) =~= nls[0].subrange(0, 1));
+                assert(s@.subrange(0, 1)[0] == s@[0]);
+                assert(nls[0].subrange(0, 1)[0] == nls[0][0]);
+                assert(nls[0][0] == '\n' || nls[0][0] == '\r');
+            });
+
+            assert_by_contradiction!(seq[0]@.len() <= 1, {
+                assert(2 <= seq[0]@.len() + nls[0].len());
+                lemma_pair_fold_left_keeps_prefix(tail, seq[0]@ + nls[0], 2);
+                assert(s@.subrange(0, 2) =~=
+                    tail.fold_left(seq[0]@ + nls[0], |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1).subrange(0, 2));
+                assert(tail.fold_left(
+                    seq[0]@ + nls[0],
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+                ).subrange(0, 2) =~= (seq[0]@ + nls[0]).subrange(0, 2));
+                assert(s@.subrange(0, 2) =~= (seq[0]@ + nls[0]).subrange(0, 2));
+                assert(s@.subrange(0, 2)[1] == s@[1]);
+                assert((seq[0]@ + nls[0]).subrange(0, 2)[1] == (seq[0]@ + nls[0])[1]);
+                assert((seq[0]@ + nls[0])[1] == seq[0]@[1]);
+            });
+
+            assert(seq[0]@.len() == 1);
+            lemma_pair_fold_left_keeps_prefix(tail, seq[0]@ + nls[0], 1);
+            assert(s@.subrange(0, 1) =~=
+                tail.fold_left(seq[0]@ + nls[0], |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1).subrange(0, 1));
+            assert(tail.fold_left(
+                seq[0]@ + nls[0],
+                |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+            ).subrange(0, 1) =~= (seq[0]@ + nls[0]).subrange(0, 1));
+            assert(s@.subrange(0, 1) =~= (seq[0]@ + nls[0]).subrange(0, 1));
+            assert((seq[0]@ + nls[0]).subrange(0, 1) =~= seq[0]@);
+            assert(seq[0]@ =~= "a"@);
+        }
+
+        match it.next() {
+            Some(part) => {
+                assert(part == seq[0]);
+                assert(part@ =~= "a"@);
+                assert(it@.0 == 1);
+            }
+            None => { assert(false); }
+        }
+
+        match it.next() {
+            Some(part) => {
+                assert(part == seq[1]);
+                assert(it@.0 == 2);
+            }
+            None => { assert(false); }
+        }
+
+        proof {
+            assert_by_contradiction!(seq.len() == 2, {
+                assert(seq.len() >= 3);
+                pairs.lemma_fold_left_split(
+                    Seq::<char>::empty(),
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1,
+                    3,
+                );
+                assert(pairs.subrange(0, 3).len() == 3);
+                assert(pairs.subrange(0, 3)[0] == (seq[0], nls[0]));
+                assert(pairs.subrange(0, 3)[1] == (seq[1], nls[1]));
+                assert(pairs.subrange(0, 3)[2] == (seq[2], nls[2]));
+                assert(pairs.subrange(0, 3).fold_left(
+                    Seq::<char>::empty(),
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+                ) =~= seq[0]@ + nls[0] + seq[1]@ + nls[1] + seq[2]@ + nls[2]) by {
+                    reveal_with_fuel(Seq::<_>::fold_left, 5);
+                }
+                let ghost init3 = seq[0]@ + nls[0] + seq[1]@ + nls[1] + seq[2]@ + nls[2];
+                let ghost tail3 = pairs.subrange(3, pairs.len() as int);
+                assert(tail3.fold_left(
+                    init3,
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+                ) =~= pairs.fold_left(
+                    Seq::<char>::empty(),
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+                ));
+                assert(tail3.fold_left(
+                    init3,
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+                ) =~= s@);
+                assert(seq[0]@.len() == 1);
+                assert(nls[0].len() > 0);
+                assert(nls[1].len() > 0);
+                assert(seq[2]@.len() + nls[2].len() > 0) by {
+                    if seq.len() == 3 {
+                        assert(seq[2] == seq.last());
+                        assert(seq[2]@.len() > 0);
+                    } else {
+                        assert(2 < nls.len() - 1);
+                        assert(nls[2] == seq!['\n'] || nls[2] == seq!['\r', '\n']);
+                    }
+                }
+                assert(init3.len() ==
+                    seq[0]@.len() + nls[0].len() + seq[1]@.len() + nls[1].len() + seq[2]@.len() + nls[2].len());
+                assert(init3.len() > 3);
+                lemma_pair_fold_left_len_ge_init(tail3, init3);
+                assert(tail3.fold_left(
+                    init3,
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+                ).len() >= init3.len());
+                assert(s@.len() == 3);
+            });
+        }
+
+        match it.next() {
+            Some(_) => { assert(false); }
+            None => {
+                assert(it@.0 == seq.len());
+                assert(it@.1 == seq);
+                assert(seq.len() == 2);
+            }
+        }
+
+        proof {
+            assert(nls.len() == 2);
+            assert(pairs.len() == 2);
+            assert(seq.last() == seq[1]);
+            assert(seq[1]@.len() > 0);
+            assert(pairs.fold_left(
+                Seq::<char>::empty(),
+                |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+            ) =~= seq[0]@ + nls[0] + seq[1]@ + nls[1]) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 4);
+            }
+            assert(s@ =~= "a"@ + nls[0] + seq[1]@ + nls[1]);
+            assert(nls[0] == seq!['\n'] || nls[0] == seq!['\r', '\n']);
+            assert(nls[1] == seq!['\n'] || nls[1] == seq!['\r', '\n'] || nls[1].len() == 0);
+            assert(nls[0].len() > 0);
+            assert(seq[1]@.len() == 1);
+            assert(nls[0].len() == 1);
+            assert(nls[1].len() == 0);
+            assert(nls[0] == seq!['\n']);
+            assert(seq[1]@[0] == ("a"@ + nls[0] + seq[1]@ + nls[1])[2]);
+            assert(("a"@ + nls[0] + seq[1]@ + nls[1])[2] == s@[2]);
+            assert(seq[1]@[0] == 'b');
+            assert(seq[1]@ =~= "b"@);
+        }
+
+        assert(seq[1]@ =~= "b"@);
+    }
+
+    fn test_split_ascii_whitespace() {
+        broadcast use crate::str::group_str_view;
+        proof {
+            reveal_strlit(" a");
+            reveal_strlit("a");
+        }
+
+        let s = " a";
+        assert(s@.len() == 2);
+        assert(s@[0] == ' ');
+        assert(s@[1] == 'a');
+
+        let mut it = s.split_ascii_whitespace();
+        let ghost seq = it@.1;
+        let ghost ws = choose |ws: Seq<Seq<char>>| {
+            &&& #[trigger] ws.len() == seq.len() + 1
+            &&& forall |i: int| #![trigger ws[i]] 0 <= i < ws.len() ==> {
+                &&& 1 <= i < ws.len() - 1 ==> ws[i].len() > 0
+                &&& forall |j: int| #![trigger ws[i][j]] 0 <= j < ws[i].len() ==>
+                    ws[i][j].is_ascii_whitespace()
+            }
+            &&& s@ =~= seq.zip_with(ws.drop_first()).fold_left(
+                ws.first(), |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+            )
+        };
+        let ghost pairs = seq.zip_with(ws.drop_first());
+
+        proof {
+            assert(ws.len() == seq.len() + 1);
+            assert(pairs.len() == seq.len());
+
+            assert_by_contradiction!(seq.len() > 0, {
+                assert(seq.len() == 0);
+                assert(ws.len() == 1);
+                assert(pairs.len() == 0);
+                assert(pairs.fold_left(
+                    ws.first(),
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+                ) =~= ws.first()) by {
+                    reveal_with_fuel(Seq::<_>::fold_left, 2);
+                }
+                assert(s@ =~= ws[0]);
+                assert(ws[0].len() == 2);
+                assert(ws[0][1] == s@[1]);
+                assert(ws[0][1].is_ascii_whitespace());
+                assert('a' == s@[1]);
+                assert(!'a'.is_ascii_whitespace());
+            });
+
+            assert_by_contradiction!(seq.len() == 1, {
+                assert(seq.len() >= 2);
+                assert(ws.len() >= 3);
+                assert(seq[0]@.len() > 0);
+                assert(seq[1]@.len() > 0);
+                assert(ws[1].len() > 0);
+
+                pairs.lemma_fold_left_split(
+                    ws.first(),
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1,
+                    2,
+                );
+                assert(pairs.subrange(0, 2).len() == 2);
+                assert(pairs.subrange(0, 2)[0] == (seq[0], ws[1]));
+                assert(pairs.subrange(0, 2)[1] == (seq[1], ws[2]));
+                assert(pairs.subrange(0, 2).fold_left(
+                    ws.first(),
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+                ) =~= ws[0] + seq[0]@ + ws[1] + seq[1]@ + ws[2]) by {
+                    reveal_with_fuel(Seq::<_>::fold_left, 4);
+                }
+
+                let ghost init2 = ws[0] + seq[0]@ + ws[1] + seq[1]@ + ws[2];
+                let ghost tail2 = pairs.subrange(2, pairs.len() as int);
+                assert(tail2.fold_left(
+                    init2,
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+                ) =~= pairs.fold_left(
+                    ws.first(),
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+                ));
+                assert(tail2.fold_left(
+                    init2,
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+                ) =~= s@);
+                assert(init2.len() ==
+                    ws[0].len() + seq[0]@.len() + ws[1].len() + seq[1]@.len() + ws[2].len());
+                assert(init2.len() > 2);
+                lemma_pair_fold_left_len_ge_init(tail2, init2);
+                assert(tail2.fold_left(
+                    init2,
+                    |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+                ).len() >= init2.len());
+                assert(s@.len() == 2);
+            });
+
+            assert(ws.len() == 2);
+            assert(pairs.len() == 1);
+            assert(pairs[0] == (seq[0], ws[1]));
+            assert(pairs.fold_left(
+                ws.first(),
+                |sum: Seq<char>, p: (&str, Seq<char>)| sum + p.0@ + p.1
+            ) =~= ws[0] + seq[0]@ + ws[1]) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 3);
+            }
+            assert(s@ =~= ws[0] + seq[0]@ + ws[1]);
+
+            assert_by_contradiction!(ws[0].len() > 0, {
+                assert(ws[0].len() == 0);
+                assert((ws[0] + seq[0]@ + ws[1])[0] == seq[0]@[0]);
+                assert(s@[0] == seq[0]@[0]);
+                assert(seq[0]@[0].is_ascii_whitespace());
+            });
+            assert(ws[0].len() > 0);
+
+            assert_by_contradiction!(ws[0].len() <= 1, {
+                assert(ws[0].len() > 1);
+                assert(ws[0].len() + seq[0]@.len() + ws[1].len() > 2);
+            });
+            assert(ws[0].len() == 1);
+
+            assert_by_contradiction!(seq[0]@.len() <= 1, {
+                assert(seq[0]@.len() > 1);
+                assert(ws[0].len() + seq[0]@.len() + ws[1].len() > 2);
+            });
+            assert(seq[0]@.len() == 1);
+
+            assert_by_contradiction!(ws[1].len() == 0, {
+                assert(ws[1].len() > 0);
+                assert(ws[0].len() + seq[0]@.len() + ws[1].len() > 2);
+            });
+            assert(ws[1].len() == 0);
+
+            assert((ws[0] + seq[0]@ + ws[1])[1] == seq[0]@[0]);
+            assert(s@[1] == seq[0]@[0]);
+            assert(seq[0]@[0] == 'a');
+            assert(seq[0]@ =~= "a"@);
+        }
+
+        match it.next() {
+            Some(part) => {
+                assert(part == seq[0]);
+                assert(part@ =~= "a"@);
+                assert(it@.0 == 1);
+            }
+            None => { assert(false); }
+        }
+
+        match it.next() {
+            Some(_) => { assert(false); }
+            None => {
+                assert(it@.0 == seq.len());
+                assert(it@.1 == seq);
+                assert(seq.len() == 1);
+            }
+        }
+    }
+
+    fn test_split_inclusive() {
+        broadcast use crate::str::group_str_view;
+        proof {
+            reveal_strlit("a,b");
+            reveal_strlit(",");
+            reveal_strlit("a,");
+            reveal_strlit("b");
+        }
+
+        let s = "a,b";
+        assert(s@.len() == 3);
+        assert(","@.len() == 1);
+        assert(s@[0] == 'a');
+        assert(s@[1] == ',');
+        assert(s@[2] == 'b');
+        assert("a,b"@.subrange(1, 2) =~= ","@) by {
+            assert("a,b"@[1] == ',');
+            assert(","@[0] == ',');
+        }
+
+        let mut it = str_split_inclusive("a,b", ",");
+        let ghost seq = it@.1;
+
+        proof {
+            assert_by_contradiction!(seq.len() > 0, {
+                assert(seq.len() == 0);
+                assert(seq.fold_left(
+                    Seq::<char>::empty(),
+                    |sum: Seq<char>, ss: &str| sum + ss@
+                ) =~= Seq::<char>::empty()) by {
+                    reveal_with_fuel(Seq::<_>::fold_left, 2);
+                }
+            });
+
+            assert_by_contradiction!(seq.len() >= 2, {
+                assert(seq.len() == 1);
+                assert(seq.fold_left(
+                    Seq::<char>::empty(),
+                    |sum: Seq<char>, ss: &str| sum + ss@
+                ) =~= seq[0]@) by {
+                    reveal_with_fuel(Seq::<_>::fold_left, 3);
+                }
+                assert(s@ =~= seq[0]@);
+                assert(seq[0]@.subrange(1, 1 + ","@.len() as int) =~= ","@);
+                assert(!(seq[0]@.subrange(1, 1 + ","@.len() as int) =~= ","@)) by {
+                    assert(0 <= 1 < seq[0]@.len() - ","@.len());
+                }
+            });
+
+            seq.lemma_fold_left_split(
+                Seq::<char>::empty(),
+                |sum: Seq<char>, ss: &str| sum + ss@,
+                1,
+            );
+            assert(seq.subrange(0, 1).len() == 1);
+            assert(seq.subrange(0, 1)[0] == seq[0]);
+            assert(seq.subrange(0, 1).fold_left(
+                Seq::<char>::empty(),
+                |sum: Seq<char>, ss: &str| sum + ss@
+            ) =~= seq[0]@) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 3);
+            }
+
+            let ghost tail = seq.subrange(1, seq.len() as int);
+            assert(tail.fold_left(
+                seq[0]@,
+                |sum: Seq<char>, ss: &str| sum + ss@
+            ) =~= seq.fold_left(
+                Seq::<char>::empty(),
+                |sum: Seq<char>, ss: &str| sum + ss@
+            ));
+            assert(tail.fold_left(
+                seq[0]@,
+                |sum: Seq<char>, ss: &str| sum + ss@
+            ) =~= s@);
+            assert(","@.is_suffix_of(seq[0]@));
+
+            assert_by_contradiction!(seq[0]@.len() > 1, {
+                assert(seq[0]@.len() <= 1);
+                lemma_concat_fold_left_keeps_prefix(tail, seq[0]@, 1);
+                assert("a,b"@.subrange(0, 1) =~=
+                    tail.fold_left(seq[0]@, |sum: Seq<char>, ss: &str| sum + ss@).subrange(0, 1));
+                assert(tail.fold_left(
+                    seq[0]@,
+                    |sum: Seq<char>, ss: &str| sum + ss@
+                ).subrange(0, 1) =~= seq[0]@.subrange(0, 1));
+                assert("a,b"@.subrange(0, 1) =~= seq[0]@.subrange(0, 1));
+                assert("a,b"@.subrange(0, 1)[0] == "a,b"@[0]);
+                assert(seq[0]@.subrange(0, 1)[0] == seq[0]@[0]);
+                assert(seq[0]@[0] == ',');
+            });
+
+            assert_by_contradiction!(seq[0]@.len() <= 2, {
+                assert(seq[0]@.len() > 2);
+                lemma_concat_fold_left_keeps_prefix(tail, seq[0]@, 2);
+                assert("a,b"@.subrange(0, 2) =~=
+                    tail.fold_left(seq[0]@, |sum: Seq<char>, ss: &str| sum + ss@).subrange(0, 2));
+                assert(tail.fold_left(
+                    seq[0]@,
+                    |sum: Seq<char>, ss: &str| sum + ss@
+                ).subrange(0, 2) =~= seq[0]@.subrange(0, 2));
+                assert("a,b"@.subrange(0, 2) =~= seq[0]@.subrange(0, 2));
+                assert("a,b"@.subrange(0, 2)[1] == "a,b"@[1]);
+                assert(seq[0]@.subrange(0, 2)[1] == seq[0]@[1]);
+                assert(seq[0]@.subrange(1, 1 + ","@.len() as int) =~= ","@) by {
+                    assert(seq[0]@[1] == ',');
+                    assert(","@[0] == ',');
+                }
+                assert(!(seq[0]@.subrange(1, 1 + ","@.len() as int) =~= ","@)) by {
+                    assert(0 <= 1 < seq[0]@.len() - ","@.len());
+                }
+            });
+
+            assert(seq[0]@.len() == 2);
+            lemma_concat_fold_left_keeps_prefix(tail, seq[0]@, 2);
+            assert("a,b"@.subrange(0, 2) =~=
+                tail.fold_left(seq[0]@, |sum: Seq<char>, ss: &str| sum + ss@).subrange(0, 2));
+            assert(tail.fold_left(
+                seq[0]@,
+                |sum: Seq<char>, ss: &str| sum + ss@
+            ).subrange(0, 2) =~= seq[0]@.subrange(0, 2));
+            assert("a,b"@.subrange(0, 2) =~= seq[0]@.subrange(0, 2));
+            assert(seq[0]@ =~= "a,"@);
+
+            assert_by_contradiction!(seq.len() == 2, {
+                assert(seq.len() >= 3);
+
+                seq.lemma_fold_left_split(
+                    Seq::<char>::empty(),
+                    |sum: Seq<char>, ss: &str| sum + ss@,
+                    2,
+                );
+                assert(seq.subrange(0, 2).len() == 2);
+                assert(seq.subrange(0, 2)[0] == seq[0]);
+                assert(seq.subrange(0, 2)[1] == seq[1]);
+                assert(seq.subrange(0, 2).fold_left(
+                    Seq::<char>::empty(),
+                    |sum: Seq<char>, ss: &str| sum + ss@
+                ) =~= seq[0]@ + seq[1]@) by {
+                    reveal_with_fuel(Seq::<_>::fold_left, 4);
+                }
+
+                let ghost tail2 = seq.subrange(2, seq.len() as int);
+                let ghost init2 = seq[0]@ + seq[1]@;
+                assert(tail2.fold_left(
+                    init2,
+                    |sum: Seq<char>, ss: &str| sum + ss@
+                ) =~= seq.fold_left(
+                    Seq::<char>::empty(),
+                    |sum: Seq<char>, ss: &str| sum + ss@
+                ));
+                assert(tail2.fold_left(
+                    init2,
+                    |sum: Seq<char>, ss: &str| sum + ss@
+                ) =~= s@);
+                assert(","@.is_suffix_of(seq[1]@));
+
+                assert_by_contradiction!(seq[1]@.len() > 1, {
+                    assert(seq[1]@.len() <= 1);
+                    lemma_concat_fold_left_keeps_prefix(tail2, init2, 3);
+                    assert("a,b"@.subrange(0, 3) =~=
+                        tail2.fold_left(init2, |sum: Seq<char>, ss: &str| sum + ss@).subrange(0, 3));
+                    assert(tail2.fold_left(
+                        init2,
+                        |sum: Seq<char>, ss: &str| sum + ss@
+                    ).subrange(0, 3) =~= init2.subrange(0, 3));
+                    assert("a,b"@.subrange(0, 3) =~= init2.subrange(0, 3));
+                    assert("a,b"@.subrange(0, 3)[2] == "a,b"@[2]);
+                    assert(init2.subrange(0, 3)[2] == init2[2]);
+                    assert(init2[2] == ',');
+                });
+
+                assert(init2.len() == seq[0]@.len() + seq[1]@.len());
+                assert(seq[0]@.len() == 2);
+                assert(init2.len() > 3);
+                lemma_concat_fold_left_len_ge_init(tail2, init2);
+                assert(tail2.fold_left(
+                    init2,
+                    |sum: Seq<char>, ss: &str| sum + ss@
+                ).len() >= init2.len());
+                assert("a,b"@.len() == 3);
+            });
+
+            assert(seq.len() == 2);
+            assert(seq.fold_left(
+                Seq::<char>::empty(),
+                |sum: Seq<char>, ss: &str| sum + ss@
+            ) =~= seq[0]@ + seq[1]@) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 4);
+            }
+            assert("a,b"@ =~= seq[0]@ + seq[1]@);
+            assert(seq[1]@ =~= "b"@) by {
+                assert("a,b"@.subrange(2, 3) =~= "b"@);
+            }
+        }
+
+        match it.next() {
+            Some(part) => {
+                assert(part == seq[0]);
+                assert(part@ =~= "a,"@);
+                assert(it@.0 == 1);
+            }
+            None => { assert(false); }
+        }
+
+        match it.next() {
+            Some(part) => {
+                assert(part == seq[1]);
+                assert(part@ =~= "b"@);
+                assert(it@.0 == 2);
+            }
+            None => { assert(false); }
+        }
+
+        match it.next() {
+            Some(_) => { assert(false); }
+            None => {
+                assert(it@.0 == seq.len());
+                assert(it@.1 == seq);
+                assert(seq.len() == 2);
+            }
+        }
+    }
+
+    fn test_match_indices() {
+        broadcast use crate::str::group_str_view;
+        proof {
+            reveal_strlit("ababa");
+            reveal_strlit("aba");
+        }
+
+        let s = "ababa";
+        let mut it = str_match_indices(s, "aba");
+        let ghost seq = it@.1;
+        let ghost plen = "aba"@.as_bytes().len() as int;
+        let ghost indices = seq.map(|_i: int, p: (usize, &str)| p.0 as int);
+        let ghost ends = indices.map(|_i: int, idx: int| idx + plen);
+        let ghost mismatches =
+            (seq![0int] + ends).zip_with(indices + seq![(s@.as_bytes().len() - plen + 1) as int]);
+
+        assert("ababa"@.as_bytes().len() == 5);
+        assert("aba"@.as_bytes().len() == 3);
+        assert(s@.as_bytes().subrange(0, 0 + plen) =~= "aba"@.as_bytes());
+        assert(s@.as_bytes().subrange(2, 2 + plen) =~= "aba"@.as_bytes());
+
+        proof {
+            assert_by_contradiction!(seq.len() > 0, {
+                assert(seq.len() == 0);
+                assert(indices.len() == 0);
+                assert(ends.len() == 0);
+                assert((seq![0int] + ends).len() == 1);
+                assert((indices + seq![(s@.as_bytes().len() - plen + 1) as int]).len() == 1);
+                assert(mismatches.len() == 1);
+                assert((seq![0int] + ends)[0] == 0);
+                assert((indices + seq![(s@.as_bytes().len() - plen + 1) as int])[0] == 3);
+                assert(mismatches[0].0 == 0);
+                assert(mismatches[0].1 == 3);
+                assert(!(s@.as_bytes().subrange(0, 0 + plen) =~= "aba"@.as_bytes()));
+            });
+
+            assert((seq![0int] + ends)[0] == 0);
+            assert((indices + seq![(s@.as_bytes().len() - plen + 1) as int])[0] == indices[0]);
+            assert(mismatches[0].0 == 0);
+            assert(mismatches[0].1 == indices[0]);
+            assert_by_contradiction!(indices[0] == 0, {
+                assert(0 < indices[0]);
+                assert(mismatches[0].0 <= 0 < mismatches[0].1);
+                assert(!(s@.as_bytes().subrange(0, 0 + plen) =~= "aba"@.as_bytes()));
+            });
+            assert(seq[0].0 == 0usize);
+            assert(seq[0].1@ =~= "aba"@);
+
+            assert_by_contradiction!(seq.len() == 1, {
+                assert(seq.len() >= 2);
+                assert(indices[0] + plen <= indices[1]);
+                assert(indices[0] == 0);
+                assert(3 <= indices[1]);
+                assert(indices[1] + plen <= s@.as_bytes().len());
+                assert(indices[1] <= 2);
+            });
+        }
+
+        match it.next() {
+            Some((idx, part)) => {
+                assert((idx, part) == seq[0]);
+                assert(idx == 0usize);
+                assert(part@ =~= "aba"@);
+                assert(it@.0 == 1);
+            }
+            None => { assert(false); }
+        }
+
+        match it.next() {
+            Some(_) => { assert(false); }
+            None => {
+                assert(it@.0 == seq.len());
+                assert(it@.1 == seq);
+                assert(seq.len() == 1);
+            }
         }
     }
 
@@ -357,6 +1259,147 @@ mod tests {
         }
 
         assert(none.is_none());
+    }
+
+    fn test_split() {
+        broadcast use crate::str::group_str_view;
+        proof {
+            reveal_strlit("aa,b");
+            reveal_strlit(",");
+            reveal_strlit("aa");
+            reveal_strlit("aa,,");
+            reveal_strlit("b");
+        }
+
+        assert("aa,b"@.len() == 4);
+        assert(","@.len() == 1);
+        assert(2 + ","@.len() == 3);
+        assert("aa,b"@.subrange(2, 3) =~= ","@) by {
+            assert("aa,b"@[2] == ',');
+            assert(","@[0] == ',');
+        }
+
+        let mut it = str_split("aa,b", ",");
+        let ghost seq = it@.1;
+
+        proof {
+            assert_by_contradiction!(seq.len() >= 2, {
+                assert(seq.len() == 1);
+                assert(seq.last()@.subrange(2, 3) =~= ","@);
+            });
+
+            assert(seq.drop_first().subrange(0, 1).fold_left(
+                seq.first()@,
+                |sum: Seq<char>, ss: &str| sum + ","@ + ss@
+            ) =~= seq[0]@ + ","@ + seq[1]@) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 3);
+            }
+
+            let ghost tail = seq.drop_first().subrange(1, seq.drop_first().len() as int);
+            let ghost init = seq[0]@ + ","@ + seq[1]@;
+
+            assert_by_contradiction!(seq[0]@.len() <= 2, {
+                lemma_fold_left_keeps_prefix(tail, init, ","@, 3);
+                assert(init.subrange(0, 3)[2] == init[2]);
+                assert(init.subrange(2, 3) =~= ","@) by {
+                    assert(init[2] == ',');
+                    assert(","@[0] == ',');
+                }
+                assert(init.subrange(2, 3) =~= (seq[0]@ + ","@).subrange(2, 3));
+                assert(!((seq[0]@ + ","@).subrange(2, 3) =~= ","@)) by {
+                    assert(seq[0]@.len() > 2);
+                }
+            });
+
+            assert_by_contradiction!(seq[0]@.len() > 1, {
+                let i = seq[0]@.len() as int;
+                lemma_fold_left_keeps_prefix(tail, init, ","@, i + 1);
+                assert(init.subrange(0, i + 1)[i] == init[i]);
+                assert(init[i] == "aa,b"@[i]);
+                assert("aa,b"@[i] != ',') by {
+                    assert(0 <= i <= 1);
+                }
+            });
+            assert(seq[0]@.len() == 2);
+
+            lemma_fold_left_keeps_prefix(tail, init, ","@, 2);
+            assert(init.subrange(0, 2) =~= seq[0]@);
+            assert(seq[0]@ =~= "aa"@);
+
+            assert_by_contradiction!(seq[1]@.len() > 0, {
+                assert(tail.subrange(0, 1).fold_left(
+                    init,
+                    |sum: Seq<char>, ss: &str| sum + ","@ + ss@
+                ) =~= init + ","@ + tail[0]@) by {
+                    reveal_with_fuel(Seq::<_>::fold_left, 3);
+                }
+                let ghost init = init + ","@ + tail[0]@;
+                let ghost tail = tail.subrange(1, tail.len() as int);
+                lemma_fold_left_keeps_prefix(tail, init, ","@, 4);
+                assert("aa,b"@.subrange(0, 4)[3] == "aa,,"@[3]);
+            });
+
+            lemma_fold_left_keeps_prefix(tail, init, ","@, 4);
+            assert("aa,b"@.subrange(0, 4) =~=
+                tail.fold_left(init, |sum: Seq<char>, ss: &str| sum + ","@ + ss@).subrange(0, 4));
+            assert(tail.fold_left(
+                init,
+                |sum: Seq<char>, ss: &str| sum + ","@ + ss@
+            ).subrange(0, 4) =~= init.subrange(0, 4));
+            assert(init.subrange(0, 4) =~= "aa,b"@.subrange(0, 4));
+            assert(init.subrange(0, 4)[3] == init[3]);
+            assert(init[3] == seq[1]@[0]);
+            assert(seq[1]@[0] == 'b');
+            assert(seq[1]@.subrange(0, 1) =~= "b"@);
+
+            assert_by_contradiction!(seq[1]@.len() <= 1, {
+                lemma_fold_left_len_ge_init(tail, init, ","@);
+            });
+
+            assert_by_contradiction!(seq.len() == 2, {
+                seq.drop_first().lemma_fold_left_split(
+                    seq.first()@,
+                    |sum: Seq<char>, ss: &str| sum + ","@ + ss@,
+                    2,
+                );
+                assert(seq.drop_first().subrange(0, 2).fold_left(
+                    seq.first()@,
+                    |sum: Seq<char>, ss: &str| sum + ","@ + ss@
+                ) =~= seq[0]@ + ","@ + seq[1]@ + ","@ + seq[2]@) by {
+                    reveal_with_fuel(Seq::<_>::fold_left, 4);
+                }
+                let ghost init2 = seq[0]@ + ","@ + seq[1]@ + ","@ + seq[2]@;
+                let ghost tail2 = seq.drop_first().subrange(2, seq.drop_first().len() as int);
+                lemma_fold_left_len_ge_init(tail2, init2, ","@);
+            });
+        }
+
+        match it.next() {
+            Some(part) => {
+                assert(part == seq[0]);
+                assert(part@ =~= "aa"@);
+                assert(it@.0 == 1);
+            }
+            None => { assert(false); }
+        }
+
+        match it.next() {
+            Some(part) => {
+                assert(part == seq[1]);
+                assert(part@ =~= "b"@);
+                assert(it@.0 == 2);
+            }
+            None => { assert(false); }
+        }
+
+        match it.next() {
+            Some(_) => { assert(false); }
+            None => {
+                assert(it@.0 == seq.len());
+                assert(it@.1 == seq);
+                assert(seq.len() == 2);
+            }
+        }
     }
 
     fn test_splitn() {
@@ -432,6 +1475,669 @@ mod tests {
             None => {
                 assert(it@.0 == seq.len());
                 assert(it@.1 == seq);
+            }
+        }
+    }
+
+    proof fn lemma_split_terminator_singleton_when_joined_is_a<'a>(
+        seq: Seq<&'a str>,
+        joined: Seq<char>,
+    )
+        requires
+            seq.len() > 0,
+            joined =~= seq.drop_first().fold_left(
+                seq.first()@,
+                |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@
+            ),
+            joined.len() == 1,
+            joined[0] == 'a',
+        ensures
+            seq.len() == 1,
+            seq[0]@ =~= "a"@,
+    {
+        reveal_strlit("a");
+        reveal_strlit(",");
+
+        assert_by_contradiction!(seq[0]@.len() > 0, {
+            assert(seq[0]@.len() == 0);
+            if seq.len() == 1 {
+                assert(seq[0] == seq.first());
+                assert(seq[0] == seq.last());
+                assert(seq.drop_first().len() == 0);
+                assert(joined =~= seq[0]@) by {
+                    reveal_with_fuel(Seq::<_>::fold_left, 2);
+                }
+                assert(joined.len() == 0);
+            } else {
+                assert(seq.len() >= 2);
+                seq.drop_first().lemma_fold_left_split(
+                    seq.first()@,
+                    |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@,
+                    1,
+                );
+                assert(seq.drop_first().subrange(0, 1).fold_left(
+                    seq.first()@,
+                    |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@
+                ) =~= seq[0]@ + ","@ + seq[1]@) by {
+                    reveal_with_fuel(Seq::<_>::fold_left, 3);
+                }
+                let ghost tail = seq.drop_first().subrange(1, seq.drop_first().len() as int);
+                assert(tail.fold_left(
+                    seq[0]@ + ","@ + seq[1]@,
+                    |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@
+                ) =~= joined);
+                lemma_fold_left_keeps_prefix(tail, seq[0]@ + ","@ + seq[1]@, ","@, 1);
+                assert(joined.subrange(0, 1) =~= (seq[0]@ + ","@ + seq[1]@).subrange(0, 1));
+                assert((seq[0]@ + ","@ + seq[1]@).subrange(0, 1)[0] == (seq[0]@ + ","@ + seq[1]@)[0]);
+                assert((seq[0]@ + ","@ + seq[1]@)[0] == ',');
+                assert(joined[0] == ',');
+                assert(false);
+            }
+        });
+
+        assert_by_contradiction!(seq[0]@.len() <= 1, {
+            assert(seq[0]@.len() > 1);
+            if seq.len() == 1 {
+                assert(seq[0] == seq.first());
+                assert(seq[0] == seq.last());
+                assert(seq.drop_first().len() == 0);
+                assert(joined =~= seq[0]@) by {
+                    reveal_with_fuel(Seq::<_>::fold_left, 2);
+                }
+                assert(joined.len() == seq[0]@.len());
+                assert(false);
+            } else {
+                assert(seq.len() >= 2);
+                seq.drop_first().lemma_fold_left_split(
+                    seq.first()@,
+                    |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@,
+                    1,
+                );
+                assert(seq.drop_first().subrange(0, 1).fold_left(
+                    seq.first()@,
+                    |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@
+                ) =~= seq[0]@ + ","@ + seq[1]@) by {
+                    reveal_with_fuel(Seq::<_>::fold_left, 3);
+                }
+                let ghost tail = seq.drop_first().subrange(1, seq.drop_first().len() as int);
+                let ghost init = seq[0]@ + ","@ + seq[1]@;
+                assert(tail.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@) =~= joined);
+                lemma_fold_left_len_ge_init(tail, init, ","@);
+                assert(joined.len() >= init.len());
+                assert(init.len() == seq[0]@.len() + ","@.len() + seq[1]@.len());
+                assert(","@.len() == 1);
+                assert(init.len() > 1);
+                assert(false);
+            }
+        });
+
+        assert(seq[0]@.len() == 1);
+        if seq.len() == 1 {
+            assert(seq[0] == seq.first());
+            assert(seq[0] == seq.last());
+            assert(seq.drop_first().len() == 0);
+            assert(joined =~= seq[0]@) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 2);
+            }
+            assert(seq[0]@[0] == joined[0]);
+        } else {
+            assert(seq.len() >= 2);
+            seq.drop_first().lemma_fold_left_split(
+                seq.first()@,
+                |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@,
+                1,
+            );
+            assert(seq.drop_first().subrange(0, 1).fold_left(
+                seq.first()@,
+                |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@
+            ) =~= seq[0]@ + ","@ + seq[1]@) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 3);
+            }
+            let ghost tail = seq.drop_first().subrange(1, seq.drop_first().len() as int);
+            assert(tail.fold_left(
+                seq[0]@ + ","@ + seq[1]@,
+                |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@
+            ) =~= joined);
+            lemma_fold_left_keeps_prefix(tail, seq[0]@ + ","@ + seq[1]@, ","@, 1);
+            assert(joined.subrange(0, 1) =~= (seq[0]@ + ","@ + seq[1]@).subrange(0, 1));
+            assert((seq[0]@ + ","@ + seq[1]@).subrange(0, 1)[0] ==
+                (seq[0]@ + ","@ + seq[1]@)[0]);
+            assert(seq[0]@.subrange(0, 1)[0] == seq[0]@[0]);
+            assert((seq[0]@ + ","@ + seq[1]@)[0] == seq[0]@[0]);
+        }
+        assert(seq[0]@[0] == 'a');
+        assert(seq[0]@ =~= "a"@);
+
+        assert_by_contradiction!(seq.len() == 1, {
+            assert(seq.len() >= 2);
+            seq.drop_first().lemma_fold_left_split(
+                seq.first()@,
+                |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@,
+                1,
+            );
+            assert(seq.drop_first().subrange(0, 1).fold_left(
+                seq.first()@,
+                |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@
+            ) =~= seq[0]@ + ","@ + seq[1]@) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 3);
+            }
+            let ghost tail = seq.drop_first().subrange(1, seq.drop_first().len() as int);
+            let ghost init = seq[0]@ + ","@ + seq[1]@;
+            assert(tail.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@) =~= joined);
+            lemma_fold_left_len_ge_init(tail, init, ","@);
+            assert(joined.len() >= init.len());
+            assert(init.len() == seq[0]@.len() + ","@.len() + seq[1]@.len());
+            assert(seq[0]@.len() == 1);
+            assert(","@.len() == 1);
+            assert(init.len() >= 2);
+            assert(false);
+        });
+    }
+
+    proof fn lemma_split_terminator_a_comma_comma<'a>(seq: Seq<&'a str>)
+        requires
+            seq.len() > 0,
+            forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() - 1 ==>
+                forall |j: int| #![trigger (seq[i]@ + ","@).subrange(j, j + ","@.len())]
+                    0 <= j < seq[i]@.len() ==>
+                    !((seq[i]@ + ","@).subrange(j, j + ","@.len()) =~= ","@),
+            forall |j: int| #![trigger seq.last()@.subrange(j, j + ","@.len())]
+                0 <= j <= seq.last()@.len() - ","@.len() ==>
+                !(seq.last()@.subrange(j, j + ","@.len()) =~= ","@),
+            (
+                (
+                    seq.last()@.len() > 0
+                    && "a,,"@ =~= seq.drop_first().fold_left(
+                        seq.first()@,
+                        |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@
+                    )
+                )
+                ||
+                "a,,"@ =~= seq.drop_first().fold_left(
+                    seq.first()@,
+                    |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@
+                ) + ","@
+            ),
+        ensures
+            seq.len() == 2,
+            seq[0]@ =~= "a"@,
+            seq[1]@ =~= ""@,
+    {
+        reveal_strlit("a,,");
+        reveal_strlit("a,");
+        reveal_strlit("a");
+        reveal_strlit(",");
+        reveal_strlit("");
+
+        let ghost joined = seq.drop_first().fold_left(
+            seq.first()@,
+            |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@
+        );
+
+        assert_by_contradiction!(seq.last()@.len() == 0 || !("a,,"@ =~= joined), {
+            if seq.len() == 1 {
+                assert(joined =~= seq[0]@) by {
+                    reveal_with_fuel(Seq::<_>::fold_left, 2);
+                }
+                assert(seq.last()@.len() == joined.len());
+                assert(joined.len() == "a,,"@.len());
+                assert(seq.last()@.subrange(1, 2) =~= ","@) by {
+                    assert(seq.last()@[1] == joined[1]);
+                }
+                assert(0 <= 1 <= seq.last()@.len() - ","@.len());
+                assert(!(seq.last()@.subrange(1, 2) =~= ","@));
+                assert(false);
+            } else {
+                assert(seq.len() >= 2);
+                seq.drop_first().lemma_fold_left_split(
+                    seq.first()@,
+                    |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@,
+                    1,
+                );
+                assert(seq.drop_first().subrange(0, 1).fold_left(
+                    seq.first()@,
+                    |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@
+                ) =~= seq[0]@ + ","@ + seq[1]@) by {
+                    reveal_with_fuel(Seq::<_>::fold_left, 3);
+                }
+                let ghost tail = seq.drop_first().subrange(1, seq.drop_first().len() as int);
+                let ghost init = seq[0]@ + ","@ + seq[1]@;
+                assert(tail.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@) =~= joined);
+                assert_by_contradiction!(seq[0]@.len() > 0, {
+                    assert(seq[0]@.len() == 0);
+                    lemma_fold_left_keeps_prefix(tail, init, ","@, 1);
+                    assert(init.subrange(0, 1)[0] == init[0]);
+                    assert(init[0] == ',') by { assert(seq[0]@.len() == 0); };
+                    assert(joined[0] == 'a');
+                    assert(false);
+                });
+                assert_by_contradiction!(seq[0]@.len() <= 1, {
+                    assert(seq[0]@.len() > 1);
+                    lemma_fold_left_keeps_prefix(tail, init, ","@, 2);
+                    assert(joined.subrange(0, 2) =~= init.subrange(0, 2));
+                    assert(init.subrange(1, 2) =~= (seq[0]@ + ","@).subrange(1, 2));
+                    assert(init.subrange(1, 2) =~= ","@) by {
+                        assert(init.subrange(0, 2)[1] == joined.subrange(0, 2)[1]);
+                        assert(joined.subrange(0, 2)[1] == joined[1]);
+                        assert(joined[1] == ',');
+                        assert(","@[0] == ',');
+                    }
+                    assert(forall |j: int| #![trigger (seq[0]@ + ","@).subrange(j, j + ","@.len())]
+                        0 <= j < seq[0]@.len() ==> !((seq[0]@ + ","@).subrange(j, j + ","@.len()) =~= ","@)
+                    );
+                    assert(false);
+                });
+                assert(seq[0]@.len() == 1);
+                lemma_fold_left_len_ge_init(tail, init, ","@);
+                assert(joined.len() >= init.len());
+                assert(init.len() == seq[0]@.len() + ","@.len() + seq[1]@.len());
+                assert(seq[1]@.len() <= 1);
+                if tail.len() == 0 {
+                    assert(seq.len() == 2);
+                    assert(seq.last()@[0] == joined[2]);
+                    assert(joined[2] == "a,,"@[2]);
+                    assert(seq.last()@[0] == ',');
+                    assert(seq.last()@.subrange(0, 1) =~= ","@);
+                    assert(false);
+                } else {
+                    assert(tail.subrange(0, 1).fold_left(
+                        init,
+                        |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@
+                    ) =~= init + ","@ + tail[0]@) by {
+                        reveal_with_fuel(Seq::<_>::fold_left, 3);
+                    }
+                    if seq[1]@.len() == 1 {
+                        assert(init.len() == 3);
+                        assert((init + ","@ + tail[0]@).len() > init.len());
+                        lemma_fold_left_len_ge_init(
+                            tail.drop_first(),
+                            init + ","@ + tail[0]@,
+                            ","@,
+                        );
+                        assert(tail.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@).len()
+                            >= (init + ","@ + tail[0]@).len());
+                        assert(tail.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@).len() > 3);
+                        assert(false);
+                    } else {
+                        assert(seq[1]@.len() == 0);
+                        assert(init.len() == 2);
+                        assert_by_contradiction!(tail.len() == 1, {
+                            assert(tail.len() > 1);
+                            let ghost tail2 = tail.drop_first();
+                            assert(tail2.subrange(0, 1).fold_left(
+                                init + ","@ + tail[0]@,
+                                |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@
+                            ) =~= init + ","@ + tail[0]@ + ","@ + tail2[0]@) by {
+                                reveal_with_fuel(Seq::<_>::fold_left, 3);
+                            }
+                            lemma_fold_left_len_ge_init(
+                                tail2.drop_first(),
+                                init + ","@ + tail[0]@ + ","@ + tail2[0]@,
+                                ","@,
+                            );
+                            assert(tail.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@).len()
+                                >= (init + ","@ + tail[0]@ + ","@ + tail2[0]@).len());
+                            assert((init + ","@ + tail[0]@ + ","@ + tail2[0]@).len() > 3);
+                            assert(false);
+                        });
+                        assert(tail[0] == seq.last());
+                        assert((init + ","@ + tail[0]@).len() == joined.len());
+                        assert(tail[0]@.len() == 0);
+                        assert(seq.last()@.len() > 0);
+                        assert(false);
+                    }
+                }
+            }
+        });
+
+        assert_by_contradiction!("a,,"@ =~= joined + ","@, {
+            assert(!("a,,"@ =~= joined + ","@));
+            assert(!(seq.last()@.len() > 0 && "a,,"@ =~= joined));
+            assert(!((seq.last()@.len() > 0 && "a,,"@ =~= joined) || "a,,"@ =~= joined + ","@));
+        });
+
+        assert("a,,"@.len() == (joined + ","@).len());
+        assert((joined + ","@).len() == joined.len() + ","@.len());
+        assert("a,,"@.len() == 3);
+        assert(","@.len() == 1);
+        assert(joined.len() == 2);
+        assert(joined[0] == 'a') by {
+            assert((joined + ","@)[0] == joined[0]);
+            assert("a,,"@[0] == (joined + ","@)[0]);
+        }
+        assert(joined[1] == ',') by {
+            assert((joined + ","@)[1] == joined[1]);
+            assert("a,,"@[1] == (joined + ","@)[1]);
+        }
+        assert(joined.subrange(0, 2) =~= "a,"@) by {
+            assert(joined.subrange(0, 2)[0] == joined[0]);
+            assert(joined.subrange(0, 2)[1] == joined[1]);
+            assert("a,"@[0] == 'a');
+            assert("a,"@[1] == ',');
+        }
+
+        assert_by_contradiction!(seq.len() >= 2, {
+            assert(seq.len() == 1);
+            assert(seq[0] == seq.first());
+            assert(seq[0] == seq.last());
+            assert(seq.drop_first().len() == 0);
+            assert(joined =~= seq[0]@) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 2);
+            }
+            assert(seq.last()@.len() == joined.len());
+            assert(joined.len() == 2);
+            assert(seq.last()@.subrange(1, 2) =~= ","@) by {
+                assert(seq.last()@[1] == joined[1]);
+                assert(joined.subrange(0, 2) =~= "a,"@);
+                assert("a,"@[1] == ',');
+                assert(","@[0] == ',');
+            }
+            assert(forall |j: int| #![trigger seq.last()@.subrange(j, j + ","@.len())]
+                0 <= j <= seq.last()@.len() - ","@.len() ==> !(seq.last()@.subrange(j, j + ","@.len()) =~= ","@)
+            ) by {}
+            assert(!(seq.last()@.subrange(1, 2) =~= ","@)) by {
+                assert(0 <= 1 <= seq.last()@.len() - ","@.len());
+            }
+            assert(false);
+        });
+
+        seq.drop_first().lemma_fold_left_split(
+            seq.first()@,
+            |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@,
+            1,
+        );
+        assert(seq.drop_first().subrange(0, 1).fold_left(
+            seq.first()@,
+            |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@
+        ) =~= seq[0]@ + ","@ + seq[1]@) by {
+            reveal_with_fuel(Seq::<_>::fold_left, 3);
+        }
+
+        let ghost tail = seq.drop_first().subrange(1, seq.drop_first().len() as int);
+        let ghost init = seq[0]@ + ","@ + seq[1]@;
+        assert(tail.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@) =~= joined);
+
+        assert_by_contradiction!(seq[0]@.len() > 0, {
+            assert(seq[0]@.len() == 0);
+            lemma_fold_left_keeps_prefix(tail, init, ","@, 1);
+            assert(joined.subrange(0, 1) =~= init.subrange(0, 1));
+            assert("a,"@.subrange(0, 1) =~= joined.subrange(0, 1));
+            assert(init.subrange(0, 1)[0] == init[0]);
+            assert(init[0] == ',');
+            assert(false);
+        });
+
+        assert_by_contradiction!(seq[0]@.len() <= 1, {
+            assert(seq[0]@.len() > 1);
+            lemma_fold_left_keeps_prefix(tail, init, ","@, 2);
+            assert(joined.subrange(0, 2) =~= init.subrange(0, 2));
+            assert("a,"@.subrange(0, 2) =~= joined.subrange(0, 2));
+            assert(init.subrange(1, 2) =~= (seq[0]@ + ","@).subrange(1, 2));
+            assert(init.subrange(1, 2) =~= ","@) by {
+                assert(init.subrange(0, 2)[1] == init.subrange(0, 2)[1]);
+                assert(init.subrange(0, 2)[1] == "a,"@.subrange(0, 2)[1]);
+                assert("a,"@.subrange(0, 2)[1] == "a,"@[1]);
+                assert(init.subrange(1, 2)[0] == init[1]);
+                assert(init[1] == ',');
+                assert(","@[0] == ',');
+            }
+            assert(!((seq[0]@ + ","@).subrange(1, 2) =~= ","@)) by {
+                assert(0 <= 1 < seq[0]@.len());
+            }
+            assert(false);
+        });
+
+        assert(seq[0]@.len() == 1);
+        lemma_fold_left_keeps_prefix(tail, init, ","@, 1);
+        assert(joined.subrange(0, 1) =~= init.subrange(0, 1));
+        assert("a,"@.subrange(0, 1) =~= joined.subrange(0, 1));
+        assert(init.subrange(0, 1) =~= seq[0]@.subrange(0, 1)) by {
+            assert(init.subrange(0, 1)[0] == init[0]);
+            assert(init[0] == seq[0]@[0]);
+            assert(seq[0]@.subrange(0, 1)[0] == seq[0]@[0]);
+        }
+        assert(seq[0]@[0] == 'a') by {
+            assert("a,"@.subrange(0, 1)[0] == "a,"@[0]);
+            assert(joined.subrange(0, 1)[0] == joined[0]);
+            assert(seq[0]@.subrange(0, 1)[0] == seq[0]@[0]);
+        }
+        assert(seq[0]@ =~= "a"@);
+
+        lemma_fold_left_len_ge_init(tail, init, ","@);
+        assert(joined.len() >= init.len());
+        assert(init.len() == seq[0]@.len() + ","@.len() + seq[1]@.len());
+        assert(seq[1]@.len() == 0);
+
+        if tail.len() == 0 {
+            assert(seq.len() == 2);
+        } else {
+            assert(tail.subrange(0, 1).fold_left(
+                init,
+                |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@
+            ) =~= init + ","@ + tail[0]@) by {
+                reveal_with_fuel(Seq::<_>::fold_left, 3);
+            }
+            let ghost tail2 = tail.subrange(1, tail.len() as int);
+            lemma_fold_left_len_ge_init(
+                tail2,
+                init + ","@ + tail[0]@,
+                ","@,
+            );
+            assert(tail.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@).len()
+                >= (init + ","@ + tail[0]@).len());
+            assert((init + ","@ + tail[0]@).len() > init.len());
+            assert(tail.fold_left(init, |sum: Seq<char>, ss: &'a str| sum + ","@ + ss@).len() > 2);
+            assert(joined.len() > 2);
+            assert(false);
+        }
+
+        assert(seq.len() == 2);
+        assert(seq[1] == seq.last());
+        assert(seq[1]@.len() == 0);
+        assert(seq[1]@ =~= ""@);
+    }
+
+    fn test_split_terminator() {
+        broadcast use crate::str::group_str_view;
+        proof {
+            reveal_strlit("a");
+            reveal_strlit("a,");
+            reveal_strlit("a,,");
+            reveal_strlit(",");
+            reveal_strlit("");
+        }
+
+        assert("a"@.len() == 1);
+        assert(","@.len() == 1);
+
+        let mut it = str_split_terminator("a", ",");
+        let ghost seq = it@.1;
+
+        proof {
+            assert_by_contradiction!(seq.len() > 0, {
+                assert(seq.len() == 0);
+                assert("a"@.len() == 0);
+            });
+
+            let ghost joined = seq.drop_first().fold_left(
+                seq.first()@,
+                |sum: Seq<char>, ss: &str| sum + ","@ + ss@
+            );
+
+            assert_by_contradiction!(!("a"@ =~= joined + ","@), {
+                assert("a"@ =~= joined + ","@);
+                assert("a"@.len() == (joined + ","@).len());
+                assert((joined + ","@).len() == joined.len() + ","@.len());
+                assert(joined.len() == 0);
+                assert((joined + ","@)[0] == ","@[0]) by {
+                    assert(joined.len() == 0);
+                }
+                assert("a"@[0] == (joined + ","@)[0]);
+                assert(","@[0] == ',');
+            });
+            assert(joined.len() == 1);
+            assert(joined[0] == 'a') by {
+                assert("a"@[0] == joined[0]);
+            }
+            lemma_split_terminator_singleton_when_joined_is_a(seq, joined);
+        }
+
+        match it.next() {
+            Some(part) => {
+                assert(part == seq[0]);
+                assert(part@ =~= "a"@);
+                assert(it@.0 == 1);
+            }
+            None => { assert(false); }
+        }
+
+        match it.next() {
+            Some(_) => { assert(false); }
+            None => {
+                assert(it@.0 == seq.len());
+                assert(it@.1 == seq);
+                assert(seq.len() == 1);
+            }
+        }
+
+        assert("a,"@.len() == 2);
+        assert("a,"@.subrange(1, 2) =~= ","@) by {
+            assert("a,"@[1] == ',');
+            assert(","@[0] == ',');
+        }
+
+        let mut it = str_split_terminator("a,", ",");
+        let ghost seq = it@.1;
+
+        proof {
+            assert_by_contradiction!(seq.len() > 0, {
+                assert(seq.len() == 0);
+                assert("a,"@.len() == 0);
+            });
+
+            let ghost joined = seq.drop_first().fold_left(
+                seq.first()@,
+                |sum: Seq<char>, ss: &str| sum + ","@ + ss@
+            );
+
+            assert_by_contradiction!(seq.last()@.len() == 0 || !("a,"@ =~= joined), {
+                if seq.len() == 1 {
+                    assert(joined =~= seq[0]@) by {
+                        reveal_with_fuel(Seq::<_>::fold_left, 2);
+                    }
+                    assert(seq.last()@.len() == joined.len());
+                    assert(joined.len() == "a,"@.len());
+                    assert("a,"@.subrange(1, 1 + ","@.len() as int) =~= ","@) by {
+                        assert(seq.last()@[1] == joined[1]);
+                    }
+                    assert(forall |j: int| #![trigger seq.last()@.subrange(j, j + ","@.len())]
+                        0 <= j <= seq.last()@.len() - ","@.len() ==> !(seq.last()@.subrange(j, j + ","@.len()) =~= ","@)
+                    );
+                } else {
+                    assert(seq.drop_first().subrange(0, 1).fold_left(
+                        seq.first()@,
+                        |sum: Seq<char>, ss: &str| sum + ","@ + ss@
+                    ) =~= seq[0]@ + ","@ + seq[1]@) by {
+                        reveal_with_fuel(Seq::<_>::fold_left, 3);
+                    }
+                    let ghost tail = seq.drop_first().subrange(1, seq.drop_first().len() as int);
+                    let ghost init = seq[0]@ + ","@ + seq[1]@;
+                    assert_by_contradiction!(seq[0]@.len() > 0, {
+                        lemma_fold_left_keeps_prefix(tail, init, ","@, 1);
+                        assert(init.subrange(0, 1)[0] == init[0]);
+                        assert(init[0] == ',') by { assert(seq[0]@.len() == 0); };
+                        assert(joined[0] == 'a');
+                    });
+                    assert_by_contradiction!(seq[0]@.len() <= 1, {
+                        lemma_fold_left_keeps_prefix(tail, init, ","@, 2);
+                        assert(init.subrange(1, 2) =~= (seq[0]@ + ","@).subrange(1, 2));
+                        assert((seq[0]@ + ","@)[1] != ',') by { assert(seq[0]@.len() > 1); };
+                        assert(joined[1] == ',');
+                    });
+                    assert(seq[0]@.len() == 1);
+                    lemma_fold_left_len_ge_init(tail, init, ","@);
+                    assert(init.len() == 2) by { assert(init.len() <= joined.len()); };
+                    assert(init.len() == joined.len());
+                    if tail.len() == 0 {
+                        assert(seq.len() == 2);
+                        assert(seq.last()@.len() == 0);
+                    } else {
+                        assert(tail.subrange(0, 1).fold_left(
+                            init,
+                            |sum: Seq<char>, ss: &str| sum + ","@ + ss@
+                        ) =~= init + ","@ + tail[0]@) by {
+                            reveal_with_fuel(Seq::<_>::fold_left, 3);
+                        }
+                        assert((init + ","@ + tail[0]@).len() > init.len());
+                        lemma_fold_left_len_ge_init(tail.drop_first(), init + ","@ + tail[0]@, ","@);
+                    }
+                }
+            });
+
+            assert("a,"@ =~= joined + ","@);
+            assert(joined[0] == 'a') by { assert("a,"@[0] == joined[0]); };
+            lemma_split_terminator_singleton_when_joined_is_a(seq, joined);
+        }
+
+        match it.next() {
+            Some(part) => {
+                assert(part == seq[0]);
+                assert(part@ =~= "a"@);
+                assert(it@.0 == 1);
+            }
+            None => { assert(false); }
+        }
+
+        match it.next() {
+            Some(_) => { assert(false); }
+            None => {
+                assert(it@.0 == seq.len());
+                assert(it@.1 == seq);
+                assert(seq.len() == 1);
+            }
+        }
+
+        assert("a,,"@.len() == 3);
+        assert("a,,"@.subrange(1, 2) =~= ","@) by {
+            assert("a,,"@[1] == ',');
+            assert(","@[0] == ',');
+        }
+        assert("a,,"@.subrange(2, 3) =~= ","@) by {
+            assert("a,,"@[2] == ',');
+            assert(","@[0] == ',');
+        }
+
+        let mut it = str_split_terminator("a,,", ",");
+        let ghost seq = it@.1;
+
+        proof {
+            lemma_split_terminator_a_comma_comma(seq);
+        }
+
+        match it.next() {
+            Some(part) => {
+                assert(part == seq[0]);
+                assert(part@ =~= "a"@);
+                assert(it@.0 == 1);
+            }
+            None => { assert(false); }
+        }
+
+        match it.next() {
+            Some(part) => {
+                assert(part == seq[1]);
+                assert(part@ =~= ""@);
+                assert(it@.0 == 2);
+            }
+            None => { assert(false); }
+        }
+
+        match it.next() {
+            Some(_) => { assert(false); }
+            None => {
+                assert(it@.0 == seq.len());
+                assert(it@.1 == seq);
+                assert(seq.len() == 2);
             }
         }
     }
