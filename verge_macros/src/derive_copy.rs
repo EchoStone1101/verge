@@ -1,6 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::{quote, format_ident};
 use syn::{parse2, Fields, Ident, Item, ItemStruct, ItemEnum};
+use crate::eq_common;
 
 pub fn derive_copy_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let short_name: Ident = match parse2(attr) {
@@ -26,6 +27,11 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
     let attrs = &input.attrs;
     let generics = &input.generics;
     let fields = &input.fields;
+    if eq_common::has_any_ignored(fields) {
+        return syn::Error::new(proc_macro2::Span::call_site(),
+            "derive_copy does not support #[ignored] fields. Copy types must copy all fields.")
+            .to_compile_error();
+    }
     let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let struct_def = match fields {
         Fields::Named(_) => quote! { #(#attrs)* #vis struct #name #generics #where_clause #fields },

@@ -2,7 +2,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, format_ident, ToTokens};
 use syn::{parse2, Fields, Ident, Item, ItemStruct};
 
-use crate::eq_common::*;
+use crate::eq_common::{self, *};
 
 pub fn derive_partial_ord_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let short_name: Ident = match parse2(attr) {
@@ -35,13 +35,13 @@ pub(crate) struct FieldInfo {
 
 fn extract_field_info(fields: &Fields) -> Vec<FieldInfo> {
     match fields {
-        Fields::Named(f) => f.named.iter().map(|field| {
+        Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_ignored(f)).map(|field| {
             let name = field.ident.as_ref().unwrap().to_string();
             let ty = field.ty.to_token_stream().to_string();
             FieldInfo { self_acc: format!("self.{}", name), other_acc: format!("other.{}", name),
                 a_acc: format!("a.{}", name), b_acc: format!("b.{}", name), c_acc: format!("c.{}", name), ty_str: ty }
         }).collect(),
-        Fields::Unnamed(f) => f.unnamed.iter().enumerate().map(|(i, field)| {
+        Fields::Unnamed(f) => f.unnamed.iter().enumerate().filter(|(_, f)| !eq_common::is_field_ignored(f)).map(|(i, field)| {
             let ty = field.ty.to_token_stream().to_string();
             FieldInfo { self_acc: format!("self.{}", i), other_acc: format!("other.{}", i),
                 a_acc: format!("a.{}", i), b_acc: format!("b.{}", i), c_acc: format!("c.{}", i), ty_str: ty }
@@ -57,9 +57,10 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
     let generics = &input.generics;
     let fields = &input.fields;
     let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let stripped = eq_common::strip_ignored_attrs(fields);
     let struct_def = match fields {
-        Fields::Named(_) => quote! { #(#attrs)* #vis struct #name #generics #where_clause #fields },
-        Fields::Unnamed(_) => quote! { #(#attrs)* #vis struct #name #generics #fields #where_clause ; },
+        Fields::Named(_) => quote! { #(#attrs)* #vis struct #name #generics #where_clause #stripped },
+        Fields::Unnamed(_) => quote! { #(#attrs)* #vis struct #name #generics #stripped #where_clause ; },
         Fields::Unit => quote! { #(#attrs)* #vis struct #name #generics #where_clause ; },
     };
     let eq_code = gen_struct_field_code(fields);
@@ -74,23 +75,23 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
     let greater_trans_fn_name = format_ident!("__verge_{}_greater_trans", short_name);
 
     let entries_self: Vec<(TokenStream, TokenStream, &syn::Type)> = match fields {
-        Fields::Named(f) => f.named.iter().map(|field| { let fname = field.ident.as_ref().unwrap(); (quote! { &self.#fname }, quote! { &other.#fname }, &field.ty) }).collect(),
-        Fields::Unnamed(f) => f.unnamed.iter().enumerate().map(|(i, field)| { let idx = syn::Index::from(i); (quote! { &self.#idx }, quote! { &other.#idx }, &field.ty) }).collect(),
+        Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_ignored(f)).map(|field| { let fname = field.ident.as_ref().unwrap(); (quote! { &self.#fname }, quote! { &other.#fname }, &field.ty) }).collect(),
+        Fields::Unnamed(f) => f.unnamed.iter().enumerate().filter(|(_, f)| !eq_common::is_field_ignored(f)).map(|(i, field)| { let idx = syn::Index::from(i); (quote! { &self.#idx }, quote! { &other.#idx }, &field.ty) }).collect(),
         Fields::Unit => vec![],
     };
     let exec_cmp = lexico_exec_cmp(&entries_self);
     let spec_cmp = lexico_spec_cmp(&entries_self);
     let seq_entries: Vec<TokenStream> = match fields {
-        Fields::Named(f) => f.named.iter().map(|field| { let fname = field.ident.as_ref().unwrap(); let ty = &field.ty; quote! { <#ty as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&a.#fname, &b.#fname) } }).collect(),
-        Fields::Unnamed(f) => f.unnamed.iter().enumerate().map(|(i, field)| { let idx = syn::Index::from(i); let ty = &field.ty; quote! { <#ty as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&a.#idx, &b.#idx) } }).collect(),
+        Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_ignored(f)).map(|field| { let fname = field.ident.as_ref().unwrap(); let ty = &field.ty; quote! { <#ty as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&a.#fname, &b.#fname) } }).collect(),
+        Fields::Unnamed(f) => f.unnamed.iter().enumerate().filter(|(_, f)| !eq_common::is_field_ignored(f)).map(|(i, field)| { let idx = syn::Index::from(i); let ty = &field.ty; quote! { <#ty as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&a.#idx, &b.#idx) } }).collect(),
         Fields::Unit => vec![],
     };
 
     let eq_con_calls = build_calls(fields, "lemma_cmp_eq_consistent", "PartialOrdVerified", true);
     let dual_calls = build_calls(fields, "lemma_cmp_dual", "PartialOrdVerified", true);
     let comparable_calls = build_3arg_calls(fields, "lemma_cmp_comparable", "PartialOrdVerified");
-    let less_trans_fn = pub_build_trans_proof_fn(&field_info, &name.to_string(), &seq_fn_name.to_string(), &less_trans_fn_name.to_string(), n, "Less");
-    let greater_trans_fn = pub_build_trans_proof_fn(&field_info, &name.to_string(), &seq_fn_name.to_string(), &greater_trans_fn_name.to_string(), n, "Greater");
+    let less_trans_fn = pub_build_trans_proof_fn(&field_info, &name.to_string(), &seq_fn_name.to_string(), &equiv_lemma_name.to_string(), &less_trans_fn_name.to_string(), n, "Less");
+    let greater_trans_fn = pub_build_trans_proof_fn(&field_info, &name.to_string(), &seq_fn_name.to_string(), &equiv_lemma_name.to_string(), &greater_trans_fn_name.to_string(), n, "Greater");
     let equiv_lemma = pub_build_equiv_lemma(&name.to_string(), &seq_fn_name.to_string(), &equiv_lemma_name.to_string(), &vis.to_token_stream().to_string(), n);
 
     let eq_body = &eq_code.eq_body;
@@ -144,13 +145,13 @@ fn build_calls(fields: &Fields, lemma: &str, trait_name: &str, with_eq_sym: bool
     let lemma_id = Ident::new(lemma, proc_macro2::Span::call_site());
     let trait_id = Ident::new(trait_name, proc_macro2::Span::call_site());
     let calls: Vec<TokenStream> = match fields {
-        Fields::Named(f) => f.named.iter().map(|field| {
+        Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_ignored(f)).map(|field| {
             let fname = field.ident.as_ref().unwrap(); let ty = &field.ty;
             let main = quote! { <#ty as verge::cmp::#trait_id>::#lemma_id(&a.#fname, &b.#fname); };
             if with_eq_sym { quote! { #main <#ty as verge::cmp::PartialEqVerified>::lemma_eq_symmetric(&a.#fname, &b.#fname); } }
             else { main }
         }).collect(),
-        Fields::Unnamed(f) => f.unnamed.iter().enumerate().map(|(i, field)| {
+        Fields::Unnamed(f) => f.unnamed.iter().enumerate().filter(|(_, f)| !eq_common::is_field_ignored(f)).map(|(i, field)| {
             let idx = syn::Index::from(i); let ty = &field.ty;
             let main = quote! { <#ty as verge::cmp::#trait_id>::#lemma_id(&a.#idx, &b.#idx); };
             if with_eq_sym { quote! { #main <#ty as verge::cmp::PartialEqVerified>::lemma_eq_symmetric(&a.#idx, &b.#idx); } }
@@ -165,11 +166,11 @@ fn build_3arg_calls(fields: &Fields, lemma: &str, trait_name: &str) -> TokenStre
     let lemma_id = Ident::new(lemma, proc_macro2::Span::call_site());
     let trait_id = Ident::new(trait_name, proc_macro2::Span::call_site());
     let calls: Vec<TokenStream> = match fields {
-        Fields::Named(f) => f.named.iter().map(|field| {
+        Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_ignored(f)).map(|field| {
             let fname = field.ident.as_ref().unwrap(); let ty = &field.ty;
             quote! { <#ty as verge::cmp::#trait_id>::#lemma_id(&a.#fname, &b.#fname, &c.#fname); }
         }).collect(),
-        Fields::Unnamed(f) => f.unnamed.iter().enumerate().map(|(i, field)| {
+        Fields::Unnamed(f) => f.unnamed.iter().enumerate().filter(|(_, f)| !eq_common::is_field_ignored(f)).map(|(i, field)| {
             let idx = syn::Index::from(i); let ty = &field.ty;
             quote! { <#ty as verge::cmp::#trait_id>::#lemma_id(&a.#idx, &b.#idx, &c.#idx); }
         }).collect(),
@@ -178,7 +179,7 @@ fn build_3arg_calls(fields: &Fields, lemma: &str, trait_name: &str) -> TokenStre
     quote! { #(#calls)* }
 }
 
-pub(crate) fn pub_build_trans_proof_fn(fields: &[FieldInfo], type_name: &str, seq_fn: &str, fn_name: &str, n: usize, dir: &str) -> TokenStream {
+pub(crate) fn pub_build_trans_proof_fn(fields: &[FieldInfo], type_name: &str, seq_fn: &str, equiv_fn: &str, fn_name: &str, n: usize, dir: &str) -> TokenStream {
     if n == 0 { return quote! {}; }
     let dir_lower = dir.to_lowercase();
     let trans_lemma = format!("lemma_cmp_{}_transitive", dir_lower);
@@ -202,6 +203,10 @@ pub(crate) fn pub_build_trans_proof_fn(fields: &[FieldInfo], type_name: &str, se
     lines.push(format!("let s_ab = {seq_fn}(a, b);"));
     lines.push(format!("let s_bc = {seq_fn}(b, c);"));
     lines.push(format!("let s_ac = {seq_fn}(a, c);"));
+    // Call equiv lemma to establish lexico_less(s_ab) and lexico_less(s_bc), which gives the exists witnesses for choose
+    lines.push(format!("{equiv_fn}(a, b);"));
+    lines.push(format!("{equiv_fn}(b, c);"));
+    lines.push(format!("{equiv_fn}(a, c);"));
     let combos = [("Equal", "Equal", "Equal"), (dir, "Equal", dir), ("Equal", dir, dir), (dir, dir, dir)];
     for (ab, bc, ac) in &combos {
         lines.push(format!("assert forall|j: int| 0 <= j < {n} && s_ab[j] == Some(core::cmp::Ordering::{ab}) && s_bc[j] == Some(core::cmp::Ordering::{bc}) implies s_ac[j] == Some(core::cmp::Ordering::{ac}) by {{}};"));

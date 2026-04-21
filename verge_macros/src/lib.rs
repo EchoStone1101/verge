@@ -4,6 +4,7 @@ mod eq_common;
 mod hash_key;
 mod derive_clone;
 mod derive_copy;
+mod derive_default;
 mod derive_eq;
 mod derive_ord;
 mod derive_partial_eq;
@@ -42,4 +43,9 @@ pub fn derive_clone(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn derive_copy(attr: TokenStream, item: TokenStream) -> TokenStream {
     derive_copy::derive_copy_impl(attr.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn derive_default(attr: TokenStream, item: TokenStream) -> TokenStream {
+    derive_default::derive_default_impl(attr.into(), item.into()).into()
 }

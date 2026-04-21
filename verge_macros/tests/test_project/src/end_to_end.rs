@@ -114,29 +114,18 @@ impl ClonePartialEq for CachedResult {
     }
 }
 
-} // verus!
-
-// --- Entry: derived Ord ---
-// CachedResult has all verified traits, so derive_ord can use it as a field.
+// --- Entry: derived Ord + Clone (composable inside verus!) ---
 
 #[verge_macros::derive_ord(entry)]
+#[verge_macros::derive_clone(entry)]
 pub struct Entry {
     pub result: CachedResult,
     pub priority: u32,
 }
 
-// Clone for Entry: manual impl (field-by-field clone)
-// Note: derive_clone can't be combined with derive_ord on the same type.
-verus! {
+} // verus!
 
-impl Clone for Entry {
-    fn clone(&self) -> (ret: Entry) {
-        Entry {
-            result: self.result.clone(),
-            priority: self.priority.clone(),
-        }
-    }
-}
+verus! {
 
 // --- Tests ---
 
@@ -213,9 +202,15 @@ fn test_entry_ord_secondary() {
     assert(r == Some(Ordering::Less));
 }
 
+// Test: Entry clone (from derive_clone, composed with derive_ord)
+fn test_entry_clone() {
+    let a = Entry { result: CachedResult { key: 42, cached: Some(100) }, priority: 5 };
+    let b = a.clone();
+    assert(entry_strictly_cloned(&a, &b));
+}
+
 // Proof test: symmetry holds for Entry via derived PartialEqVerified
 proof fn test_entry_symmetry(a: &Entry, b: &Entry) {
-    // obeys_eq_spec is true (set by derive_ord), so we can call the proof directly
     Entry::lemma_eq_symmetric(a, b);
 }
 

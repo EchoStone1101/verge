@@ -2,7 +2,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{parse2, Fields, Ident, Item, ItemEnum, ItemStruct};
 
-use crate::eq_common::*;
+use crate::eq_common::{self, *};
 
 pub fn derive_partial_eq_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     if !attr.is_empty() {
@@ -28,9 +28,10 @@ fn gen_struct(input: ItemStruct) -> TokenStream {
     let generics = &input.generics;
     let fields = &input.fields;
     let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let stripped = eq_common::strip_ignored_attrs(fields);
     let struct_def = match fields {
-        Fields::Named(_) => quote! { #(#attrs)* #vis struct #name #generics #where_clause #fields },
-        Fields::Unnamed(_) => quote! { #(#attrs)* #vis struct #name #generics #fields #where_clause ; },
+        Fields::Named(_) => quote! { #(#attrs)* #vis struct #name #generics #where_clause #stripped },
+        Fields::Unnamed(_) => quote! { #(#attrs)* #vis struct #name #generics #stripped #where_clause ; },
         Fields::Unit => quote! { #(#attrs)* #vis struct #name #generics #where_clause ; },
     };
     let code = gen_struct_field_code(fields);

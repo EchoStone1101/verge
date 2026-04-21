@@ -2,7 +2,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, format_ident};
 use syn::{parse2, Fields, Ident, Item, ItemEnum, ItemStruct, Visibility};
 
-use crate::eq_common::conjunction;
+use crate::eq_common::{self, conjunction};
 
 pub fn derive_clone_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let short_name: Ident = match parse2(attr) {
@@ -37,9 +37,10 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
     let generics = &input.generics;
     let fields = &input.fields;
     let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let stripped = eq_common::strip_ignored_attrs(fields);
     let struct_def = match fields {
-        Fields::Named(_) => quote! { #(#attrs)* #vis struct #name #generics #where_clause #fields },
-        Fields::Unnamed(_) => quote! { #(#attrs)* #vis struct #name #generics #fields #where_clause ; },
+        Fields::Named(_) => quote! { #(#attrs)* #vis struct #name #generics #where_clause #stripped },
+        Fields::Unnamed(_) => quote! { #(#attrs)* #vis struct #name #generics #stripped #where_clause ; },
         Fields::Unit => quote! { #(#attrs)* #vis struct #name #generics #where_clause ; },
     };
     let openness = if all_fields_pub(fields) { quote! { open } } else { quote! { closed } };

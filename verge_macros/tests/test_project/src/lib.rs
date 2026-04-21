@@ -3,8 +3,10 @@
 //! Each module tests a specific macro. All code is verified by Verus.
 
 mod hash_key;
+mod compose;
 mod derive_clone;
 mod derive_copy;
+mod derive_default;
 mod derive_eq;
 mod derive_ord;
 mod derive_partial_eq;

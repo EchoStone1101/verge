@@ -4,6 +4,54 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Fields, Ident, Visibility};
 
+/// Check if a field has the `#[ignored]` attribute.
+pub fn is_field_ignored(field: &syn::Field) -> bool {
+    field.attrs.iter().any(|a| is_ignored_attr(a))
+}
+
+fn is_ignored_attr(attr: &syn::Attribute) -> bool {
+    let path = attr.path();
+    let segs: Vec<String> = path.segments.iter().map(|s| s.ident.to_string()).collect();
+    segs == ["ignored"]
+}
+
+/// Check if any field in the Fields has `#[ignored]`.
+pub fn has_any_ignored(fields: &Fields) -> bool {
+    match fields {
+        Fields::Named(f) => f.named.iter().any(|f| is_field_ignored(f)),
+        Fields::Unnamed(f) => f.unnamed.iter().any(|f| is_field_ignored(f)),
+        Fields::Unit => false,
+    }
+}
+
+/// Strip `#[ignored]` attributes from fields for struct emission.
+pub fn strip_ignored_attrs(fields: &Fields) -> TokenStream {
+    match fields {
+        Fields::Named(f) => {
+            let stripped: Vec<TokenStream> = f.named.iter().map(|field| {
+                let attrs: Vec<&syn::Attribute> = field.attrs.iter()
+                    .filter(|a| !is_ignored_attr(a)).collect();
+                let vis = &field.vis;
+                let ident = &field.ident;
+                let ty = &field.ty;
+                quote! { #(#attrs)* #vis #ident: #ty }
+            }).collect();
+            quote! { { #(#stripped),* } }
+        },
+        Fields::Unnamed(f) => {
+            let stripped: Vec<TokenStream> = f.unnamed.iter().map(|field| {
+                let attrs: Vec<&syn::Attribute> = field.attrs.iter()
+                    .filter(|a| !is_ignored_attr(a)).collect();
+                let vis = &field.vis;
+                let ty = &field.ty;
+                quote! { #(#attrs)* #vis #ty }
+            }).collect();
+            quote! { ( #(#stripped),* ) }
+        },
+        Fields::Unit => quote! {},
+    }
+}
+
 pub fn all_fields_pub(fields: &Fields) -> bool {
     match fields {
         Fields::Named(f) => f.named.iter().all(|f| matches!(f.vis, Visibility::Public(_))),
@@ -40,29 +88,30 @@ pub struct EnumVariantArms {
     pub refl_arms: Vec<TokenStream>,
 }
 
-/// Generate field-level code for a struct.
+/// Generate field-level code for a struct. Fields with `#[ignored]` are excluded.
 pub fn gen_struct_field_code(fields: &Fields) -> StructFieldCode {
     match fields {
         Fields::Named(f) => {
-            let exec_eqs: Vec<TokenStream> = f.named.iter().map(|field| {
+            let active: Vec<&syn::Field> = f.named.iter().filter(|f| !is_field_ignored(f)).collect();
+            let exec_eqs: Vec<TokenStream> = active.iter().map(|field| {
                 let fname = field.ident.as_ref().unwrap();
                 quote! { self.#fname == other.#fname }
             }).collect();
-            let spec_eqs: Vec<TokenStream> = f.named.iter().map(|field| {
+            let spec_eqs: Vec<TokenStream> = active.iter().map(|field| {
                 let fname = field.ident.as_ref().unwrap();
                 quote! { vstd::std_specs::cmp::PartialEqSpec::eq_spec(&self.#fname, &other.#fname) }
             }).collect();
-            let sym_calls: Vec<TokenStream> = f.named.iter().map(|field| {
+            let sym_calls: Vec<TokenStream> = active.iter().map(|field| {
                 let fname = field.ident.as_ref().unwrap();
                 let ty = &field.ty;
                 quote! { <#ty as verge::cmp::PartialEqVerified>::lemma_eq_symmetric(&a.#fname, &b.#fname); }
             }).collect();
-            let trans_calls: Vec<TokenStream> = f.named.iter().map(|field| {
+            let trans_calls: Vec<TokenStream> = active.iter().map(|field| {
                 let fname = field.ident.as_ref().unwrap();
                 let ty = &field.ty;
                 quote! { <#ty as verge::cmp::PartialEqVerified>::lemma_eq_transitive(&a.#fname, &b.#fname, &c.#fname); }
             }).collect();
-            let refl_calls: Vec<TokenStream> = f.named.iter().map(|field| {
+            let refl_calls: Vec<TokenStream> = active.iter().map(|field| {
                 let fname = field.ident.as_ref().unwrap();
                 let ty = &field.ty;
                 quote! { <#ty as verge::cmp::EqVerified>::lemma_eq_reflexive(&a.#fname); }
@@ -76,26 +125,28 @@ pub fn gen_struct_field_code(fields: &Fields) -> StructFieldCode {
             }
         },
         Fields::Unnamed(f) => {
-            let exec_eqs: Vec<TokenStream> = (0..f.unnamed.len()).map(|i| {
-                let idx = syn::Index::from(i);
+            let active: Vec<(usize, &syn::Field)> = f.unnamed.iter().enumerate()
+                .filter(|(_, f)| !is_field_ignored(f)).collect();
+            let exec_eqs: Vec<TokenStream> = active.iter().map(|(i, _)| {
+                let idx = syn::Index::from(*i);
                 quote! { self.#idx == other.#idx }
             }).collect();
-            let spec_eqs: Vec<TokenStream> = (0..f.unnamed.len()).map(|i| {
-                let idx = syn::Index::from(i);
+            let spec_eqs: Vec<TokenStream> = active.iter().map(|(i, _)| {
+                let idx = syn::Index::from(*i);
                 quote! { vstd::std_specs::cmp::PartialEqSpec::eq_spec(&self.#idx, &other.#idx) }
             }).collect();
-            let sym_calls: Vec<TokenStream> = f.unnamed.iter().enumerate().map(|(i, field)| {
-                let idx = syn::Index::from(i);
+            let sym_calls: Vec<TokenStream> = active.iter().map(|(i, field)| {
+                let idx = syn::Index::from(*i);
                 let ty = &field.ty;
                 quote! { <#ty as verge::cmp::PartialEqVerified>::lemma_eq_symmetric(&a.#idx, &b.#idx); }
             }).collect();
-            let trans_calls: Vec<TokenStream> = f.unnamed.iter().enumerate().map(|(i, field)| {
-                let idx = syn::Index::from(i);
+            let trans_calls: Vec<TokenStream> = active.iter().map(|(i, field)| {
+                let idx = syn::Index::from(*i);
                 let ty = &field.ty;
                 quote! { <#ty as verge::cmp::PartialEqVerified>::lemma_eq_transitive(&a.#idx, &b.#idx, &c.#idx); }
             }).collect();
-            let refl_calls: Vec<TokenStream> = f.unnamed.iter().enumerate().map(|(i, field)| {
-                let idx = syn::Index::from(i);
+            let refl_calls: Vec<TokenStream> = active.iter().map(|(i, field)| {
+                let idx = syn::Index::from(*i);
                 let ty = &field.ty;
                 quote! { <#ty as verge::cmp::EqVerified>::lemma_eq_reflexive(&a.#idx); }
             }).collect();
