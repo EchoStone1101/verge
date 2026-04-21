@@ -39,6 +39,12 @@ verus-release/verus --crate-type=lib --expand-errors verge_lib/verge.rs
 verus-release/cargo-verus build -p verge -- --expand-errors
 ```
 
+### Macro Integration Tests
+
+```bash
+bash verge_macros/run_tests.sh
+```
+
 ### Downstream Usage
 
 Projects using Verge add these dependencies:

@@ -1,0 +1,14 @@
+[package]
+name = "verge_macros_tests"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+vstd = "=0.0.0-2026-04-12-0118"
+verge = { path = "../../../verge_lib" }
+verge_macros = { path = "../.." }
+
+[package.metadata.verus]
+verify = true
+
+[workspace]

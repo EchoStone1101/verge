@@ -1,30 +1,45 @@
 use proc_macro::TokenStream;
 
+mod eq_common;
 mod hash_key;
+mod derive_clone;
+mod derive_copy;
+mod derive_eq;
+mod derive_ord;
+mod derive_partial_eq;
+mod derive_partial_ord;
 
-/// Attribute macro that derives `Hash`, `PartialEq`, `Eq` for a struct or enum
-/// and generates a broadcast axiom establishing `obeys_key_model` for the type.
-///
-/// The generated axiom requires `obeys_key_model` for each field type as preconditions.
-/// A short name must be provided; the generated lemma will be `lemma_{name}_obeys_key_model`.
-///
-/// # Usage
-///
-/// ```ignore
-/// #[verge_macros::hash_key(my_key)]
-/// pub struct MyKey {
-///     id: u64,
-///     name_hash: u32,
-/// }
-///
-/// // Then in a verus! block:
-/// fn example() {
-///     broadcast use vstd::std_specs::hash::group_hash_axioms;
-///     broadcast use lemma_my_key_obeys_key_model;
-///     // obeys_key_model::<MyKey>() is now available
-/// }
-/// ```
 #[proc_macro_attribute]
 pub fn hash_key(attr: TokenStream, item: TokenStream) -> TokenStream {
     hash_key::hash_key_impl(attr.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn derive_partial_eq(attr: TokenStream, item: TokenStream) -> TokenStream {
+    derive_partial_eq::derive_partial_eq_impl(attr.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn derive_eq(attr: TokenStream, item: TokenStream) -> TokenStream {
+    derive_eq::derive_eq_impl(attr.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn derive_partial_ord(attr: TokenStream, item: TokenStream) -> TokenStream {
+    derive_partial_ord::derive_partial_ord_impl(attr.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn derive_ord(attr: TokenStream, item: TokenStream) -> TokenStream {
+    derive_ord::derive_ord_impl(attr.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn derive_clone(attr: TokenStream, item: TokenStream) -> TokenStream {
+    derive_clone::derive_clone_impl(attr.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn derive_copy(attr: TokenStream, item: TokenStream) -> TokenStream {
+    derive_copy::derive_copy_impl(attr.into(), item.into()).into()
 }

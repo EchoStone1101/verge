@@ -49,6 +49,8 @@ macro_rules! impl_maybe_generic {
 
 verus! {
 
+pub mod clone;
+pub mod cmp;
 pub mod env;
 pub mod error;
 pub mod fs;
