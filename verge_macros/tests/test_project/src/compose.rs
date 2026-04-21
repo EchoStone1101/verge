@@ -152,5 +152,32 @@ fn test_ignored_ord_eq() {
     assert(r);
 }
 
+}
+
+// --- Test #[default] on fields (derive_clone resets field to Default) ---
+
+#[verge_macros::derive_clone(reset_cache)]
+pub struct ResetCache {
+    pub key: u32,
+    #[default]
+    pub cached_value: Option<u64>,
+}
+
+verus! {
+
+fn test_default_clone_resets() {
+    let a = ResetCache { key: 42, cached_value: Some(100) };
+    let b = a.clone();
+    // key is cloned normally, cached_value is reset to default (None)
+    assert(reset_cache_strictly_cloned(&a, &b));
+    // call_ensures for Option<u64>::default gives None
+    assert(b.cached_value == Option::<u64>::None);
+}
+
+fn test_default_clone_key_preserved() {
+    let a = ResetCache { key: 99, cached_value: Some(7) };
+    let b = a.clone();
+    assert(b.key == 99u32);
+}
 
 }

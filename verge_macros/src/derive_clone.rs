@@ -103,14 +103,24 @@ fn build_struct_clone_body(name: &Ident, fields: &Fields) -> TokenStream {
         Fields::Named(f) => {
             let clones: Vec<TokenStream> = f.named.iter().map(|field| {
                 let fname = field.ident.as_ref().unwrap();
-                quote! { #fname: self.#fname.clone() }
+                if eq_common::is_field_default(field) {
+                    let ty = &field.ty;
+                    quote! { #fname: <#ty as Default>::default() }
+                } else {
+                    quote! { #fname: self.#fname.clone() }
+                }
             }).collect();
             quote! { #name { #(#clones),* } }
         },
         Fields::Unnamed(f) => {
-            let clones: Vec<TokenStream> = (0..f.unnamed.len()).map(|i| {
-                let idx = syn::Index::from(i);
-                quote! { self.#idx.clone() }
+            let clones: Vec<TokenStream> = f.unnamed.iter().enumerate().map(|(i, field)| {
+                if eq_common::is_field_default(field) {
+                    let ty = &field.ty;
+                    quote! { <#ty as Default>::default() }
+                } else {
+                    let idx = syn::Index::from(i);
+                    quote! { self.#idx.clone() }
+                }
             }).collect();
             quote! { #name(#(#clones),*) }
         },
@@ -123,15 +133,32 @@ fn build_struct_cloned_body(fields: &Fields) -> TokenStream {
         Fields::Named(f) => {
             let parts: Vec<TokenStream> = f.named.iter().map(|field| {
                 let fname = field.ident.as_ref().unwrap();
-                quote! { vstd::pervasive::strictly_cloned(a.#fname, b.#fname) }
-            }).collect();
+                if eq_common::is_field_ignored(field) {
+                    // #[ignored] fields: no constraint
+                    return quote! {};
+                }
+                if eq_common::is_field_default(field) {
+                    let ty = &field.ty;
+                    quote! { call_ensures(<#ty as Default>::default, (), b.#fname) }
+                } else {
+                    quote! { vstd::pervasive::strictly_cloned(a.#fname, b.#fname) }
+                }
+            }).filter(|t| !t.is_empty()).collect();
             conjunction(&parts)
         },
         Fields::Unnamed(f) => {
-            let parts: Vec<TokenStream> = (0..f.unnamed.len()).map(|i| {
+            let parts: Vec<TokenStream> = f.unnamed.iter().enumerate().map(|(i, field)| {
                 let idx = syn::Index::from(i);
-                quote! { vstd::pervasive::strictly_cloned(a.#idx, b.#idx) }
-            }).collect();
+                if eq_common::is_field_ignored(field) {
+                    return quote! {};
+                }
+                if eq_common::is_field_default(field) {
+                    let ty = &field.ty;
+                    quote! { call_ensures(<#ty as Default>::default, (), b.#idx) }
+                } else {
+                    quote! { vstd::pervasive::strictly_cloned(a.#idx, b.#idx) }
+                }
+            }).filter(|t| !t.is_empty()).collect();
             conjunction(&parts)
         },
         Fields::Unit => quote! { true },

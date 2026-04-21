@@ -15,6 +15,21 @@ fn is_ignored_attr(attr: &syn::Attribute) -> bool {
     segs == ["ignored"]
 }
 
+fn is_default_attr(attr: &syn::Attribute) -> bool {
+    let path = attr.path();
+    let segs: Vec<String> = path.segments.iter().map(|s| s.ident.to_string()).collect();
+    segs == ["default"]
+}
+
+/// Check if a field has the `#[default]` attribute (for derive_clone).
+pub fn is_field_default(field: &syn::Field) -> bool {
+    field.attrs.iter().any(|a| is_default_attr(a))
+}
+
+fn is_verge_field_attr(attr: &syn::Attribute) -> bool {
+    is_ignored_attr(attr) || is_default_attr(attr)
+}
+
 /// Check if any field in the Fields has `#[ignored]`.
 pub fn has_any_ignored(fields: &Fields) -> bool {
     match fields {
@@ -24,13 +39,13 @@ pub fn has_any_ignored(fields: &Fields) -> bool {
     }
 }
 
-/// Strip `#[ignored]` attributes from fields for struct emission.
+/// Strip `#[ignored]` and `#[default]` attributes from fields for struct emission.
 pub fn strip_ignored_attrs(fields: &Fields) -> TokenStream {
     match fields {
         Fields::Named(f) => {
             let stripped: Vec<TokenStream> = f.named.iter().map(|field| {
                 let attrs: Vec<&syn::Attribute> = field.attrs.iter()
-                    .filter(|a| !is_ignored_attr(a)).collect();
+                    .filter(|a| !is_verge_field_attr(a)).collect();
                 let vis = &field.vis;
                 let ident = &field.ident;
                 let ty = &field.ty;
@@ -41,7 +56,7 @@ pub fn strip_ignored_attrs(fields: &Fields) -> TokenStream {
         Fields::Unnamed(f) => {
             let stripped: Vec<TokenStream> = f.unnamed.iter().map(|field| {
                 let attrs: Vec<&syn::Attribute> = field.attrs.iter()
-                    .filter(|a| !is_ignored_attr(a)).collect();
+                    .filter(|a| !is_verge_field_attr(a)).collect();
                 let vis = &field.vis;
                 let ty = &field.ty;
                 quote! { #(#attrs)* #vis #ty }
