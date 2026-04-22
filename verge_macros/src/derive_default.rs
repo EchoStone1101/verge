@@ -1,29 +1,27 @@
 use proc_macro2::TokenStream;
-use quote::{quote, format_ident};
+use quote::quote;
 use syn::{parse2, Fields, Ident, Item, ItemEnum, ItemStruct};
 
 use crate::eq_common;
 
 pub fn derive_default_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let short_name: Ident = match parse2(attr) {
-        Ok(name) => name,
-        Err(_) => return syn::Error::new(proc_macro2::Span::call_site(),
-            "derive_default requires a name: #[derive_default(my_type)]").to_compile_error(),
-    };
+    if !attr.is_empty() {
+        return syn::Error::new_spanned(attr, "derive_default takes no arguments")
+            .to_compile_error();
+    }
     let item: Item = match parse2(item) {
         Ok(item) => item,
         Err(e) => return e.to_compile_error(),
     };
     match item {
-        Item::Struct(s) => gen_struct(short_name, s),
-        Item::Enum(e) => gen_enum(short_name, e),
+        Item::Struct(s) => gen_struct(s),
+        Item::Enum(e) => gen_enum(e),
         _ => syn::Error::new(proc_macro2::Span::call_site(),
             "derive_default can only be applied to structs and enums").to_compile_error(),
     }
 }
 
-
-fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
+fn gen_struct(input: ItemStruct) -> TokenStream {
     let name = &input.ident;
     let vis = &input.vis;
     let attrs = &input.attrs;
@@ -43,7 +41,6 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
     let openness = if eq_common::all_fields_pub(fields) { quote! { open } } else { quote! { closed } };
     let g = quote! { #generics };
     let tg = quote! { #ty_generics };
-    let is_default_fn = format_ident!("{}_is_default", short_name);
     let default_body = build_struct_default_body(name, fields);
     let spec_body = build_struct_is_default_body(fields);
     quote! {
@@ -51,17 +48,19 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
             #struct_def
             impl #g Default for #name #tg {
                 fn default() -> (ret: Self)
-                    ensures #is_default_fn(&ret),
+                    ensures Self::is_default(&ret),
                 { #default_body }
             }
-            #vis #openness spec fn #is_default_fn #g (a: &#name #tg) -> bool {
-                #spec_body
+            impl #g #name #tg {
+                #vis #openness spec fn is_default(a: &Self) -> bool {
+                    #spec_body
+                }
             }
         }
     }
 }
 
-fn gen_enum(short_name: Ident, input: ItemEnum) -> TokenStream {
+fn gen_enum(input: ItemEnum) -> TokenStream {
     let name = &input.ident;
     let vis = &input.vis;
     let attrs = &input.attrs;
@@ -118,11 +117,8 @@ fn gen_enum(short_name: Ident, input: ItemEnum) -> TokenStream {
     let openness = if all_pub { quote! { open } } else { quote! { closed } };
     let g = quote! { #generics };
     let tg = quote! { #ty_generics };
-    let is_default_fn = format_ident!("{}_is_default", short_name);
 
-    // Build exec default body for the default variant
     let default_body = build_variant_default_body(name, default_variant);
-    // Build spec body: match on the default variant, check call_ensures for each field
     let spec_body = build_enum_is_default_body(name, default_variant);
 
     quote! {
@@ -130,11 +126,13 @@ fn gen_enum(short_name: Ident, input: ItemEnum) -> TokenStream {
             #enum_def
             impl #g Default for #name #tg {
                 fn default() -> (ret: Self)
-                    ensures #is_default_fn(&ret),
+                    ensures Self::is_default(&ret),
                 { #default_body }
             }
-            #vis #openness spec fn #is_default_fn #g (a: &#name #tg) -> bool {
-                #spec_body
+            impl #g #name #tg {
+                #vis #openness spec fn is_default(a: &Self) -> bool {
+                    #spec_body
+                }
             }
         }
     }

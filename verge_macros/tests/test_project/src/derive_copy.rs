@@ -7,22 +7,22 @@ use verge::cmp::PartialEqVerified;
 use verge::clone::CopyVerified;
 
 // --- Named struct ---
-#[verge_macros::derive_copy(coord)]
+#[verge_macros::derive_copy]
 pub struct Coord {
     pub x: u32,
     pub y: u32,
 }
 
 // --- Tuple struct ---
-#[verge_macros::derive_copy(pair)]
+#[verge_macros::derive_copy]
 pub struct Pair(pub u32, pub bool);
 
 // --- Unit struct ---
-#[verge_macros::derive_copy(tag)]
+#[verge_macros::derive_copy]
 pub struct Tag;
 
 // --- Enum ---
-#[verge_macros::derive_copy(dir)]
+#[verge_macros::derive_copy]
 pub enum Dir {
     Up,
     Down,
@@ -51,7 +51,7 @@ impl PartialEqVerified for Coord {
 fn test_coord_clone() {
     let a = Coord { x: 1, y: 2 };
     let b = a.clone();
-    assert(coord_strictly_cloned(&a, &b));
+    assert(Coord::strictly_cloned(&a, &b));
     assert(b.x == a.x);
 }
 
@@ -66,27 +66,27 @@ fn test_pair_copy() {
     let a = Pair(5, true);
     let b = a;
     let c = a.clone();
-    assert(pair_strictly_cloned(&a, &c));
+    assert(Pair::strictly_cloned(&a, &c));
 }
 
 fn test_tag_copy() {
     let a = Tag;
     let b = a;
     let c = a.clone();
-    assert(tag_strictly_cloned(&a, &c));
+    assert(Tag::strictly_cloned(&a, &c));
 }
 
 fn test_dir_copy() {
     let a = Dir::Custom(42);
     let b = a;
     let c = a.clone();
-    assert(dir_strictly_cloned(&a, &c));
+    assert(Dir::strictly_cloned(&a, &c));
 }
 
 proof fn test_copy_spec_eq(a: Coord, b: Coord)
     requires strictly_cloned(a, b),
 {
-    assert(coord_strictly_cloned(&a, &b));
+    assert(Coord::strictly_cloned(&a, &b));
     assert(a == b);
 }
 

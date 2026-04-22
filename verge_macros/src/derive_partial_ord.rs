@@ -1,21 +1,20 @@
 use proc_macro2::TokenStream;
-use quote::{quote, format_ident, ToTokens};
+use quote::{quote, ToTokens};
 use syn::{parse2, Fields, Ident, Item, ItemStruct};
 
 use crate::eq_common::{self, *};
 
 pub fn derive_partial_ord_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let short_name: Ident = match parse2(attr) {
-        Ok(name) => name,
-        Err(_) => return syn::Error::new(proc_macro2::Span::call_site(),
-            "derive_partial_ord requires a name: #[derive_partial_ord(my_type)]").to_compile_error(),
-    };
+    if !attr.is_empty() {
+        return syn::Error::new_spanned(attr, "derive_partial_ord takes no arguments")
+            .to_compile_error();
+    }
     let item: Item = match parse2(item) {
         Ok(item) => item,
         Err(e) => return e.to_compile_error(),
     };
     match item {
-        Item::Struct(s) => gen_struct(short_name, s),
+        Item::Struct(s) => gen_struct(s),
         Item::Enum(_) => syn::Error::new(proc_macro2::Span::call_site(),
             "derive_partial_ord does not support enums. Implement manually.").to_compile_error(),
         _ => syn::Error::new(proc_macro2::Span::call_site(),
@@ -50,7 +49,7 @@ fn extract_field_info(fields: &Fields) -> Vec<FieldInfo> {
     }
 }
 
-fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
+fn gen_struct(input: ItemStruct) -> TokenStream {
     let name = &input.ident;
     let vis = &input.vis;
     let attrs = &input.attrs;
@@ -69,10 +68,6 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
     let tg = quote! { #ty_generics };
     let field_info = extract_field_info(fields);
     let n = field_info.len();
-    let seq_fn_name = format_ident!("{}_partial_cmp_spec_seq", short_name);
-    let equiv_lemma_name = format_ident!("lemma_{}_partial_cmp_spec_equiv", short_name);
-    let less_trans_fn_name = format_ident!("__verge_{}_less_trans", short_name);
-    let greater_trans_fn_name = format_ident!("__verge_{}_greater_trans", short_name);
 
     let entries_self: Vec<(TokenStream, TokenStream, &syn::Type)> = match fields {
         Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_filtered(f)).map(|field| { let fname = field.ident.as_ref().unwrap(); (quote! { &self.#fname }, quote! { &other.#fname }, &field.ty) }).collect(),
@@ -90,9 +85,9 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
     let eq_con_calls = build_calls(fields, "lemma_cmp_eq_consistent", "PartialOrdVerified", true);
     let dual_calls = build_calls(fields, "lemma_cmp_dual", "PartialOrdVerified", true);
     let comparable_calls = build_3arg_calls(fields, "lemma_cmp_comparable", "PartialOrdVerified");
-    let less_trans_fn = pub_build_trans_proof_fn(&field_info, &name.to_string(), &seq_fn_name.to_string(), &equiv_lemma_name.to_string(), &less_trans_fn_name.to_string(), n, "Less");
-    let greater_trans_fn = pub_build_trans_proof_fn(&field_info, &name.to_string(), &seq_fn_name.to_string(), &equiv_lemma_name.to_string(), &greater_trans_fn_name.to_string(), n, "Greater");
-    let equiv_lemma = pub_build_equiv_lemma(&name.to_string(), &seq_fn_name.to_string(), &equiv_lemma_name.to_string(), &vis.to_token_stream().to_string(), n);
+    let less_trans_fn = pub_build_trans_proof_fn(&field_info, &name.to_string(), n, "Less");
+    let greater_trans_fn = pub_build_trans_proof_fn(&field_info, &name.to_string(), n, "Greater");
+    let equiv_lemma = pub_build_equiv_lemma(&name.to_string(), &vis.to_token_stream().to_string(), n);
 
     let eq_body = &eq_code.eq_body;
     let eq_spec_body = &eq_code.eq_spec_body;
@@ -116,8 +111,10 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
                 open spec fn obeys_partial_cmp_spec() -> bool { true }
                 #openness spec fn partial_cmp_spec(&self, other: &Self) -> Option<core::cmp::Ordering> { #spec_cmp }
             }
-            #vis open spec fn #seq_fn_name #g (a: &#name #tg, b: &#name #tg) -> Seq<Option<core::cmp::Ordering>> {
-                seq![#(#seq_entries),*]
+            impl #g #name #tg {
+                #vis open spec fn partial_cmp_spec_seq(a: &Self, b: &Self) -> Seq<Option<core::cmp::Ordering>> {
+                    seq![#(#seq_entries),*]
+                }
             }
             #less_trans_fn
             #greater_trans_fn
@@ -130,10 +127,10 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
                 proof fn lemma_cmp_dual(a: &Self, b: &Self) { #dual_calls }
                 proof fn lemma_cmp_comparable(a: &Self, b: &Self, c: &Self) { #comparable_calls }
                 proof fn lemma_cmp_less_transitive(a: &Self, b: &Self, c: &Self) {
-                    #less_trans_fn_name(a, b, c);
+                    Self::__less_trans(a, b, c);
                 }
                 proof fn lemma_cmp_greater_transitive(a: &Self, b: &Self, c: &Self) {
-                    #greater_trans_fn_name(a, b, c);
+                    Self::__greater_trans(a, b, c);
                 }
             }
         }
@@ -179,9 +176,13 @@ fn build_3arg_calls(fields: &Fields, lemma: &str, trait_name: &str) -> TokenStre
     quote! { #(#calls)* }
 }
 
-pub(crate) fn pub_build_trans_proof_fn(fields: &[FieldInfo], type_name: &str, seq_fn: &str, equiv_fn: &str, fn_name: &str, n: usize, dir: &str) -> TokenStream {
+/// Build standalone trans proof fn, wrapped in `impl T { ... }`.
+/// The fn is named `__less_trans` or `__greater_trans` and calls
+/// `Self::partial_cmp_spec_seq` and `Self::lemma_partial_cmp_spec_equiv`.
+pub(crate) fn pub_build_trans_proof_fn(fields: &[FieldInfo], type_name: &str, n: usize, dir: &str) -> TokenStream {
     if n == 0 { return quote! {}; }
     let dir_lower = dir.to_lowercase();
+    let fn_name = format!("__{}_trans", dir_lower);
     let trans_lemma = format!("lemma_cmp_{}_transitive", dir_lower);
     let mut lines = Vec::new();
     for f in fields {
@@ -200,13 +201,12 @@ pub(crate) fn pub_build_trans_proof_fn(fields: &[FieldInfo], type_name: &str, se
                 <{ty} as verge::cmp::PartialOrdVerified>::{trans}(&{a}, &{b}, &{c}); \
              }}", ty = f.ty_str, a = f.a_acc, b = f.b_acc, c = f.c_acc, dir = dir, trans = trans_lemma));
     }
-    lines.push(format!("let s_ab = {seq_fn}(a, b);"));
-    lines.push(format!("let s_bc = {seq_fn}(b, c);"));
-    lines.push(format!("let s_ac = {seq_fn}(a, c);"));
-    // Call equiv lemma to establish lexico_less(s_ab) and lexico_less(s_bc), which gives the exists witnesses for choose
-    lines.push(format!("{equiv_fn}(a, b);"));
-    lines.push(format!("{equiv_fn}(b, c);"));
-    lines.push(format!("{equiv_fn}(a, c);"));
+    lines.push(format!("let s_ab = Self::partial_cmp_spec_seq(a, b);"));
+    lines.push(format!("let s_bc = Self::partial_cmp_spec_seq(b, c);"));
+    lines.push(format!("let s_ac = Self::partial_cmp_spec_seq(a, c);"));
+    lines.push(format!("Self::lemma_partial_cmp_spec_equiv(a, b);"));
+    lines.push(format!("Self::lemma_partial_cmp_spec_equiv(b, c);"));
+    lines.push(format!("Self::lemma_partial_cmp_spec_equiv(a, c);"));
     let combos = [("Equal", "Equal", "Equal"), (dir, "Equal", dir), ("Equal", dir, dir), (dir, dir, dir)];
     for (ab, bc, ac) in &combos {
         lines.push(format!("assert forall|j: int| 0 <= j < {n} && s_ab[j] == Some(core::cmp::Ordering::{ab}) && s_bc[j] == Some(core::cmp::Ordering::{bc}) implies s_ac[j] == Some(core::cmp::Ordering::{ac}) by {{}};"));
@@ -226,11 +226,15 @@ pub(crate) fn pub_build_trans_proof_fn(fields: &[FieldInfo], type_name: &str, se
             ensures \
                 vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(a, c) == Some(core::cmp::Ordering::{dir}), \
         {{ {body} }}", fn_name = fn_name, ty = type_name, dir = dir, body = body);
-    pub_parse_verus_fn(&code)
+    let parsed_fn = pub_parse_verus_fn(&code);
+    let ty_ident: proc_macro2::TokenStream = type_name.parse().unwrap();
+    quote! { impl #ty_ident { #parsed_fn } }
 }
 
-pub(crate) fn pub_build_equiv_lemma(name: &str, seq_fn: &str, equiv_fn: &str, vis: &str, n: usize) -> TokenStream {
+/// Build equiv lemma, wrapped in `impl T { ... }`.
+pub(crate) fn pub_build_equiv_lemma(name: &str, vis: &str, n: usize) -> TokenStream {
     if n == 0 { return quote! {}; }
+    let seq_fn = "Self::partial_cmp_spec_seq";
     let mut body_lines = Vec::new();
     body_lines.push(format!("let s = {seq_fn}(a, b);"));
     for dir in ["Less", "Greater"] {
@@ -243,13 +247,15 @@ pub(crate) fn pub_build_equiv_lemma(name: &str, seq_fn: &str, equiv_fn: &str, vi
     }
     let body = body_lines.join("\n");
     let code = format!(
-        "{vis} proof fn {equiv_fn}(a: &{name}, b: &{name}) \
+        "{vis} proof fn lemma_partial_cmp_spec_equiv(a: &{name}, b: &{name}) \
             ensures \
                 verge::cmp::lexico_less({seq_fn}(a, b)) <==> vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(a, b) == Some(core::cmp::Ordering::Less), \
                 verge::cmp::lexico_greater({seq_fn}(a, b)) <==> vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(a, b) == Some(core::cmp::Ordering::Greater), \
                 verge::cmp::lexico_equal({seq_fn}(a, b)) <==> vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(a, b) == Some(core::cmp::Ordering::Equal), \
-        {{ {body} }}", vis = vis, equiv_fn = equiv_fn, name = name, seq_fn = seq_fn, body = body);
-    pub_parse_verus_fn(&code)
+        {{ {body} }}", vis = vis, name = name, seq_fn = seq_fn, body = body);
+    let parsed_fn = pub_parse_verus_fn(&code);
+    let ty_ident: proc_macro2::TokenStream = name.parse().unwrap();
+    quote! { impl #ty_ident { #parsed_fn } }
 }
 
 pub(crate) fn pub_parse_verus_fn(code: &str) -> TokenStream {

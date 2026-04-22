@@ -6,18 +6,18 @@ use verge::cmp::{PartialEqVerified, EqVerified, PartialOrdVerified, OrdVerified}
 use core::cmp::Ordering;
 
 // --- Named struct ---
-#[verge_macros::derive_ord(rank)]
+#[verge_macros::derive_ord]
 pub struct Rank {
     pub tier: u32,
     pub points: u64,
 }
 
 // --- Tuple struct ---
-#[verge_macros::derive_ord(pair)]
+#[verge_macros::derive_ord]
 pub struct Pair(pub u32, pub u8);
 
 // --- Nested composite ---
-#[verge_macros::derive_ord(player)]
+#[verge_macros::derive_ord]
 pub struct Player {
     pub rank: Rank,
     pub name_hash: u32,

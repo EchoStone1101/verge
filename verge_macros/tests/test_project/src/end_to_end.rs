@@ -116,8 +116,8 @@ impl ClonePartialEq for CachedResult {
 
 // --- Entry: derived Ord + Clone (composable inside verus!) ---
 
-#[verge_macros::derive_ord(entry)]
-#[verge_macros::derive_clone(entry)]
+#[verge_macros::derive_ord]
+#[verge_macros::derive_clone]
 pub struct Entry {
     pub result: CachedResult,
     pub priority: u32,
@@ -206,7 +206,7 @@ fn test_entry_ord_secondary() {
 fn test_entry_clone() {
     let a = Entry { result: CachedResult { key: 42, cached: Some(100) }, priority: 5 };
     let b = a.clone();
-    assert(entry_strictly_cloned(&a, &b));
+    assert(Entry::strictly_cloned(&a, &b));
 }
 
 // Proof test: symmetry holds for Entry via derived PartialEqVerified

@@ -6,18 +6,18 @@ use verge::cmp::{PartialEqVerified, PartialOrdVerified};
 use core::cmp::Ordering;
 
 // --- Named struct ---
-#[verge_macros::derive_partial_ord(score)]
+#[verge_macros::derive_partial_ord]
 pub struct Score {
     pub primary: u32,
     pub secondary: u32,
 }
 
 // --- Tuple struct ---
-#[verge_macros::derive_partial_ord(pair)]
+#[verge_macros::derive_partial_ord]
 pub struct Pair(pub u32, pub u8);
 
 // --- Nested composite ---
-#[verge_macros::derive_partial_ord(entry)]
+#[verge_macros::derive_partial_ord]
 pub struct Entry {
     pub priority: Score,
     pub category: u8,

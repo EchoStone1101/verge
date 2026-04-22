@@ -1,28 +1,27 @@
 use proc_macro2::TokenStream;
-use quote::{quote, format_ident};
+use quote::quote;
 use syn::{parse2, Fields, Ident, Item, ItemEnum, ItemStruct};
 
 use crate::eq_common::{self, conjunction};
 
 pub fn derive_clone_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let short_name: Ident = match parse2(attr) {
-        Ok(name) => name,
-        Err(_) => return syn::Error::new(proc_macro2::Span::call_site(),
-            "derive_clone requires a name: #[derive_clone(my_type)]").to_compile_error(),
-    };
+    if !attr.is_empty() {
+        return syn::Error::new_spanned(attr, "derive_clone takes no arguments")
+            .to_compile_error();
+    }
     let item: Item = match parse2(item) {
         Ok(item) => item,
         Err(e) => return e.to_compile_error(),
     };
     match item {
-        Item::Struct(s) => gen_struct(short_name, s),
-        Item::Enum(e) => gen_enum(short_name, e),
+        Item::Struct(s) => gen_struct(s),
+        Item::Enum(e) => gen_enum(e),
         _ => syn::Error::new(proc_macro2::Span::call_site(),
             "derive_clone can only be applied to structs and enums").to_compile_error(),
     }
 }
 
-fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
+fn gen_struct(input: ItemStruct) -> TokenStream {
     let name = &input.ident;
     let vis = &input.vis;
     let attrs = &input.attrs;
@@ -30,7 +29,7 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
     let fields = &input.fields;
     if eq_common::has_conflicting_attrs(fields) {
         return syn::Error::new(proc_macro2::Span::call_site(),
-            "derive_clone: a field cannot have both #[ignored] and #[default].")
+            "derive_clone: a field cannot have both #[ignored] and #[ignored_with_default].")
             .to_compile_error();
     }
     let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -43,7 +42,6 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
     let openness = if eq_common::all_fields_pub(fields) { quote! { open } } else { quote! { closed } };
     let g = quote! { #generics };
     let tg = quote! { #ty_generics };
-    let cloned_fn_name = format_ident!("{}_strictly_cloned", short_name);
     let cloned_body = build_struct_cloned_body(fields);
     let clone_body = build_struct_clone_body(name, fields);
     quote! {
@@ -51,17 +49,19 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
             #struct_def
             impl #g Clone for #name #tg {
                 fn clone(&self) -> (ret: Self)
-                    ensures #cloned_fn_name(self, &ret),
+                    ensures Self::strictly_cloned(self, &ret),
                 { #clone_body }
             }
-            #vis #openness spec fn #cloned_fn_name #g (a: &#name #tg, b: &#name #tg) -> bool {
-                #cloned_body
+            impl #g #name #tg {
+                #vis #openness spec fn strictly_cloned(a: &Self, b: &Self) -> bool {
+                    #cloned_body
+                }
             }
         }
     }
 }
 
-fn gen_enum(short_name: Ident, input: ItemEnum) -> TokenStream {
+fn gen_enum(input: ItemEnum) -> TokenStream {
     let name = &input.ident;
     let vis = &input.vis;
     let attrs = &input.attrs;
@@ -73,9 +73,7 @@ fn gen_enum(short_name: Ident, input: ItemEnum) -> TokenStream {
     let openness = if all_pub { quote! { open } } else { quote! { closed } };
     let g = quote! { #generics };
     let tg = quote! { #ty_generics };
-    let cloned_fn_name = format_ident!("{}_strictly_cloned", short_name);
 
-    // Build clone body and spec body for enum
     let (clone_arms, spec_arms) = build_enum_clone_arms(name, variants);
     let clone_body = quote! { match self { #(#clone_arms,)* } };
     let cloned_body = quote! { match (a, b) { #(#spec_arms,)* _ => false, } };
@@ -85,11 +83,13 @@ fn gen_enum(short_name: Ident, input: ItemEnum) -> TokenStream {
             #enum_def
             impl #g Clone for #name #tg {
                 fn clone(&self) -> (ret: Self)
-                    ensures #cloned_fn_name(self, &ret),
+                    ensures Self::strictly_cloned(self, &ret),
                 { #clone_body }
             }
-            #vis #openness spec fn #cloned_fn_name #g (a: &#name #tg, b: &#name #tg) -> bool {
-                #cloned_body
+            impl #g #name #tg {
+                #vis #openness spec fn strictly_cloned(a: &Self, b: &Self) -> bool {
+                    #cloned_body
+                }
             }
         }
     }
@@ -131,7 +131,6 @@ fn build_struct_cloned_body(fields: &Fields) -> TokenStream {
             let parts: Vec<TokenStream> = f.named.iter().map(|field| {
                 let fname = field.ident.as_ref().unwrap();
                 if eq_common::is_field_ignored(field) {
-                    // #[ignored] fields: no constraint
                     return quote! {};
                 }
                 if eq_common::is_field_ignored_with_default(field) {
