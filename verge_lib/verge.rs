@@ -31,6 +31,8 @@ use vstd::prelude::*;
 use core::alloc::Allocator;
 use std::rc::Rc;
 
+pub mod prelude;
+
 #[macro_export]
 macro_rules! impl_maybe_generic {
     // No generics

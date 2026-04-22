@@ -1,40 +1,26 @@
-//! Tests for #[verge_macros::hash_key].
+//! Tests for #[verge_macros::hash_key] and #[verge_macros::hash_key_with_clone].
 
 use vstd::prelude::*;
 use vstd::std_specs::hash::obeys_key_model;
-use std::hash::Hash;
 use std::collections::HashMap;
 
-// --- Basic struct ---
-
-#[verge_macros::hash_key(point)]
+// --- hash_key: struct (bans Clone) ---
+#[verge_macros::hash_key]
 pub struct Point {
     pub x: u32,
     pub y: u32,
 }
 
-// --- Duplicate field types ---
-
-#[verge_macros::hash_key(triple)]
-pub struct Triple {
-    pub a: u64,
-    pub b: u64,
-    pub c: u64,
-}
-
-// --- Unit struct ---
-
-#[verge_macros::hash_key(unit)]
+// --- hash_key: unit struct ---
+#[verge_macros::hash_key]
 pub struct Unit;
 
-// --- Tuple struct ---
-
-#[verge_macros::hash_key(pair)]
+// --- hash_key: tuple struct ---
+#[verge_macros::hash_key]
 pub struct Pair(pub u32, pub u64);
 
-// --- Enum ---
-
-#[verge_macros::hash_key(color)]
+// --- hash_key: enum ---
+#[verge_macros::hash_key]
 pub enum Color {
     Red,
     Green,
@@ -42,20 +28,34 @@ pub enum Color {
     Custom(u8, u8, u8),
 }
 
-// --- Nested composite ---
+// --- hash_key_with_clone: struct ---
+#[verge_macros::hash_key_with_clone]
+pub struct Tag {
+    pub id: u32,
+    pub label: u64,
+}
 
-#[verge_macros::hash_key(entry)]
-pub struct Entry {
-    pub key: Point,
-    pub color: Color,
-    pub priority: u32,
+// --- hash_key_with_clone: enum ---
+#[verge_macros::hash_key_with_clone]
+pub enum Status {
+    Active,
+    Inactive,
+    Code(u32),
+}
+
+// --- hash_key with #[ignored] ---
+#[verge_macros::hash_key]
+pub struct CachedKey {
+    pub key: u32,
+    #[ignored]
+    pub cached: Option<u64>,
 }
 
 verus! {
 
 fn test_point_hash_key() {
     broadcast use vstd::std_specs::hash::group_hash_axioms;
-    broadcast use lemma_point_obeys_key_model;
+    broadcast use Point::lemma_obeys_key_model;
 
     let mut map: HashMap<Point, bool> = HashMap::new();
     let key = Point { x: 1, y: 42 };
@@ -63,15 +63,38 @@ fn test_point_hash_key() {
     assert(map@.contains_key(Point { x: 1, y: 42 }));
 }
 
-fn test_nested_hash_key() {
-    broadcast use vstd::std_specs::hash::group_hash_axioms;
-    broadcast use lemma_point_obeys_key_model;
-    broadcast use lemma_color_obeys_key_model;
-    broadcast use lemma_entry_obeys_key_model;
+fn test_point_eq() {
+    let a = Point { x: 1, y: 2 };
+    let b = Point { x: 1, y: 2 };
+    let r = (a == b);
+    assert(r);
+}
 
-    let mut map: HashMap<Entry, u32> = HashMap::new();
-    let e = Entry { key: Point { x: 0, y: 0 }, color: Color::Red, priority: 1 };
-    map.insert(e, 100);
+fn test_color_eq() {
+    let r = (Color::Red == Color::Red);
+    assert(r);
+    let r2 = (Color::Red == Color::Green);
+    assert(!r2);
+}
+
+fn test_tag_clone() {
+    let a = Tag { id: 1, label: 42 };
+    let b = a.clone();
+    assert(Tag::strictly_cloned(&a, &b));
+    assert(b.id == 1u32);
+}
+
+fn test_status_clone() {
+    let a = Status::Code(42);
+    let b = a.clone();
+    assert(Status::strictly_cloned(&a, &b));
+}
+
+fn test_cached_key_eq() {
+    let a = CachedKey { key: 42, cached: Some(100) };
+    let b = CachedKey { key: 42, cached: None };
+    let r = (a == b);
+    assert(r);
 }
 
 }

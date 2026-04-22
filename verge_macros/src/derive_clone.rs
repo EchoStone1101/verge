@@ -161,6 +161,10 @@ fn build_struct_cloned_body(fields: &Fields) -> TokenStream {
     }
 }
 
+pub(crate) fn build_enum_clone_arms_pub(name: &Ident, variants: &syn::punctuated::Punctuated<syn::Variant, syn::token::Comma>) -> (Vec<TokenStream>, Vec<TokenStream>) {
+    build_enum_clone_arms(name, variants)
+}
+
 fn build_enum_clone_arms(name: &Ident, variants: &syn::punctuated::Punctuated<syn::Variant, syn::token::Comma>) -> (Vec<TokenStream>, Vec<TokenStream>) {
     let mut clone_arms = Vec::new();
     let mut spec_arms = Vec::new();

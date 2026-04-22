@@ -16,6 +16,11 @@ pub fn hash_key(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
+pub fn hash_key_with_clone(attr: TokenStream, item: TokenStream) -> TokenStream {
+    hash_key::hash_key_with_clone_impl(attr.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
 pub fn derive_partial_eq(attr: TokenStream, item: TokenStream) -> TokenStream {
     derive_partial_eq::derive_partial_eq_impl(attr.into(), item.into()).into()
 }

@@ -75,7 +75,7 @@ fn gen_enum(input: ItemEnum) -> TokenStream {
     emit_eq(enum_def, name, &g, &tg, &openness, &code)
 }
 
-fn emit_eq(
+pub(crate) fn emit_eq(
     type_def: TokenStream, name: &Ident, generics: &TokenStream,
     ty_generics: &TokenStream, openness: &TokenStream, code: &StructFieldCode,
 ) -> TokenStream {

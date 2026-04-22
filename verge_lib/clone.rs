@@ -1,17 +1,37 @@
 //! Verified trait invariants for `Clone`.
 //!
-//! ## Inter-Trait Invariants 
-//! `Clone` alone carries no invariant. However, when combined with other traits, 
+//! ## Inter-Trait Invariants
+//! `Clone` alone carries no invariant. However, when combined with other traits,
 //! Rust language design does have further specifications:
-//! - `PartialEq`: `x == x ==> x.clone() == x`. 
+//! - `PartialEq`: `x == x ==> x.clone() == x`.
 //! - `Copy`: `x.clone()` is a *bit-wise* copy.
 //! Traits in this module each carries a proof of these cross-trait invariants.
+//!
+//! ## Clone Ban
+//! The `CloneImpl` trait and sealed helpers allow macros to statically prevent
+//! a type from implementing `Clone`.  A blanket impl sets `Impl = Yes` for all
+//! `Clone` types; emitting `impl CloneImpl for T { type Impl = No; }` makes any
+//! future `Clone` impl a coherence error.
 
 #[allow(unused_imports)]
 use vstd::prelude::*;
 use vstd::pervasive::strictly_cloned;
 use vstd::std_specs::cmp::*;
 use crate::cmp::PartialEqVerified;
+
+mod _clone_sealed { pub trait Sealed {} }
+/// Marker: type implements `Clone`.
+pub struct CloneYes;
+/// Marker: type must *not* implement `Clone`.
+pub struct CloneNo;
+impl _clone_sealed::Sealed for CloneYes {}
+impl _clone_sealed::Sealed for CloneNo {}
+/// Blanket-impl side of the Clone ban trick.
+/// All `Clone` types get `Impl = CloneYes`.
+/// Macros can emit `impl CloneImpl for T { type Impl = CloneNo; }`
+/// to make `Clone` for `T` a coherence error.
+pub trait CloneImpl { type Impl: _clone_sealed::Sealed; }
+impl<T: Clone> CloneImpl for T { type Impl = CloneYes; }
 
 verus! {
 
