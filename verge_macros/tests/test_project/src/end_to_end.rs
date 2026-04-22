@@ -185,8 +185,8 @@ fn test_entry_ord() {
         result: CachedResult { key: 2, cached: None },
         priority: 3,
     };
-    let r = a.partial_cmp(&b);
-    assert(r == Some(Ordering::Less));
+    let r = a.cmp(&b);
+    assert(r == Ordering::Less);
 }
 
 fn test_entry_ord_secondary() {
@@ -198,8 +198,8 @@ fn test_entry_ord_secondary() {
         result: CachedResult { key: 1, cached: Some(99) },
         priority: 5,
     };
-    let r = a.partial_cmp(&b);
-    assert(r == Some(Ordering::Less));
+    let r = a.cmp(&b);
+    assert(r == Ordering::Less);
 }
 
 // Test: Entry clone (from derive_clone, composed with derive_ord)

@@ -4,16 +4,22 @@ use vstd::prelude::*;
 use vstd::std_specs::cmp::*;
 use verge::cmp::PartialEqVerified;
 
-// --- Struct with all pub fields (open eq_spec) ---
-
+// --- Named struct (open eq_spec) ---
 #[verge_macros::derive_partial_eq]
 pub struct Point {
     pub x: u32,
     pub y: u32,
 }
 
-// --- Struct with private field (closed eq_spec) ---
+// --- Tuple struct ---
+#[verge_macros::derive_partial_eq]
+pub struct Pair(pub u32, pub bool);
 
+// --- Unit struct ---
+#[verge_macros::derive_partial_eq]
+pub struct Marker;
+
+// --- Struct with private field (closed eq_spec) ---
 #[verge_macros::derive_partial_eq]
 pub struct Token {
     secret: u64,
@@ -21,7 +27,6 @@ pub struct Token {
 }
 
 // --- Nested composite ---
-
 #[verge_macros::derive_partial_eq]
 pub struct Line {
     pub start: Point,
@@ -29,7 +34,6 @@ pub struct Line {
 }
 
 // --- Enum with mixed variants ---
-
 #[verge_macros::derive_partial_eq]
 pub enum Shape {
     Circle(u32),
@@ -53,10 +57,18 @@ fn test_point_ne() {
     assert(!r);
 }
 
-fn test_token() {
-    let a = Token { secret: 42, label: 1 };
-    let b = Token { secret: 42, label: 1 };
+fn test_pair() {
+    let a = Pair(5, true);
+    let b = Pair(5, true);
     let r = (a == b);
+    assert(r);
+    let c = Pair(5, false);
+    let r2 = (a == c);
+    assert(!r2);
+}
+
+fn test_marker() {
+    let r = (Marker == Marker);
     assert(r);
 }
 
@@ -80,9 +92,7 @@ fn test_shape() {
     assert(!r5);
 }
 
-// --- Proof trait tests ---
-
-proof fn test_point_symmetric() {
+proof fn test_symmetry() {
     let a = Point { x: 1, y: 2 };
     let b = Point { x: 3, y: 4 };
     Point::lemma_eq_symmetric(&a, &b);

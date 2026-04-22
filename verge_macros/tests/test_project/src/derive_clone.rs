@@ -3,45 +3,59 @@
 use vstd::prelude::*;
 use vstd::pervasive::strictly_cloned;
 
-// --- Struct ---
-
+// --- Named struct ---
 #[verge_macros::derive_clone(point)]
 pub struct Point {
     pub x: u32,
     pub y: u32,
 }
 
-// --- Nested struct ---
+// --- Tuple struct ---
+#[verge_macros::derive_clone(pair)]
+pub struct Pair(pub u32, pub bool);
 
+// --- Unit struct ---
+#[verge_macros::derive_clone(tag)]
+pub struct Tag;
+
+// --- Nested struct ---
 #[verge_macros::derive_clone(segment)]
 pub struct Segment {
     pub start: Point,
     pub end: Point,
 }
 
-// --- Enum ---
-
+// --- Enum with all variant kinds ---
 #[verge_macros::derive_clone(color)]
 pub enum Color {
     Red,
     Green,
     Rgb(u8, u8, u8),
+    Named { r: u8, g: u8, b: u8 },
 }
 
 verus! {
 
-// Test: clone produces field-level strictly_cloned
 fn test_point_clone() {
     let a = Point { x: 1, y: 2 };
     let b = a.clone();
-    // The assume_specification gives us point_strictly_cloned(&a, &b)
     assert(point_strictly_cloned(&a, &b));
-    // Since u32::clone ensures ret == *self, strictly_cloned(u32) ==> equal
     assert(b.x == a.x);
     assert(b.y == a.y);
 }
 
-// Test: nested clone
+fn test_pair_clone() {
+    let a = Pair(42, true);
+    let b = a.clone();
+    assert(pair_strictly_cloned(&a, &b));
+}
+
+fn test_tag_clone() {
+    let a = Tag;
+    let b = a.clone();
+    assert(tag_strictly_cloned(&a, &b));
+}
+
 fn test_segment_clone() {
     let a = Segment {
         start: Point { x: 0, y: 0 },
@@ -51,20 +65,27 @@ fn test_segment_clone() {
     assert(segment_strictly_cloned(&a, &b));
 }
 
-// Test: enum clone
-fn test_color_clone() {
+fn test_color_unit() {
+    let a = Color::Red;
+    let b = a.clone();
+    assert(color_strictly_cloned(&a, &b));
+}
+
+fn test_color_tuple() {
     let a = Color::Rgb(10, 20, 30);
     let b = a.clone();
     assert(color_strictly_cloned(&a, &b));
 }
 
-// Test: strictly_cloned implies the field-level spec
+fn test_color_named() {
+    let a = Color::Named { r: 255, g: 0, b: 128 };
+    let b = a.clone();
+    assert(color_strictly_cloned(&a, &b));
+}
+
 proof fn test_strictly_cloned_implies_spec(a: Point, b: Point)
     requires strictly_cloned(a, b),
 {
-    // strictly_cloned(Point, Point) should imply point_strictly_cloned
-    // because strictly_cloned encodes call_ensures(<Point as Clone>::clone, ...)
-    // and the assume_specification gives point_strictly_cloned as postcondition
     assert(point_strictly_cloned(&a, &b));
 }
 

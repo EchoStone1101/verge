@@ -27,9 +27,9 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
     let attrs = &input.attrs;
     let generics = &input.generics;
     let fields = &input.fields;
-    if eq_common::has_any_ignored(fields) {
+    if eq_common::has_any_verge_attr(fields) {
         return syn::Error::new(proc_macro2::Span::call_site(),
-            "derive_copy does not support #[ignored] fields. Copy types must copy all fields.")
+            "derive_copy does not support #[ignored] or #[ignored_with_default] fields. Copy types must copy all fields.")
             .to_compile_error();
     }
     let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();

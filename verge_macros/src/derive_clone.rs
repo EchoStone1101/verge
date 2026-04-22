@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::{quote, format_ident};
-use syn::{parse2, Fields, Ident, Item, ItemEnum, ItemStruct, Visibility};
+use syn::{parse2, Fields, Ident, Item, ItemEnum, ItemStruct};
 
 use crate::eq_common::{self, conjunction};
 
@@ -22,20 +22,17 @@ pub fn derive_clone_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 }
 
-fn all_fields_pub(fields: &Fields) -> bool {
-    match fields {
-        Fields::Named(f) => f.named.iter().all(|f| matches!(f.vis, Visibility::Public(_))),
-        Fields::Unnamed(f) => f.unnamed.iter().all(|f| matches!(f.vis, Visibility::Public(_))),
-        Fields::Unit => true,
-    }
-}
-
 fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
     let name = &input.ident;
     let vis = &input.vis;
     let attrs = &input.attrs;
     let generics = &input.generics;
     let fields = &input.fields;
+    if eq_common::has_conflicting_attrs(fields) {
+        return syn::Error::new(proc_macro2::Span::call_site(),
+            "derive_clone: a field cannot have both #[ignored] and #[default].")
+            .to_compile_error();
+    }
     let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let stripped = eq_common::strip_ignored_attrs(fields);
     let struct_def = match fields {
@@ -43,7 +40,7 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
         Fields::Unnamed(_) => quote! { #(#attrs)* #vis struct #name #generics #stripped #where_clause ; },
         Fields::Unit => quote! { #(#attrs)* #vis struct #name #generics #where_clause ; },
     };
-    let openness = if all_fields_pub(fields) { quote! { open } } else { quote! { closed } };
+    let openness = if eq_common::all_fields_pub(fields) { quote! { open } } else { quote! { closed } };
     let g = quote! { #generics };
     let tg = quote! { #ty_generics };
     let cloned_fn_name = format_ident!("{}_strictly_cloned", short_name);
@@ -72,7 +69,7 @@ fn gen_enum(short_name: Ident, input: ItemEnum) -> TokenStream {
     let variants = &input.variants;
     let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let enum_def = quote! { #(#attrs)* #vis enum #name #generics #where_clause { #variants } };
-    let all_pub = variants.iter().all(|v| all_fields_pub(&v.fields));
+    let all_pub = variants.iter().all(|v| eq_common::all_fields_pub(&v.fields));
     let openness = if all_pub { quote! { open } } else { quote! { closed } };
     let g = quote! { #generics };
     let tg = quote! { #ty_generics };
@@ -103,7 +100,7 @@ fn build_struct_clone_body(name: &Ident, fields: &Fields) -> TokenStream {
         Fields::Named(f) => {
             let clones: Vec<TokenStream> = f.named.iter().map(|field| {
                 let fname = field.ident.as_ref().unwrap();
-                if eq_common::is_field_default(field) {
+                if eq_common::is_field_ignored_with_default(field) {
                     let ty = &field.ty;
                     quote! { #fname: <#ty as Default>::default() }
                 } else {
@@ -114,7 +111,7 @@ fn build_struct_clone_body(name: &Ident, fields: &Fields) -> TokenStream {
         },
         Fields::Unnamed(f) => {
             let clones: Vec<TokenStream> = f.unnamed.iter().enumerate().map(|(i, field)| {
-                if eq_common::is_field_default(field) {
+                if eq_common::is_field_ignored_with_default(field) {
                     let ty = &field.ty;
                     quote! { <#ty as Default>::default() }
                 } else {
@@ -137,7 +134,7 @@ fn build_struct_cloned_body(fields: &Fields) -> TokenStream {
                     // #[ignored] fields: no constraint
                     return quote! {};
                 }
-                if eq_common::is_field_default(field) {
+                if eq_common::is_field_ignored_with_default(field) {
                     let ty = &field.ty;
                     quote! { call_ensures(<#ty as Default>::default, (), b.#fname) }
                 } else {
@@ -152,7 +149,7 @@ fn build_struct_cloned_body(fields: &Fields) -> TokenStream {
                 if eq_common::is_field_ignored(field) {
                     return quote! {};
                 }
-                if eq_common::is_field_default(field) {
+                if eq_common::is_field_ignored_with_default(field) {
                     let ty = &field.ty;
                     quote! { call_ensures(<#ty as Default>::default, (), b.#idx) }
                 } else {

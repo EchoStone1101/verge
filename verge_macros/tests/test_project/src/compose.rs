@@ -1,7 +1,7 @@
-//! Test composability of derive macros: (derive_partial_ord | derive_ord) × (derive_clone | derive_copy)
+//! Test composability of derive macros and field attributes (#[ignored], #[ignored_with_default]).
 //!
-//! Since PartialOrd/Ord already emit PartialEq, we don't stack eq macros separately.
-//! All macros must be inside verus! { } for composability.
+//! Tests: (derive_partial_ord | derive_ord) × (derive_clone | derive_copy),
+//! and field-level #[ignored] / #[ignored_with_default] behavior.
 
 use vstd::prelude::*;
 use vstd::std_specs::cmp::*;
@@ -11,27 +11,10 @@ use core::cmp::Ordering;
 
 verus! {
 
-// 1. PartialOrd + Clone
+// === Composability: PartialOrd + Clone ===
 #[verge_macros::derive_partial_ord(c1)]
 #[verge_macros::derive_clone(c1)]
 pub struct C1 { pub x: u32, pub y: u32 }
-
-// 2. PartialOrd + Copy
-#[verge_macros::derive_partial_ord(c2)]
-#[verge_macros::derive_copy(c2)]
-pub struct C2 { pub x: u32, pub y: u32 }
-
-// 3. Ord + Clone
-#[verge_macros::derive_ord(c3)]
-#[verge_macros::derive_clone(c3)]
-pub struct C3 { pub x: u32, pub y: u32 }
-
-// 4. Ord + Copy
-#[verge_macros::derive_ord(c4)]
-#[verge_macros::derive_copy(c4)]
-pub struct C4 { pub x: u32, pub y: u32 }
-
-// --- Tests ---
 
 fn test_c1() {
     let a = C1 { x: 1, y: 2 };
@@ -44,6 +27,11 @@ fn test_c1() {
     assert(c1_strictly_cloned(&a, &c));
 }
 
+// === Composability: PartialOrd + Copy ===
+#[verge_macros::derive_partial_ord(c2)]
+#[verge_macros::derive_copy(c2)]
+pub struct C2 { pub x: u32, pub y: u32 }
+
 fn test_c2() {
     let a = C2 { x: 1, y: 2 };
     let b = C2 { x: 1, y: 3 };
@@ -54,6 +42,11 @@ fn test_c2() {
     let c = a.clone();
     assert(c2_strictly_cloned(&a, &c));
 }
+
+// === Composability: Ord + Clone ===
+#[verge_macros::derive_ord(c3)]
+#[verge_macros::derive_clone(c3)]
+pub struct C3 { pub x: u32, pub y: u32 }
 
 fn test_c3() {
     let a = C3 { x: 1, y: 2 };
@@ -66,6 +59,11 @@ fn test_c3() {
     assert(c3_strictly_cloned(&a, &c));
 }
 
+// === Composability: Ord + Copy ===
+#[verge_macros::derive_ord(c4)]
+#[verge_macros::derive_copy(c4)]
+pub struct C4 { pub x: u32, pub y: u32 }
+
 fn test_c4() {
     let a = C4 { x: 2, y: 0 };
     let b = C4 { x: 1, y: 9 };
@@ -77,9 +75,9 @@ fn test_c4() {
     assert(c4_strictly_cloned(&a, &c));
 }
 
-// --- Test #[ignored] on fields ---
+}
 
-// derive_partial_eq + derive_clone: #[ignored] excludes cached_value from eq and clone spec
+// === #[ignored] with derive_partial_eq + derive_clone ===
 #[verge_macros::derive_partial_eq]
 #[verge_macros::derive_clone(cached)]
 pub struct Cached {
@@ -88,7 +86,7 @@ pub struct Cached {
     pub cached_value: Option<u64>,
 }
 
-// derive_partial_ord + #[ignored]: only key participates in ordering
+// === #[ignored] with derive_partial_ord ===
 #[verge_macros::derive_partial_ord(cached_ord)]
 pub struct CachedOrd {
     pub key: u32,
@@ -96,13 +94,27 @@ pub struct CachedOrd {
     pub cached_value: Option<u64>,
 }
 
-// derive_ord + #[ignored]
+// === #[ignored] with derive_ord ===
 #[verge_macros::derive_ord(cached_total)]
 pub struct CachedTotal {
     pub key: u32,
     #[ignored]
     pub cached_value: Option<u64>,
 }
+
+// === #[ignored_with_default] field with derive_clone (reset on clone) ===
+#[verge_macros::derive_clone(reset_cache)]
+pub struct ResetCache {
+    pub key: u32,
+    #[ignored_with_default]
+    pub cached_value: Option<u64>,
+}
+
+// === #[ignored_with_default] field with derive_clone on tuple struct ===
+#[verge_macros::derive_clone(reset_pair)]
+pub struct ResetPair(pub u32, #[ignored_with_default] pub Option<u8>);
+
+verus! {
 
 fn test_ignored_eq() {
     let a = Cached { key: 42, cached_value: Some(100) };
@@ -124,60 +136,43 @@ fn test_ignored_clone() {
     assert(cached_strictly_cloned(&a, &b));
 }
 
-fn test_ignored_partial_ord_lt() {
+fn test_ignored_partial_ord() {
     let a = CachedOrd { key: 1, cached_value: Some(999) };
     let b = CachedOrd { key: 2, cached_value: None };
     let r = a.partial_cmp(&b);
     assert(r == Some(Ordering::Less));
+    // Same key, different cached_value: equal
+    let c = CachedOrd { key: 5, cached_value: Some(1) };
+    let d = CachedOrd { key: 5, cached_value: None };
+    let r2 = (c == d);
+    assert(r2);
 }
 
-fn test_ignored_partial_ord_eq() {
-    let a = CachedOrd { key: 5, cached_value: Some(1) };
-    let b = CachedOrd { key: 5, cached_value: None };
-    let r = (a == b);
-    assert(r);
-}
-
-fn test_ignored_ord_gt() {
+fn test_ignored_ord() {
     let a = CachedTotal { key: 3, cached_value: None };
     let b = CachedTotal { key: 1, cached_value: Some(42) };
     let r = a.cmp(&b);
     assert(r == Ordering::Greater);
+    let c = CachedTotal { key: 7, cached_value: Some(10) };
+    let d = CachedTotal { key: 7, cached_value: None };
+    let r2 = (c == d);
+    assert(r2);
 }
-
-fn test_ignored_ord_eq() {
-    let a = CachedTotal { key: 7, cached_value: Some(10) };
-    let b = CachedTotal { key: 7, cached_value: None };
-    let r = (a == b);
-    assert(r);
-}
-
-}
-
-// --- Test #[default] on fields (derive_clone resets field to Default) ---
-
-#[verge_macros::derive_clone(reset_cache)]
-pub struct ResetCache {
-    pub key: u32,
-    #[default]
-    pub cached_value: Option<u64>,
-}
-
-verus! {
 
 fn test_default_clone_resets() {
     let a = ResetCache { key: 42, cached_value: Some(100) };
     let b = a.clone();
-    // key is cloned normally, cached_value is reset to default (None)
     assert(reset_cache_strictly_cloned(&a, &b));
-    // call_ensures for Option<u64>::default gives None
     assert(b.cached_value == Option::<u64>::None);
+    assert(b.key == 42u32);
 }
 
-fn test_default_clone_key_preserved() {
-    let a = ResetCache { key: 99, cached_value: Some(7) };
+fn test_default_clone_tuple() {
+    let a = ResetPair(99, Some(7));
     let b = a.clone();
-    assert(b.key == 99u32);
+    assert(reset_pair_strictly_cloned(&a, &b));
+    assert(b.1 == Option::<u8>::None);
+    assert(b.0 == 99u32);
 }
 
 }

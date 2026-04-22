@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::{quote, format_ident};
-use syn::{parse2, Fields, Ident, Item, ItemEnum, ItemStruct, Visibility};
+use syn::{parse2, Fields, Ident, Item, ItemEnum, ItemStruct};
 
 use crate::eq_common;
 
@@ -22,13 +22,6 @@ pub fn derive_default_impl(attr: TokenStream, item: TokenStream) -> TokenStream 
     }
 }
 
-fn all_fields_pub(fields: &Fields) -> bool {
-    match fields {
-        Fields::Named(f) => f.named.iter().all(|f| matches!(f.vis, Visibility::Public(_))),
-        Fields::Unnamed(f) => f.unnamed.iter().all(|f| matches!(f.vis, Visibility::Public(_))),
-        Fields::Unit => true,
-    }
-}
 
 fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
     let name = &input.ident;
@@ -36,9 +29,9 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
     let attrs = &input.attrs;
     let generics = &input.generics;
     let fields = &input.fields;
-    if eq_common::has_any_ignored(fields) {
+    if eq_common::has_any_verge_attr(fields) {
         return syn::Error::new(proc_macro2::Span::call_site(),
-            "derive_default does not support #[ignored] fields. Default must initialize all fields.")
+            "derive_default does not support #[ignored] or #[ignored_with_default] on struct fields.")
             .to_compile_error();
     }
     let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -47,7 +40,7 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
         Fields::Unnamed(_) => quote! { #(#attrs)* #vis struct #name #generics #fields #where_clause ; },
         Fields::Unit => quote! { #(#attrs)* #vis struct #name #generics #where_clause ; },
     };
-    let openness = if all_fields_pub(fields) { quote! { open } } else { quote! { closed } };
+    let openness = if eq_common::all_fields_pub(fields) { quote! { open } } else { quote! { closed } };
     let g = quote! { #generics };
     let tg = quote! { #ty_generics };
     let is_default_fn = format_ident!("{}_is_default", short_name);
@@ -93,11 +86,11 @@ fn gen_enum(short_name: Ident, input: ItemEnum) -> TokenStream {
     }
     let default_variant = default_variants[0];
 
-    // Check no #[ignored] on any variant fields
+    // Check no verge field attributes on any variant fields
     for v in variants.iter() {
-        if eq_common::has_any_ignored(&v.fields) {
+        if eq_common::has_any_verge_attr(&v.fields) {
             return syn::Error::new(proc_macro2::Span::call_site(),
-                "derive_default does not support #[ignored] fields. Default must initialize all fields.")
+                "derive_default does not support #[ignored] or #[ignored_with_default] on variant fields.")
                 .to_compile_error();
         }
     }
@@ -121,7 +114,7 @@ fn gen_enum(short_name: Ident, input: ItemEnum) -> TokenStream {
 
     let enum_def = quote! { #(#attrs)* #vis enum #name #generics #where_clause { #(#stripped_variants),* } };
 
-    let all_pub = variants.iter().all(|v| all_fields_pub(&v.fields));
+    let all_pub = variants.iter().all(|v| eq_common::all_fields_pub(&v.fields));
     let openness = if all_pub { quote! { open } } else { quote! { closed } };
     let g = quote! { #generics };
     let tg = quote! { #ty_generics };

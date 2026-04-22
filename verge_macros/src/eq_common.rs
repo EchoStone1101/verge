@@ -15,19 +15,24 @@ fn is_ignored_attr(attr: &syn::Attribute) -> bool {
     segs == ["ignored"]
 }
 
-fn is_default_attr(attr: &syn::Attribute) -> bool {
+fn is_ignored_with_default_attr(attr: &syn::Attribute) -> bool {
     let path = attr.path();
     let segs: Vec<String> = path.segments.iter().map(|s| s.ident.to_string()).collect();
-    segs == ["default"]
+    segs == ["ignored_with_default"]
 }
 
-/// Check if a field has the `#[default]` attribute (for derive_clone).
-pub fn is_field_default(field: &syn::Field) -> bool {
-    field.attrs.iter().any(|a| is_default_attr(a))
+/// Check if a field has the `#[ignored_with_default]` attribute.
+pub fn is_field_ignored_with_default(field: &syn::Field) -> bool {
+    field.attrs.iter().any(|a| is_ignored_with_default_attr(a))
+}
+
+/// Check if a field is filtered from specs (either `#[ignored]` or `#[ignored_with_default]`).
+pub fn is_field_filtered(field: &syn::Field) -> bool {
+    is_field_ignored(field) || is_field_ignored_with_default(field)
 }
 
 fn is_verge_field_attr(attr: &syn::Attribute) -> bool {
-    is_ignored_attr(attr) || is_default_attr(attr)
+    is_ignored_attr(attr) || is_ignored_with_default_attr(attr)
 }
 
 /// Check if any field in the Fields has `#[ignored]`.
@@ -35,6 +40,30 @@ pub fn has_any_ignored(fields: &Fields) -> bool {
     match fields {
         Fields::Named(f) => f.named.iter().any(|f| is_field_ignored(f)),
         Fields::Unnamed(f) => f.unnamed.iter().any(|f| is_field_ignored(f)),
+        Fields::Unit => false,
+    }
+}
+
+/// Check if any field has `#[ignored_with_default]`.
+pub fn has_any_ignored_with_default(fields: &Fields) -> bool {
+    match fields {
+        Fields::Named(f) => f.named.iter().any(|f| is_field_ignored_with_default(f)),
+        Fields::Unnamed(f) => f.unnamed.iter().any(|f| is_field_ignored_with_default(f)),
+        Fields::Unit => false,
+    }
+}
+
+/// Check if any field has any verge field attribute (`#[ignored]` or `#[ignored_with_default]`).
+pub fn has_any_verge_attr(fields: &Fields) -> bool {
+    has_any_ignored(fields) || has_any_ignored_with_default(fields)
+}
+
+/// Check if any field has both `#[ignored]` and `#[ignored_with_default]` (invalid).
+pub fn has_conflicting_attrs(fields: &Fields) -> bool {
+    let check = |f: &syn::Field| is_field_ignored(f) && is_field_ignored_with_default(f);
+    match fields {
+        Fields::Named(f) => f.named.iter().any(check),
+        Fields::Unnamed(f) => f.unnamed.iter().any(check),
         Fields::Unit => false,
     }
 }
@@ -75,6 +104,7 @@ pub fn all_fields_pub(fields: &Fields) -> bool {
     }
 }
 
+
 pub fn conjunction(parts: &[TokenStream]) -> TokenStream {
     if parts.is_empty() {
         quote! { true }
@@ -107,7 +137,7 @@ pub struct EnumVariantArms {
 pub fn gen_struct_field_code(fields: &Fields) -> StructFieldCode {
     match fields {
         Fields::Named(f) => {
-            let active: Vec<&syn::Field> = f.named.iter().filter(|f| !is_field_ignored(f)).collect();
+            let active: Vec<&syn::Field> = f.named.iter().filter(|f| !is_field_filtered(f)).collect();
             let exec_eqs: Vec<TokenStream> = active.iter().map(|field| {
                 let fname = field.ident.as_ref().unwrap();
                 quote! { self.#fname == other.#fname }

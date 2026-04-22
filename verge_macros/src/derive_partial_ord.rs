@@ -35,13 +35,13 @@ pub(crate) struct FieldInfo {
 
 fn extract_field_info(fields: &Fields) -> Vec<FieldInfo> {
     match fields {
-        Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_ignored(f)).map(|field| {
+        Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_filtered(f)).map(|field| {
             let name = field.ident.as_ref().unwrap().to_string();
             let ty = field.ty.to_token_stream().to_string();
             FieldInfo { self_acc: format!("self.{}", name), other_acc: format!("other.{}", name),
                 a_acc: format!("a.{}", name), b_acc: format!("b.{}", name), c_acc: format!("c.{}", name), ty_str: ty }
         }).collect(),
-        Fields::Unnamed(f) => f.unnamed.iter().enumerate().filter(|(_, f)| !eq_common::is_field_ignored(f)).map(|(i, field)| {
+        Fields::Unnamed(f) => f.unnamed.iter().enumerate().filter(|(_, f)| !eq_common::is_field_filtered(f)).map(|(i, field)| {
             let ty = field.ty.to_token_stream().to_string();
             FieldInfo { self_acc: format!("self.{}", i), other_acc: format!("other.{}", i),
                 a_acc: format!("a.{}", i), b_acc: format!("b.{}", i), c_acc: format!("c.{}", i), ty_str: ty }
@@ -75,15 +75,15 @@ fn gen_struct(short_name: Ident, input: ItemStruct) -> TokenStream {
     let greater_trans_fn_name = format_ident!("__verge_{}_greater_trans", short_name);
 
     let entries_self: Vec<(TokenStream, TokenStream, &syn::Type)> = match fields {
-        Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_ignored(f)).map(|field| { let fname = field.ident.as_ref().unwrap(); (quote! { &self.#fname }, quote! { &other.#fname }, &field.ty) }).collect(),
-        Fields::Unnamed(f) => f.unnamed.iter().enumerate().filter(|(_, f)| !eq_common::is_field_ignored(f)).map(|(i, field)| { let idx = syn::Index::from(i); (quote! { &self.#idx }, quote! { &other.#idx }, &field.ty) }).collect(),
+        Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_filtered(f)).map(|field| { let fname = field.ident.as_ref().unwrap(); (quote! { &self.#fname }, quote! { &other.#fname }, &field.ty) }).collect(),
+        Fields::Unnamed(f) => f.unnamed.iter().enumerate().filter(|(_, f)| !eq_common::is_field_filtered(f)).map(|(i, field)| { let idx = syn::Index::from(i); (quote! { &self.#idx }, quote! { &other.#idx }, &field.ty) }).collect(),
         Fields::Unit => vec![],
     };
     let exec_cmp = lexico_exec_cmp(&entries_self);
     let spec_cmp = lexico_spec_cmp(&entries_self);
     let seq_entries: Vec<TokenStream> = match fields {
-        Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_ignored(f)).map(|field| { let fname = field.ident.as_ref().unwrap(); let ty = &field.ty; quote! { <#ty as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&a.#fname, &b.#fname) } }).collect(),
-        Fields::Unnamed(f) => f.unnamed.iter().enumerate().filter(|(_, f)| !eq_common::is_field_ignored(f)).map(|(i, field)| { let idx = syn::Index::from(i); let ty = &field.ty; quote! { <#ty as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&a.#idx, &b.#idx) } }).collect(),
+        Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_filtered(f)).map(|field| { let fname = field.ident.as_ref().unwrap(); let ty = &field.ty; quote! { <#ty as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&a.#fname, &b.#fname) } }).collect(),
+        Fields::Unnamed(f) => f.unnamed.iter().enumerate().filter(|(_, f)| !eq_common::is_field_filtered(f)).map(|(i, field)| { let idx = syn::Index::from(i); let ty = &field.ty; quote! { <#ty as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&a.#idx, &b.#idx) } }).collect(),
         Fields::Unit => vec![],
     };
 
@@ -145,13 +145,13 @@ fn build_calls(fields: &Fields, lemma: &str, trait_name: &str, with_eq_sym: bool
     let lemma_id = Ident::new(lemma, proc_macro2::Span::call_site());
     let trait_id = Ident::new(trait_name, proc_macro2::Span::call_site());
     let calls: Vec<TokenStream> = match fields {
-        Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_ignored(f)).map(|field| {
+        Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_filtered(f)).map(|field| {
             let fname = field.ident.as_ref().unwrap(); let ty = &field.ty;
             let main = quote! { <#ty as verge::cmp::#trait_id>::#lemma_id(&a.#fname, &b.#fname); };
             if with_eq_sym { quote! { #main <#ty as verge::cmp::PartialEqVerified>::lemma_eq_symmetric(&a.#fname, &b.#fname); } }
             else { main }
         }).collect(),
-        Fields::Unnamed(f) => f.unnamed.iter().enumerate().filter(|(_, f)| !eq_common::is_field_ignored(f)).map(|(i, field)| {
+        Fields::Unnamed(f) => f.unnamed.iter().enumerate().filter(|(_, f)| !eq_common::is_field_filtered(f)).map(|(i, field)| {
             let idx = syn::Index::from(i); let ty = &field.ty;
             let main = quote! { <#ty as verge::cmp::#trait_id>::#lemma_id(&a.#idx, &b.#idx); };
             if with_eq_sym { quote! { #main <#ty as verge::cmp::PartialEqVerified>::lemma_eq_symmetric(&a.#idx, &b.#idx); } }
@@ -166,11 +166,11 @@ fn build_3arg_calls(fields: &Fields, lemma: &str, trait_name: &str) -> TokenStre
     let lemma_id = Ident::new(lemma, proc_macro2::Span::call_site());
     let trait_id = Ident::new(trait_name, proc_macro2::Span::call_site());
     let calls: Vec<TokenStream> = match fields {
-        Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_ignored(f)).map(|field| {
+        Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_filtered(f)).map(|field| {
             let fname = field.ident.as_ref().unwrap(); let ty = &field.ty;
             quote! { <#ty as verge::cmp::#trait_id>::#lemma_id(&a.#fname, &b.#fname, &c.#fname); }
         }).collect(),
-        Fields::Unnamed(f) => f.unnamed.iter().enumerate().filter(|(_, f)| !eq_common::is_field_ignored(f)).map(|(i, field)| {
+        Fields::Unnamed(f) => f.unnamed.iter().enumerate().filter(|(_, f)| !eq_common::is_field_filtered(f)).map(|(i, field)| {
             let idx = syn::Index::from(i); let ty = &field.ty;
             quote! { <#ty as verge::cmp::#trait_id>::#lemma_id(&a.#idx, &b.#idx, &c.#idx); }
         }).collect(),
