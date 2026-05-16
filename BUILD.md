@@ -45,6 +45,16 @@ verus-release/cargo-verus build -p verge -- --expand-errors
 bash verge_macros/run_tests.sh
 ```
 
+### API Documentation
+
+Generate markdown API docs from source:
+
+```bash
+python3 tools/generate_verge_docs.py [--output docs/api]
+```
+
+This parses `verge_lib/` source files, extracts doc comments and public item signatures, and writes per-module markdown files. Warns on undocumented public items (exit code 1 unless `--no-warn`).
+
 ### Downstream Usage
 
 Projects using Verge add these dependencies:

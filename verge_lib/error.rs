@@ -1,5 +1,6 @@
 //! Specifications for errors and error semantics in Verus.
 //!
+//! ## Error Semantics
 //! By the nature of errors, error semantics (a.k.a., the precise pre- and post-conditions of errors)
 //! is often incomplete. At some point the specification must call it a day and accept under-specified
 //! errors. 

@@ -67,7 +67,7 @@ verus! {
 pub struct Fs {
     epoch: Ghost<int>,
     ops: Ghost<Seq<FsMutOp>>,
-    read_dir_count: Ghost<int>, // see the comments for `Fs::read_dir()`
+    read_dir_count: Ghost<int>,
 }
 
 /// File system mutation operations.
@@ -153,6 +153,7 @@ impl Fs {
     /// WIP: The "no external" assumption. See the top-level comments of this module for details.
     pub uninterp spec fn noext() -> bool;
 
+    /// Invariant of the file system.
     #[verifier::type_invariant]
     pub open spec fn inv(&self) -> bool {
         forall|i: int| #![trigger self.ops()[i]] 0 <= i < self.ops().len() ==> 
@@ -164,12 +165,17 @@ impl Fs {
             })
     }
 
+    /// Epoch of the file system.
     pub closed spec fn epoch(&self) -> int 
         { self.epoch@ }
     
+    /// Mutation operations made to the file system.
     pub closed spec fn ops(&self) -> Seq<FsMutOp> 
         { self.ops@ }
 
+    /// Number of outstanding `ReadDir` iterators.
+    /// 
+    /// See the comments for `Fs::read_dir()`
     pub closed spec fn read_dir_count(&self) -> int 
         { self.read_dir_count@ }
 
@@ -962,12 +968,14 @@ impl Fs {
 
 }
 
+/// Implements `view()` on `ReadDir`.
 impl IteratorView for ReadDir {
     type Item = Result<DirEntry>;
 
     uninterp spec fn view(&self) -> (int, Seq<Self::Item>);
 }
 
+/// Enables `ReadDir` as an iterator.
 pub assume_specification [ ReadDir::next ] (this: &mut ReadDir) -> (r: Option<Result<DirEntry>>)
     ensures
         old(this).inv() ==> {
@@ -1028,7 +1036,7 @@ impl DirEntrySpec for DirEntry {
     uninterp spec fn view(&self) -> PathView;
 }
 
-/// Enable `DirEntry::path`.
+/// Enables `DirEntry::path`.
 pub assume_specification [ DirEntry::path ] (dir: &DirEntry) -> (ret: PathBuf)
     ensures
         ret@ == dir@,

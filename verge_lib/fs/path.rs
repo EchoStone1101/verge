@@ -27,6 +27,7 @@ pub struct ExPathBuf(PathBuf);
 #[verifier::external_body]
 pub const MAIN_SEPARATOR: char = std::path::MAIN_SEPARATOR;
 
+/// Proof that reveals the literal value of `MAIN_SEPARATOR`.
 #[verifier::external_body]
 pub broadcast axiom fn axiom_main_separator_literal()
     ensures (#[trigger] MAIN_SEPARATOR) == '/'
@@ -46,6 +47,7 @@ pub struct PathView {
 
 impl PathView {
 
+    /// This function encodes the length (number of segments) of a `PathView`.
     pub open spec fn len(self) -> nat 
         { self.path.len() }
 
@@ -380,9 +382,10 @@ pub assume_specification [ Path::parent ] (p: &Path) -> (ret: Option<&Path>)
     no_unwind
 ;
 
-/// Enable `std::path::Ancestors` as an iterator.
 #[verifier::external]
 pub struct Ancestors<'a>(std::path::Ancestors<'a>);
+
+/// Enable `std::path::Ancestors` as an iterator.
 #[verifier::external_body]
 #[verifier::external_type_specification]
 pub struct ExAncestors<'a>(Ancestors<'a>);
@@ -401,9 +404,10 @@ impl_iterator_verge!(
     }
 );
 
-/// Enable `std::path::Iter` as an iterator.
 #[verifier::external]
 pub struct Iter<'a>(std::path::Iter<'a>);
+
+/// Enable `std::path::Iter` as an iterator.
 #[verifier::external_body]
 #[verifier::external_type_specification]
 pub struct ExIter<'a>(Iter<'a>);
@@ -414,6 +418,7 @@ impl<'a> IteratorView for Iter<'a> {
     uninterp spec fn view(&self) -> (int, Seq<Self::Item>);
 }
 
+/// Enables `Path::iter()`.
 #[verifier::external_body]
 pub fn path_iter<'a>(p: &'a Path) -> (ret: Iter<'a>) 
     ensures

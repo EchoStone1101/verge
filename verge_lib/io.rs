@@ -732,6 +732,8 @@ impl<R: ?Sized> BufReaderSpec<R> for BufReader<R> {
     uninterp spec fn filled(&self) -> int;
     uninterp spec fn inner(&self) -> &R;
 }
+
+/// Enables `BufReader::new`.
 pub assume_specification<R: std::io::Read>[ BufReader::new ](inner: R) -> (ret: BufReader<R>)
     ensures
         ret.inv(),
@@ -739,6 +741,8 @@ pub assume_specification<R: std::io::Read>[ BufReader::new ](inner: R) -> (ret: 
         ret.filled() == 0,
         *ret.inner() == inner,
 ;
+
+/// Enables `BufReader::with_capacity`.
 pub assume_specification<R: std::io::Read>[ BufReader::with_capacity ](cap: usize, inner: R) -> (ret: BufReader<R>)
     requires
         cap > 0,
@@ -749,29 +753,39 @@ pub assume_specification<R: std::io::Read>[ BufReader::with_capacity ](cap: usiz
         ret.filled() == 0,
         *ret.inner() == inner,
 ;
+
+/// Enables `BufReader::get_ref`.
 pub assume_specification<R: ?Sized>[ BufReader::get_ref ](r: &BufReader<R>) -> (ret: &R)
     requires
         r.inv(),
     ensures
         ret == r.inner(),
 ;
+
+/// Enables `BufReader::buffer`.
 pub assume_specification<R: ?Sized>[ BufReader::buffer ](r: &BufReader<R>) -> (ret: &[u8])
     requires
         r.inv(),
     ensures
         ret@ =~= r.valid_buf(),
 ;
+
+/// Enables `BufReader::capacity`.
 pub assume_specification<R: ?Sized>[ BufReader::capacity ](r: &BufReader<R>) -> (ret: usize)
     requires
         r.inv(),
     ensures
         ret == spec_slice_len(r.buf()),
 ;
-/// XXX: this is a workaround for an issue of `assume_specification` when the trait bound is `Sized + ?Sized`.
+
+// XXX: this is a workaround for an issue of `assume_specification` when the trait bound is `Sized + ?Sized`.
 pub trait BufReaderIntoInnerFns<R: Read + Sized> {
     fn into_inner(self) -> R;
 }
+
 impl<R: Read + Sized> BufReaderIntoInnerFns<R> for BufReader<R> {
+
+    /// Enables `BufReader::into_inner`.
     #[verifier::external_body]
     fn into_inner(self) -> (ret: R)
         ensures

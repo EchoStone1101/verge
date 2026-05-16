@@ -16,6 +16,7 @@ pub trait IteratorView {
 }
 
 /// Use for `#[external_type_specification]` types.
+//~doc-macro
 macro_rules! impl_iterator_default {
     // no requires clause
     (
@@ -85,6 +86,7 @@ macro_rules! impl_iterator_default {
 }
 
 /// Use for Verge-defined wrapped types.
+//~doc-macro
 macro_rules! impl_iterator_verge {
     // no requires clause
     (

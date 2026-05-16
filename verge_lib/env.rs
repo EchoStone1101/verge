@@ -8,10 +8,12 @@ pub use std::env::{Args, Vars};
 
 verus! {
 
+/// Enables `std::env::Args` (iterator struct).
 #[verifier::external_body]
 #[verifier::external_type_specification]
 pub struct ExArgs(Args);
 
+/// Enables `std::env::Vars` (iterator struct).
 #[verifier::external_body]
 #[verifier::external_type_specification]
 pub struct ExVars(Vars);
@@ -20,10 +22,10 @@ pub struct ExVars(Vars);
 pub struct Env;
 
 impl Env {
-    /// Program arguments as a sequence of strings.
+    /// This function encodes program arguments as a sequence of strings.
     pub uninterp spec fn args() -> Seq<Seq<char>>;
 
-    /// Environment variables as a map from strings to strings.
+    /// This function encodes environment variables as a map from strings to strings.
     pub uninterp spec fn vars() -> Map<Seq<char>, Seq<char>>;
 }
 
