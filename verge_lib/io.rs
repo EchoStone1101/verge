@@ -13,7 +13,6 @@ use vstd::slice::{slice_subrange, spec_slice_len};
 use vstd::std_specs::result::spec_unwrap;
 use crate::str::{StrView, BytesView};
 
-use core::ops::Range;
 use std::collections::VecDeque;
 pub use std::io::{
     Error, ErrorKind, Empty, Repeat,
@@ -21,44 +20,6 @@ pub use std::io::{
     empty, repeat,
 };
 
-/// The `ReadBuf` trait defines types that can be used as the destination buffer for `Read::read`.
-/// 
-/// It is essentially `AsMut<[u8]>` with a `View` bound. This has to be external due to Verus's
-/// limited support of `&mut`. See comments on `Read` for more information.
-#[verifier::external]
-pub trait ReadBuf: View<V = Seq<u8>> {
-    fn as_mut(&mut self, range: Option<Range<usize>>) -> &mut [u8];
-}
-
-#[verifier::external]
-impl ReadBuf for [u8] {
-    fn as_mut(&mut self, range: Option<Range<usize>>) -> &mut [u8] {
-        match range {
-            Some(range) => &mut <Self as AsMut<[u8]>>::as_mut(self)[range],
-            None => <Self as AsMut<[u8]>>::as_mut(self),
-        }
-    }
-}
-
-#[verifier::external]
-impl<const N: usize> ReadBuf for [u8; N] {
-    fn as_mut(&mut self, range: Option<Range<usize>>) -> &mut [u8] {
-        match range {
-            Some(range) => &mut self.as_mut_slice()[range],
-            None => self.as_mut_slice(),
-        }
-    }
-}
-
-#[verifier::external]
-impl ReadBuf for Vec<u8> {
-    fn as_mut(&mut self, range: Option<Range<usize>>) -> &mut [u8] {
-        match range {
-            Some(range) => &mut <Self as AsMut<[u8]>>::as_mut(self)[range],
-            None => <Self as AsMut<[u8]>>::as_mut(self),
-        }
-    }
-}
 
 verus! {
 
@@ -67,11 +28,6 @@ pub mod impls;
 
 pub use stdio::*;
 pub use impls::*;
-
-#[verifier::external_trait_specification]
-pub trait ExReadBuf: View<V = Seq<u8>> {
-    type ExternalTraitSpecificationFor: ReadBuf;
-}
 
 #[verifier::external_trait_specification]
 pub trait ExRead {
@@ -129,51 +85,38 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// The `Read` trait allows for reading bytes from a source.
 ///
-/// ### Notes on the interface
-/// `Read::read()`'s interface is different from `std::io::Read::read()`, in that the buffer is `&mut B where B: ReadBuf` 
-/// instead of `&mut [u8]`, and it also accepts an extra argument `range: Option<Range>` for writing to a 
-/// subrange of the read buffer. 
-/// 
-/// This is entirely a workaround for Verus's limited support of `&mut`. In native Rust, the caller 
-/// can produce an `&mut` subrange from various actual buffers like `[u8; N]` or `Vec<u8>`. 
-/// However, `&mut` at the return position is currently forbidden in Verus, making such an interface 
-/// essentially unusable.
-/// 
-/// We solve this with the `ReadBuf` trait and the separate `range` argument. Implementors of `ReadBuf` 
-/// bypass the `&mut` issue by using external operations.
+/// ### Notes on using the interface
+/// Verus does not yet support `IndexMut` with range types (no `&mut buf[start..end]`).
+/// To read into a sub-range of a buffer, use `split_at_mut`:
+/// ```rust,ignore
+/// let (_, target) = buf.split_at_mut(start);
+/// let (write_area, _) = target.split_at_mut(end - start);
+/// reader.read(write_area)
+/// ```
 pub trait Read: ReadSpec {
 
     // Required methods
 
     /// Pull some bytes from this source into the specified buffer, returning how many bytes were read.
-    fn read<B: ReadBuf + ?Sized>(&mut self, buf: &mut B, range: Option<Range<usize>>) -> (res: Result<usize>)
-        requires 
+    fn read(&mut self, buf: &mut [u8]) -> (res: Result<usize>)
+        requires
             old(self).read_inv(),
-            match range {
-                Some(range) => 0 <= range.start <= range.end <= old(buf)@.len(),
-                _ => true,
-            },
         ensures
             final(self).read_inv(),
             ({
-                let (start, end) = match range {
-                    Some(range) => (range.start as int, range.end as int),
-                    _ => (0int, final(buf)@.len() as int),
-                };
                 match res {
                     Ok(nread) => {
-                        &&& nread <= old(self).bytes().len() && nread <= end - start
-                        &&& final(buf)@ =~= 
-                            old(buf)@.take(start) 
-                            + old(self).bytes().take(nread as int) 
-                            + old(buf)@.skip(start + nread as int)
+                        &&& nread <= old(self).bytes().len() && nread <= old(buf)@.len()
+                        &&& final(buf)@ =~=
+                            old(self).bytes().take(nread as int)
+                            + old(buf)@.skip(nread as int)
                         &&& final(self).bytes() =~= old(self).bytes().skip(nread as int)
                         // ^ basic read semantics
                         &&& Self::read_ok(old(self), final(self))
-                        &&& end - start > 0 && nread == 0 ==> final(self).read_eof() 
+                        &&& old(buf)@.len() > 0 && nread == 0 ==> final(self).read_eof()
                     },
                     Err(e) => {
-                        &&& final(self).bytes() =~= old(self).bytes() 
+                        &&& final(self).bytes() =~= old(self).bytes()
                         &&& final(buf)@ =~= old(buf)@
                         &&& e.kind() == ErrorKind::Interrupted ==> Self::read_ok(old(self), final(self))
                         // ^ basic error semantics
@@ -249,7 +192,7 @@ pub trait Read: ReadSpec {
     ;
 
     /// Reads the exact number of bytes required to fill `buf`.
-    fn read_exact<B: ReadBuf>(&mut self, buf: &mut B) -> (res: Result<()>) 
+    fn read_exact(&mut self, buf: &mut [u8]) -> (res: Result<()>) 
         requires 
             old(self).read_inv(),
         ensures
@@ -303,9 +246,9 @@ pub trait ReadSpec {
     spec fn read_eof(&self) -> bool;
 
     open spec fn read_ok_extra_ensures(
-        pre_self: &Self, post_self: &Self, 
-        pre_buf: Seq<u8>, post_buf: Seq<u8>, 
-        range: Option<Range<usize>>, res: Result<usize>,
+        pre_self: &Self, post_self: &Self,
+        pre_buf: Seq<u8>, post_buf: Seq<u8>,
+        res: Result<usize>,
     ) -> bool { true }
 
     proof fn read_ok_is_reflexive(inst: &Self)

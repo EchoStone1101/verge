@@ -19,8 +19,6 @@ use vstd::std_specs::result::spec_unwrap;
 use crate::io::{Result, ErrorKind, spec_error_kind};
 
 use std::sync::Once;
-use core::ops::Range;
-
 verus! {
 
 #[verifier::external_body]

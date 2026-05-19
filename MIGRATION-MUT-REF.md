@@ -32,41 +32,12 @@ References to **pre-state** already use `old(...)` and are unchanged.
 
 ## Part 2 — API Upgrades (Opportunities)
 
-### 2a. Remove `ReadBuf` workaround in `io.rs`
-
-**Current state**: The `Read::read()` signature is:
-```rust
-fn read<B: ReadBuf + ?Sized>(&mut self, buf: &mut B, range: Option<Range<usize>>) -> Result<usize>
-```
-
-This exists because Verus previously couldn't handle `&mut [u8]` return from index operations,
-making the standard `fn read(&mut self, buf: &mut [u8]) -> Result<usize>` unusable.
-
-**New capability**: Verus now supports `&mut` at return position. The vstd already has:
-- `vec_index_mut` returning `&mut T` with `final()` specs
-- `Option::as_mut` returning `Option<&mut T>`
-- `index_set` for `IndexMut`
+### 2a. Remove `ReadBuf` workaround in `io.rs` (DONE)
 
 **Proposed change**: Replace the `ReadBuf` trait with the standard signature:
 ```rust
 fn read(&mut self, buf: &mut [u8]) -> Result<usize>
 ```
-
-Callers that need to write to a subrange can use `&mut buf[start..end]` directly,
-which is now expressible in Verus.
-
-**Impact**: This is a **breaking API change** affecting:
-- `Read` trait definition
-- All `Read` implementations (`File`, `Empty`, `Repeat`, `BufReader`, `Cursor`, stdin)
-- All callers (downstream users pass `&mut buf` instead of `&mut buf, Some(range)`)
-- The `ReadBuf` trait and its impls can be removed entirely
-
-**Verification needed**: Confirm that `&mut buf[start..end]` (producing `&mut [u8]` from
-`&mut [u8]` / `&mut Vec<u8>` / `&mut [u8; N]`) works in Verus ensures clauses with `final()`.
-Specifically, the spec for `slice_subrange` or equivalent must exist for mutable slices.
-
-**Risk**: Medium. The spec for mutable slice subranging may not yet exist in vstd.
-Need to check `vstd::slice` for `slice_index_mut` or similar.
 
 ### 2b. Unify iterator design on vstd's `IteratorSpecImpl`
 

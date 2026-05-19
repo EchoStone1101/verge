@@ -26,10 +26,10 @@ macro_rules! impl_read_for {
         impl_maybe_generic!([$($gen)*] Read for $ty {
             #[inline]
             #[verifier::external_body]
-            fn read<B: ReadBuf + ?Sized>(&mut self, buf: &mut B, range: Option<Range<usize>>) -> (res: Result<usize>)
-                ensures Self::read_ok_extra_ensures(old(self), final(self), old(buf)@, final(buf)@, range, res),
+            fn read(&mut self, buf: &mut [u8]) -> (res: Result<usize>)
+                ensures Self::read_ok_extra_ensures(old(self), final(self), old(buf)@, final(buf)@, res),
             {
-                <Self as std::io::Read>::read(self, buf.as_mut(range))
+                <Self as std::io::Read>::read(self, buf)
             }
             #[inline]
             #[verifier::external_body]
@@ -43,8 +43,8 @@ macro_rules! impl_read_for {
             }
             #[inline]
             #[verifier::external_body]
-            fn read_exact<B: ReadBuf>(&mut self, buf: &mut B) -> Result<()> {
-                <Self as std::io::Read>::read_exact(self, buf.as_mut(None))
+            fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
+                <Self as std::io::Read>::read_exact(self, buf)
             }
         });
     };
@@ -148,17 +148,12 @@ impl ReadSpec for &[u8] {
 
     #[verifier::inline]
     open spec fn read_ok_extra_ensures(
-        pre_self: &Self, post_self: &Self, 
-        pre_buf: Seq<u8>, post_buf: Seq<u8>, 
-        range: Option<Range<usize>>, res: Result<usize>,
+        pre_self: &Self, post_self: &Self,
+        pre_buf: Seq<u8>, post_buf: Seq<u8>,
+        res: Result<usize>,
     ) -> bool 
-    { 
-        // no short reads
-        let (start, end) = match range {
-            Some(range) => (range.start as int, range.end as int),
-            _ => (0int, post_buf.len() as int),
-        }; 
-        spec_unwrap(res) == min(pre_self.bytes().len() as int, end - start)
+    {
+        spec_unwrap(res) == min(pre_self.bytes().len() as int, post_buf.len() as int)
     }
 
     proof fn read_ok_is_reflexive(inst: &Self) {}
@@ -305,22 +300,18 @@ impl ReadSpec for File {
 
     #[verifier::inline]
     open spec fn read_ok_extra_ensures(
-        pre_self: &Self, post_self: &Self, 
-        pre_buf: Seq<u8>, post_buf: Seq<u8>, 
-        range: Option<Range<usize>>, res: Result<usize>,
-    ) -> bool 
-    { 
+        pre_self: &Self, post_self: &Self,
+        pre_buf: Seq<u8>, post_buf: Seq<u8>,
+        res: Result<usize>,
+    ) -> bool
+    {
         // late-bind `Fs::file` with `Fs::file_when`
-        &&& Fs::file(post_self.otime(), post_self.path()).subrange(pre_self.offset(), post_self.offset()) 
-            =~= Fs::file_when(pre_self.atime(), pre_self.path()).subrange(pre_self.offset(), post_self.offset()) 
+        &&& Fs::file(post_self.otime(), post_self.path()).subrange(pre_self.offset(), post_self.offset())
+            =~= Fs::file_when(pre_self.atime(), pre_self.path()).subrange(pre_self.offset(), post_self.offset())
         // `File` guarantees no short reads
         &&& {
-            let (start, end) = match range {
-                Some(range) => (range.start as int, range.end as int),
-                _ => (0int, post_buf.len() as int),
-            }; 
             let rem = Fs::file_when(pre_self.atime(), pre_self.path()).len() - pre_self.offset();
-            spec_unwrap(res) == min(rem, end - start)
+            spec_unwrap(res) == min(rem, post_buf.len() as int)
         }
     }
 
@@ -352,15 +343,15 @@ impl<R: Read + ?Sized> ReadSpec for Box<R> {
 
     #[verifier::inline]
     open spec fn read_ok_extra_ensures(
-        pre_self: &Self, post_self: &Self, 
-        pre_buf: Seq<u8>, post_buf: Seq<u8>, 
-        range: Option<Range<usize>>, res: Result<usize>,
-    ) -> bool { 
+        pre_self: &Self, post_self: &Self,
+        pre_buf: Seq<u8>, post_buf: Seq<u8>,
+        res: Result<usize>,
+    ) -> bool {
         R::read_ok_extra_ensures(
             &*pre_self, &*post_self,
             pre_buf, post_buf,
-            range, res,
-        ) 
+            res,
+        )
     }
 
     proof fn read_ok_is_reflexive(inst: &Self) {
@@ -436,17 +427,12 @@ impl<T: AsRef<[u8]> + View<V = Seq<u8>>> ReadSpec for Cursor<T> {
 
     #[verifier::inline]
     open spec fn read_ok_extra_ensures(
-        pre_self: &Self, post_self: &Self, 
-        pre_buf: Seq<u8>, post_buf: Seq<u8>, 
-        range: Option<Range<usize>>, res: Result<usize>,
-    ) -> bool 
-    { 
-        // no short reads
-        let (start, end) = match range {
-            Some(range) => (range.start as int, range.end as int),
-            _ => (0int, post_buf.len() as int),
-        }; 
-        spec_unwrap(res) == min(pre_self.bytes().len() as int, end - start)
+        pre_self: &Self, post_self: &Self,
+        pre_buf: Seq<u8>, post_buf: Seq<u8>,
+        res: Result<usize>,
+    ) -> bool
+    {
+        spec_unwrap(res) == min(pre_self.bytes().len() as int, post_buf.len() as int)
     }
 
     proof fn read_ok_is_reflexive(inst: &Self) {}
@@ -1033,17 +1019,18 @@ mod tests {
     {
         assert(vstd::slice::spec_slice_len(src) <= usize::MAX);
         let mut src = src;
-        src.read(dest, None).unwrap()
+        src.read(dest.as_mut_slice()).unwrap()
     }
 
-    fn read_vecdeque_not_empty() -> (nread: usize) 
+    fn read_vecdeque_not_empty() -> (nread: usize)
         ensures nread > 0,
     {
         let mut v = VecDeque::new();
         v.push_back(1u8);
         v.push_front(2u8);
         let mut dest = [0u8; 1];
-        v.read(&mut dest, None).unwrap()
+        let dest_slice = vstd::array::ref_mut_array_unsizing_coercion(&mut dest);
+        v.read(dest_slice).unwrap()
     }
 
     fn read_empty_to_end_is_noop(dest: &mut Vec<u8>)
@@ -1069,22 +1056,35 @@ mod tests {
     {
         let mut vec = vec![0u8; 1024];
         let mut tap = repeat(byte);
-        tap.read_exact(&mut vec).unwrap();
+        tap.read_exact(vec.as_mut_slice()).unwrap();
         vec
     }
 
     fn read_stdin_basic(stdin: &mut Stdin<'_>, buf: &mut [u8]) -> (nread: usize)
         requires
             old(stdin).inv(),
-        ensures 
+        ensures
             final(stdin).nbyte() == old(stdin).nbyte() + nread,
-            final(buf)@.take(nread as int) 
+            final(buf)@.take(nread as int)
                 =~= Stdin::stream().subrange(old(stdin).nbyte() as int, final(stdin).nbyte() as int),
     {
-        stdin.read(buf, None).ok().unwrap_or(0)
+        stdin.read(buf).ok().unwrap_or(0)
     }
 
-    fn read_slice_until(src: &[u8], delim: u8) 
+    fn read_slice_into_subrange(src: &[u8], buf: &mut [u8]) -> (nread: usize)
+        requires
+            old(buf)@.len() >= 4,
+            src@.len() >= 2,
+        ensures
+            nread == min(src.len() as int, (old(buf)@.len() - 2) as int),
+    {
+        assert(vstd::slice::spec_slice_len(src) <= usize::MAX);
+        let mut src = src;
+        let (_, target) = buf.split_at_mut(2);
+        src.read(target).unwrap()
+    }
+
+    fn read_slice_until(src: &[u8], delim: u8)
         requires src@.len() <= 1024,
     {
         let mut src = src;
