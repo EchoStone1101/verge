@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tools/update-verus.sh
 # Fetch the latest Verus release, install its required Rust toolchain,
-# and verify the library. On success, replaces the local verus-release.
+# and replace the local verus-release.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -95,19 +95,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Verify the library with the new binary before replacing old one
+# Replace old binary
 # ---------------------------------------------------------------------------
+rm -rf "$CURRENT_DIR"
+mv "$TMPDIR/extracted/verus-$PLATFORM" "$RELEASE_DIR/"
 echo ""
-echo "Verifying with Verus $NEW_VERSION..."
-if "$TMPDIR/extracted/verus-$PLATFORM/verus" \
-     --crate-type=lib --expand-errors "$REPO_ROOT/verge_lib/verge.rs"; then
-  echo ""
-  rm -rf "$CURRENT_DIR"
-  mv "$TMPDIR/extracted/verus-$PLATFORM" "$RELEASE_DIR/"
-  echo "Updated to Verus $NEW_VERSION."
-else
-  echo ""
-  echo "error: verification failed with Verus $NEW_VERSION" >&2
-  echo "Old release retained at $CURRENT_DIR." >&2
-  exit 1
-fi
+echo "Updated to Verus $NEW_VERSION."

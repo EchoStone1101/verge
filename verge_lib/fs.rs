@@ -358,6 +358,7 @@ pub fn init() -> (ret: Fs)
         ret.ops().len() == 0,
         ret.read_dir_count() == 0,
 {
+    #[verifier::external]
     static FS_INIT: Once = Once::new();
     assert!(!FS_INIT.is_completed(), "fs::init() can only be called once");
     FS_INIT.call_once(|| {});
@@ -424,8 +425,8 @@ pub trait FileSpec {
         requires
             self.inv(),
         ensures 
-            self.atime() <= fs.epoch(),
-            old(fs).epoch() <= fs.epoch(),
+            self.atime() <= final(fs).epoch(),
+            old(fs).epoch() <= final(fs).epoch(),
     ;
 
     /// Drops the file and asserts that it is accessed up to its max offset.
@@ -485,8 +486,8 @@ impl Fs {
     #[verifier::external_body]
     pub fn exists(&mut self, path: &str) -> (ret: Result<bool>)
         ensures
-            old(self) <= self,
-            old(self).ops() == self.ops(),
+            old(self) <= final(self),
+            old(self).ops() == final(self).ops(),
             ({
                 let path = path@.as_path().normalize();
                 match ret {
@@ -511,8 +512,8 @@ impl Fs {
     #[verifier::external_body]
     pub fn open(&mut self, path: &str) -> (ret: Result<File>)
         ensures
-            old(self) <= self,
-            old(self).ops() == self.ops(),
+            old(self) <= final(self),
+            old(self).ops() == final(self).ops(),
             ({
                 let path = path@.as_path().normalize();
                 match ret {
@@ -554,12 +555,12 @@ impl Fs {
         requires
             old(self).read_dir_count() == 0,
         ensures
-            old(self) <= self,
+            old(self) <= final(self),
             ({
                 let path = path@.as_path().normalize();
                 match ret {
                     Ok(file) => {
-                        &&& self.ops() == old(self).ops().push(FsMutOp::Mutate(path))
+                        &&& final(self).ops() == old(self).ops().push(FsMutOp::Mutate(path))
                         &&& Fs::file_exists(old(self).epoch(), path)
                         &&& !Fs::file_is_dir(old(self).epoch(), path) // `create` does not create directories
                         &&& file.inv()
@@ -572,7 +573,7 @@ impl Fs {
                     },
                     Err(e) => {
                         &&& e.is_fs_error()
-                        &&& self.ops() == old(self).ops()
+                        &&& final(self).ops() == old(self).ops()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::QuotaExceeded | 
                             ErrorKind::FileTooLarge | ErrorKind::Interrupted | 
@@ -602,13 +603,13 @@ impl Fs {
         requires
             old(self).read_dir_count() == 0,
         ensures
-            old(self) <= self,
+            old(self) <= final(self),
             ({
                 let path = path@.as_path().normalize();
-                let t = Fs::between(old(self), self);
+                let t = Fs::between(old(self), final(self));
                 match ret {
                     Ok(file) => {
-                        &&& self.ops() == old(self).ops().push(FsMutOp::Mutate(path))
+                        &&& final(self).ops() == old(self).ops().push(FsMutOp::Mutate(path))
                         &&& !Fs::file_exists(old(self).epoch(), path) && Fs::file_exists(t, path)
                         &&& !Fs::file_is_dir(t, path) // `create_new` does not create directories
                         &&& file.inv()
@@ -621,7 +622,7 @@ impl Fs {
                     },
                     Err(e) => {
                         &&& e.is_fs_error()
-                        &&& self.ops() == old(self).ops()
+                        &&& final(self).ops() == old(self).ops()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::ResourceBusy | 
                             ErrorKind::QuotaExceeded | ErrorKind::FileTooLarge | 
@@ -647,8 +648,8 @@ impl Fs {
     #[verifier::external_body]
     pub fn read(&mut self, path: &str) -> (ret: Result<Vec<u8>>)
         ensures
-            old(self) <= self,
-            self.ops() == old(self).ops(),
+            old(self) <= final(self),
+            final(self).ops() == old(self).ops(),
             ({
                 let path = path@.as_path().normalize();
                 match ret {
@@ -682,8 +683,8 @@ impl Fs {
     #[verifier::external_body]
     pub fn read_to_string(&mut self, path: &str) -> (ret: Result<String>)
         ensures
-            old(self) <= self,
-            self.ops() == old(self).ops(),
+            old(self) <= final(self),
+            final(self).ops() == old(self).ops(),
             ({
                 let path = path@.as_path().normalize();
                 match ret {
@@ -719,19 +720,19 @@ impl Fs {
     #[verifier::external_body]
     pub fn write(&mut self, path: &str, contents: &[u8]) -> (ret: Result<()>)
         ensures
-            old(self) <= self,
+            old(self) <= final(self),
             ({
                 let path = path@.as_path().normalize();
                 match ret {
                     Ok(_) => {
-                        &&& self.ops() == old(self).ops().push(FsMutOp::Mutate(path))
+                        &&& final(self).ops() == old(self).ops().push(FsMutOp::Mutate(path))
                         &&& Fs::file_exists(old(self).epoch(), path)
                         &&& !Fs::file_is_dir(old(self).epoch(), path) // `write` does not work on directories
                         &&& Fs::file(old(self).epoch(), path) =~= contents@
                     },
                     Err(e) => {
                         &&& e.is_fs_error()
-                        &&& self.ops() == old(self).ops()
+                        &&& final(self).ops() == old(self).ops()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::QuotaExceeded | 
                             ErrorKind::FileTooLarge | ErrorKind::Interrupted | 
@@ -759,19 +760,19 @@ impl Fs {
         requires
             old(self).read_dir_count() == 0,
         ensures
-            old(self) <= self,
+            old(self) <= final(self),
             ({
                 let path = path@.as_path().normalize();
-                let t = Fs::between(old(self), self);
+                let t = Fs::between(old(self), final(self));
                 match ret {
                     Ok(_) => {
-                        &&& self.ops() == old(self).ops().push(FsMutOp::Delete(path))
+                        &&& final(self).ops() == old(self).ops().push(FsMutOp::Delete(path))
                         &&& Fs::file_exists(old(self).epoch(), path) && !Fs::file_exists(t, path)
                         &&& !Fs::file_is_dir(old(self).epoch(), path) // `remove` does not remove directories
                     },
                     Err(e) => {
                         &&& e.is_fs_error()
-                        &&& self.ops() == old(self).ops()
+                        &&& final(self).ops() == old(self).ops()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::ResourceBusy | 
                             ErrorKind::IsADirectory | ErrorKind::InvalidFilename | 
@@ -795,13 +796,13 @@ impl Fs {
         requires
             old(self).read_dir_count() == 0,
         ensures
-            old(self) <= self,
+            old(self) <= final(self),
             ({
                 let path = path@.as_path().normalize();
-                let t = Fs::between(old(self), self);
+                let t = Fs::between(old(self), final(self));
                 match ret {
                     Ok(_) => {
-                        &&& self.ops() == old(self).ops().push(FsMutOp::Mutate(path))
+                        &&& final(self).ops() == old(self).ops().push(FsMutOp::Mutate(path))
                         &&& !Fs::file_exists(old(self).epoch(), path) && Fs::file_exists(t, path)
                         &&& Fs::file_is_dir(t, path) 
                         // directory is empty
@@ -809,7 +810,7 @@ impl Fs {
                     },
                     Err(e) => {
                         &&& e.is_fs_error()
-                        &&& self.ops() == old(self).ops()
+                        &&& final(self).ops() == old(self).ops()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::QuotaExceeded | 
                             ErrorKind::AlreadyExists | ErrorKind::InvalidInput | 
@@ -834,13 +835,13 @@ impl Fs {
         requires
             old(self).read_dir_count() == 0,
         ensures
-            old(self) <= self,
+            old(self) <= final(self),
             ({
                 let path = path@.as_path().normalize();
-                let t = Fs::between(old(self), self);
+                let t = Fs::between(old(self), final(self));
                 match ret {
                     Ok(_) => {
-                        &&& self.ops() == old(self).ops().push(FsMutOp::Delete(path))
+                        &&& final(self).ops() == old(self).ops().push(FsMutOp::Delete(path))
                         &&& Fs::file_exists(old(self).epoch(), path) && !Fs::file_exists(t, path)
                         &&& Fs::file_is_dir(old(self).epoch(), path) 
                         // directory was empty
@@ -848,7 +849,7 @@ impl Fs {
                     },
                     Err(e) => {
                         &&& e.is_fs_error()
-                        &&& self.ops() == old(self).ops()
+                        &&& final(self).ops() == old(self).ops()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::ResourceBusy | 
                             ErrorKind::InvalidInput | ErrorKind::InvalidFilename | 
@@ -886,13 +887,13 @@ impl Fs {
     #[verifier::external_body]
     pub fn read_dir(&mut self, path: &str) -> (ret: Result<ReadDir>)
         ensures
-            old(self) <= self,
-            self.ops() == old(self).ops(),
+            old(self) <= final(self),
+            final(self).ops() == old(self).ops(),
             ({
                 let path = path@.as_path();
                 match ret {
                     Ok(dirs) => {
-                        &&& self.read_dir_count() == old(self).read_dir_count() + 1
+                        &&& final(self).read_dir_count() == old(self).read_dir_count() + 1
                         &&& Fs::file_exists(old(self).epoch(), path)
                         &&& Fs::file_is_dir(old(self).epoch(), path) 
                         &&& dirs.inv()
@@ -916,7 +917,7 @@ impl Fs {
                     },
                     Err(e) => {
                         &&& e.is_fs_error()
-                        &&& self.read_dir_count() == old(self).read_dir_count()
+                        &&& final(self).read_dir_count() == old(self).read_dir_count()
                         &&& matches!(e.kind(), 
                             ErrorKind::PermissionDenied | ErrorKind::FileTooLarge | 
                             ErrorKind::Interrupted | ErrorKind::InvalidInput | 
@@ -941,8 +942,8 @@ impl Fs {
     #[verifier::external_body]
     pub fn metadata(&mut self, path: &str) -> (ret: Result<Metadata>)
         ensures
-            old(self) <= self,
-            self.ops() == old(self).ops(),
+            old(self) <= final(self),
+            final(self).ops() == old(self).ops(),
             ({
                 let path = path@.as_path().normalize();
                 match ret {
@@ -982,17 +983,17 @@ pub assume_specification [ ReadDir::next ] (this: &mut ReadDir) -> (r: Option<Re
             let (old_index, old_seq) = old(this)@;
             match r {
                 None => {
-                    &&& this.inv()
-                    &&& this@ == old(this)@
+                    &&& final(this).inv()
+                    &&& final(this)@ == old(this)@
                     &&& old_index >= old_seq.len()
                 },
                 Some(k) => {
-                    let (new_index, new_seq) = this@;
+                    let (new_index, new_seq) = final(this)@;
                     &&& 0 <= old_index < old_seq.len()
                     &&& new_seq == old_seq
                     &&& new_index == old_index + 1
                     &&& k == old_seq[old_index]
-                    &&& k.is_ok() ==> this.inv()
+                    &&& k.is_ok() ==> final(this).inv()
                 },
             }
         },
@@ -1013,9 +1014,9 @@ pub trait ReadDirSpec {
             self.inv(),
             old(fs).read_dir_count() > 0,
         ensures 
-            old(fs) <= fs,
-            old(fs).ops() == fs.ops(),
-            old(fs).read_dir_count() - 1 == fs.read_dir_count(),
+            old(fs) <= final(fs),
+            old(fs).ops() == final(fs).ops(),
+            old(fs).read_dir_count() - 1 == final(fs).read_dir_count(),
     ;
 
 }

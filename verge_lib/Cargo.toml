@@ -1,6 +1,6 @@
 [package]
 name = "verge"
-version = "0.0.0-2026-03-26"
+version = "0.0.0-2026-05-16"
 edition = "2024"
 license = "MIT"
 description = "Verge Library: Sound specifications and lemmas for Verus"
@@ -12,9 +12,9 @@ name = "verge"
 path = "verge.rs"
 
 [dependencies]
-vstd = "=0.0.0-2026-04-12-0118"
-verus_builtin = "=0.0.0-2026-04-12-0118"
-verus_builtin_macros = "=0.0.0-2026-04-12-0118"
+vstd = "0.0.0-2026-05-10-0145"
+verus_builtin = "=0.0.0-2026-05-06-1803"
+verus_builtin_macros = "=0.0.0-2026-05-10-0145"
 verge_macros = { path = "../verge_macros" }
 
 [package.metadata.verus]

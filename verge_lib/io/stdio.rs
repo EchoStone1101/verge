@@ -16,7 +16,7 @@
 use vstd::prelude::*;
 use vstd::view::View;
 use vstd::std_specs::result::spec_unwrap;
-use crate::io::{ReadBuf, Result, ErrorKind, spec_error_kind};
+use crate::io::{Result, ErrorKind, spec_error_kind};
 
 use std::sync::Once;
 use core::ops::Range;
@@ -149,6 +149,7 @@ pub fn init() -> (ret: (Stdin<'static>, Stdout<'static>, Stderr<'static>))
         ret.0.buf().len() == 0,
         ret.0.inv(),
 {
+    #[verifier::external]
     static STDIO_INIT: Once = Once::new();
     assert!(!STDIO_INIT.is_completed(), "stdio::init() can only be called once");
     STDIO_INIT.call_once(|| {});

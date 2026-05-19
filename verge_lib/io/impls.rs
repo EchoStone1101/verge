@@ -27,7 +27,7 @@ macro_rules! impl_read_for {
             #[inline]
             #[verifier::external_body]
             fn read<B: ReadBuf + ?Sized>(&mut self, buf: &mut B, range: Option<Range<usize>>) -> (res: Result<usize>)
-                ensures Self::read_ok_extra_ensures(old(self), self, old(buf)@, buf@, range, res),
+                ensures Self::read_ok_extra_ensures(old(self), final(self), old(buf)@, final(buf)@, range, res),
             {
                 <Self as std::io::Read>::read(self, buf.as_mut(range))
             }
@@ -70,7 +70,7 @@ macro_rules! impl_buf_read_for {
             #[inline]
             #[verifier::external_body]
             fn consume(&mut self, amt: usize) 
-                ensures Self::consume_extra_ensures(old(self), self, amt),
+                ensures Self::consume_extra_ensures(old(self), final(self), amt),
             {
                 <Self as std::io::BufRead>::consume(self, amt)
             }
@@ -108,14 +108,14 @@ macro_rules! impl_write_for {
             #[inline]
             #[verifier::external_body]
             fn write(&mut self, buf: &[u8]) -> (res: Result<usize>)
-                ensures Self::write_ok_extra_ensures(old(self), self, buf@, res),
+                ensures Self::write_ok_extra_ensures(old(self), final(self), buf@, res),
             {
                 <Self as std::io::Write>::write(self, buf)
             }
             #[inline]
             #[verifier::external_body]
             fn flush(&mut self) -> (res: Result<()>)
-                ensures Self::flush_extra_ensures(old(self), self, res),
+                ensures Self::flush_extra_ensures(old(self), final(self), res),
             {
                 <Self as std::io::Write>::flush(self)
             }
@@ -1029,7 +1029,7 @@ mod tests {
 
     fn read_slice_should_exhaust(dest: &mut Vec<u8>, src: &[u8]) -> (nread: usize)
         ensures
-            nread == min(dest.len() as int, src.len() as int),
+            nread == min(final(dest).len() as int, src.len() as int),
     {
         assert(vstd::slice::spec_slice_len(src) <= usize::MAX);
         let mut src = src;
@@ -1048,7 +1048,7 @@ mod tests {
 
     fn read_empty_to_end_is_noop(dest: &mut Vec<u8>)
         requires old(dest)@.len() <= isize::MAX,
-        ensures old(dest)@ =~= dest@,
+        ensures old(dest)@ =~= final(dest)@,
     {
         let mut empty = std::io::empty();
         empty.read_to_end(dest).unwrap();
@@ -1059,7 +1059,7 @@ mod tests {
             old(dest)@.len() == 0,
             old(src)@.len() <= 1024,
         ensures
-            dest@ == old(src)@,
+            final(dest)@ == old(src)@,
     {
         src.read_to_end(dest).unwrap();
     }
@@ -1077,9 +1077,9 @@ mod tests {
         requires
             old(stdin).inv(),
         ensures 
-            stdin.nbyte() == old(stdin).nbyte() + nread,
-            buf@.take(nread as int) 
-                =~= Stdin::stream().subrange(old(stdin).nbyte() as int, stdin.nbyte() as int),
+            final(stdin).nbyte() == old(stdin).nbyte() + nread,
+            final(buf)@.take(nread as int) 
+                =~= Stdin::stream().subrange(old(stdin).nbyte() as int, final(stdin).nbyte() as int),
     {
         stdin.read(buf, None).ok().unwrap_or(0)
     }

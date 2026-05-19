@@ -39,34 +39,34 @@ pub assume_specification [ String::into_bytes ] (s: String) -> (bytes: Vec<u8>)
 /// Enable `String::clear`.
 pub assume_specification [ String::clear ] (s: &mut String)
     ensures
-        s@ =~= Seq::<char>::empty(),
+        final(s)@ =~= Seq::<char>::empty(),
     no_unwind
 ;
 
 /// Enable `String::push`. 
 pub assume_specification [ String::push ] (s: &mut String, ch: char) 
     ensures
-        s@ =~= old(s)@.push(ch),
+        final(s)@ =~= old(s)@.push(ch),
 ;
 
 /// Enable `String::pop`. 
 pub assume_specification [ String::pop ] (s: &mut String) -> (ch: Option<char>) 
     ensures
-        old(s)@.len() > 0 ==> s@ =~= old(s)@.drop_last() && ch == Some(old(s)@.last()),
-        old(s)@.len() == 0 ==> s@ =~= old(s)@ && ch.is_none(),
+        old(s)@.len() > 0 ==> final(s)@ =~= old(s)@.drop_last() && ch == Some(old(s)@.last()),
+        old(s)@.len() == 0 ==> final(s)@ =~= old(s)@ && ch.is_none(),
     no_unwind
 ;
 
 /// Enable `String::reserve`. 
 pub assume_specification [ String::reserve ] (s: &mut String, _amt: usize) 
     ensures
-        s@ =~= old(s)@,
+        final(s)@ =~= old(s)@,
 ;
 
 /// Enable `String::reserve_exact`. 
 pub assume_specification [ String::reserve_exact ] (s: &mut String, _amt: usize) 
     ensures
-        s@ =~= old(s)@,
+        final(s)@ =~= old(s)@,
 ;
 
 /// Enable `String::insert`. 
@@ -79,7 +79,7 @@ pub assume_specification [ String::insert ] (s: &mut String, idx: usize, ch: cha
         old(s)@.as_bytes().take(idx as int).is_utf8(), 
         old(s)@.as_bytes().skip(idx as int).is_utf8(), 
     ensures
-        s@.as_bytes() =~= old(s)@.as_bytes().take(idx as int) + seq![ch].as_bytes() + old(s)@.as_bytes().skip(idx as int),
+        final(s)@.as_bytes() =~= old(s)@.as_bytes().take(idx as int) + seq![ch].as_bytes() + old(s)@.as_bytes().skip(idx as int),
 ;
 
 /// Enable `String::insert_str`. 
@@ -92,7 +92,7 @@ pub assume_specification [ String::insert_str ] (s: &mut String, idx: usize, str
         old(s)@.as_bytes().take(idx as int).is_utf8(),
         old(s)@.as_bytes().skip(idx as int).is_utf8(),
     ensures
-        s@.as_bytes() =~= old(s)@.as_bytes().take(idx as int) + string@.as_bytes() + old(s)@.as_bytes().skip(idx as int),
+        final(s)@.as_bytes() =~= old(s)@.as_bytes().take(idx as int) + string@.as_bytes() + old(s)@.as_bytes().skip(idx as int),
 ;
 
 /// Enable `String::split_off`. 
@@ -105,7 +105,7 @@ pub assume_specification [ String::split_off ] (s: &mut String, at: usize) -> (r
         old(s)@.as_bytes().take(at as int).is_utf8(), 
         old(s)@.as_bytes().skip(at as int).is_utf8(), 
     ensures
-        s@.as_bytes() =~= old(s)@.as_bytes().take(at as int),
+        final(s)@.as_bytes() =~= old(s)@.as_bytes().take(at as int),
         rem@.as_bytes() =~= old(s)@.as_bytes().skip(at as int),
 ;
 
@@ -118,7 +118,7 @@ pub assume_specification [ String::truncate ] (s: &mut String, new_len: usize)
         new_len <= old(s)@.as_bytes().len(),
         old(s)@.as_bytes().take(new_len as int).is_utf8(), 
     ensures
-        s@.as_bytes() =~= old(s)@.as_bytes().take(new_len as int),
+        final(s)@.as_bytes() =~= old(s)@.as_bytes().take(new_len as int),
     no_unwind
 ;
 

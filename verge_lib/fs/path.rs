@@ -453,11 +453,11 @@ impl<'a> core::iter::Iterator for Iter<'a> {
                 let (old_index, old_seq) = old(self)@;
                 match r {
                     None => {
-                        &&& self@ == old(self)@
+                        &&& final(self)@ == old(self)@
                         &&& old_index >= old_seq.len()
                     },
                     Some(k) => {
-                        let (new_index, new_seq) = self@;
+                        let (new_index, new_seq) = final(self)@;
                         &&& 0 <= old_index < old_seq.len()
                         &&& new_seq == old_seq
                         &&& new_index == old_index + 1
@@ -518,10 +518,10 @@ impl PathBufAdditionalFns for PathBuf {
     #[verifier::external_body]
     fn push(&mut self, path: &Path)
         ensures
-            path@.abs ==> self.str_view() == path.str_view(),
+            path@.abs ==> final(self).str_view() == path.str_view(),
             !path@.abs ==> {
-                &&& self@.abs == old(self)@.abs
-                &&& self@.path == old(self)@.path + path@.path
+                &&& final(self)@.abs == old(self)@.abs
+                &&& final(self)@.path == old(self)@.path + path@.path
             },
     {
         self.push(path)
@@ -551,7 +551,7 @@ pub assume_specification [ PathBuf::as_path ] (buf: &PathBuf) -> (ret: &Path)
 /// Enable `PathBuf::clear`.
 pub assume_specification [ PathBuf::clear ] (buf: &mut PathBuf)
     ensures
-        buf.str_view() == Seq::<char>::empty(),
+        final(buf).str_view() == Seq::<char>::empty(),
     no_unwind
 ;
 
@@ -561,8 +561,8 @@ pub assume_specification [ PathBuf::pop ] (buf: &mut PathBuf) -> (ret: bool)
         ({
             let norm = old(buf)@.normalize();
             &&& ret == (norm.path.len() > 0)
-            &&& ret ==> buf@.normalize() == norm.parent()
-            &&& !ret ==> *buf == *old(buf)
+            &&& ret ==> final(buf)@.normalize() == norm.parent()
+            &&& !ret ==> *final(buf) == *old(buf)
         }),
     no_unwind
 ;

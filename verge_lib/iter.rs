@@ -68,11 +68,11 @@ macro_rules! impl_iterator_default {
                     let (old_index, old_seq) = old(this)@;
                     match r {
                         None => {
-                            &&& this@ == old(this)@
+                            &&& final(this)@ == old(this)@
                             &&& old_index >= old_seq.len()
                         },
                         Some(k) => {
-                            let (new_index, new_seq) = this@;
+                            let (new_index, new_seq) = final(this)@;
                             &&& 0 <= old_index < old_seq.len()
                             &&& new_seq == old_seq
                             &&& new_index == old_index + 1
@@ -143,11 +143,11 @@ macro_rules! impl_iterator_verge {
                         let (old_index, old_seq) = old(self)@;
                         match r {
                             None => {
-                                &&& self@ == old(self)@
+                                &&& final(self)@ == old(self)@
                                 &&& old_index >= old_seq.len()
                             },
                             Some(k) => {
-                                let (new_index, new_seq) = self@;
+                                let (new_index, new_seq) = final(self)@;
                                 &&& 0 <= old_index < old_seq.len()
                                 &&& new_seq == old_seq
                                 &&& new_index == old_index + 1

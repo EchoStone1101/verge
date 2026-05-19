@@ -14,7 +14,7 @@ pub assume_specification<T> [core::mem::forget::<T>] (t: T)
 /// Enable `core::mem::replace`.
 pub assume_specification<T> [core::mem::replace::<T>] (dest: &mut T, src: T) -> (ret: T)
     ensures
-        *dest == src,
+        *final(dest) == src,
         ret == *old(dest),
     opens_invariants none
     no_unwind;
@@ -24,7 +24,7 @@ pub assume_specification<T: Copy> [ <[T]>::copy_from_slice ] (dest: &mut [T], sr
     requires
         old(dest).len() == src.len(),
     ensures
-        dest@ =~= src@,
+        final(dest)@ =~= src@,
     no_unwind;
 
 } // verus!

@@ -46,6 +46,8 @@ use std::hash::Hash;
 
 verus! {
 
+// TODO: check the proofs; reveal?
+
 /// A verified `PartialEq` that requires proofs of symmetry and transitivity
 /// for the type's `eq_spec`.
 ///
@@ -421,7 +423,7 @@ impl<T: OrdVerified> OrdVerified for Option<T> {
 /// predicate holds.
 pub proof fn lemma_partial_eq_verified<T: PartialEqVerified>()
     requires T::obeys_eq_spec(),
-    ensures laws_eq::obeys_eq_spec::<T>(),
+    ensures laws_eq::obeys_eq::<T>(),
 {
     reveal(laws_eq::obeys_eq_spec_properties);
     assert forall|x: T, y: T| #[trigger] x.eq_spec(&y) <==> y.eq_spec(&x) by {
@@ -497,7 +499,7 @@ pub proof fn lemma_ord_verified<T: OrdVerified>()
         T::obeys_partial_cmp_spec(),
         T::obeys_cmp_spec(),
     ensures
-        laws_cmp::obeys_cmp_spec::<T>(),
+        laws_cmp::obeys_cmp::<T>(),
 {
     lemma_partial_eq_verified::<T>();
     lemma_partial_ord_verified::<T>();
