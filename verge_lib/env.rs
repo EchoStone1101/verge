@@ -2,7 +2,8 @@
 
 #![allow(unused)]
 use vstd::prelude::*;
-use crate::iter::{IteratorView, impl_iterator_default};
+use vstd::std_specs::iter::*;
+use crate::iter::*;
 
 pub use std::env::{Args, Vars};
 
@@ -31,15 +32,18 @@ impl Env {
 
 /// Enables `Args` as an iterator.
 impl_iterator_default!(
-    Args [] where Item = String
+    Args as VergeArgs [] where Item = String
     [ std::env::args ] () -> |seq| {
         Env::args() =~~= seq.map(|i: int, arg: String| arg@)
     }
 );
+impl_double_ended_iterator_default!(
+    Args as VergeArgs [] where Item = String
+);
 
 /// Enables `Vars` as an iterator.
 impl_iterator_default!(
-    Vars [] where Item = (String, String)
+    Vars as VergeVars [] where Item = (String, String)
     [ std::env::vars ] () -> |seq| {
         Env::vars().kv_pairs().to_seq() =~~= seq.map(|i: int, var: (String, String)| (var.0@, var.1@))
     }

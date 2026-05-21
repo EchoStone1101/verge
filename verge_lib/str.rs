@@ -29,7 +29,7 @@
 //! This essentially forces strings to be grow-only containers, which is the typical use case anyway.
 #![allow(unused)]
 use vstd::prelude::*;
-use vstd::math::min;
+use vstd::math::{min, max};
 use vstd::assert_by_contradiction;
 use vstd::utf8::*;
 use crate::error::ErrorSpec;
@@ -41,16 +41,18 @@ pub use std::str::{
 verus! {
 
 pub mod ascii;
+pub mod fmt;
 pub mod iter;
 pub mod string;
 pub mod parse;
-pub mod fmt;
+pub mod pattern;
 
 pub use ascii::*;
+pub use fmt::*;
 pub use iter::*;
 pub use string::*;
 pub use parse::*;
-pub use fmt::*;
+pub use pattern::*;
 
 /// This trait allows viewing a type as a string (sequence of `char`s).
 pub trait StrView {

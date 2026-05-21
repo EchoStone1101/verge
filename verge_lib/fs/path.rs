@@ -4,7 +4,9 @@
 //! for details.
 
 use super::*;
-use crate::iter::{IteratorView, impl_iterator_verge};
+use crate::iter::{
+    VergeIteratorView, impl_iterator_verge,
+};
 
 pub use std::path::{
     Path, PathBuf,
@@ -404,6 +406,9 @@ impl_iterator_verge!(
     }
 );
 
+// XXX: the following does not use `impl_iterator_verge!` because it contains a 
+// non-default implementation.
+
 #[verifier::external]
 pub struct Iter<'a>(std::path::Iter<'a>);
 
@@ -412,10 +417,12 @@ pub struct Iter<'a>(std::path::Iter<'a>);
 #[verifier::external_type_specification]
 pub struct ExIter<'a>(Iter<'a>);
 
-impl<'a> IteratorView for Iter<'a> {
+impl<'a> VergeIteratorView for Iter<'a> {
     type Item = &'a str;
 
-    uninterp spec fn view(&self) -> (int, Seq<Self::Item>);
+    uninterp spec fn seq(&self) -> Seq<Self::Item>;
+    uninterp spec fn idx(&self) -> int;
+    uninterp spec fn ridx(&self) -> int;
 }
 
 /// Enables `Path::iter()`.
@@ -423,9 +430,10 @@ impl<'a> IteratorView for Iter<'a> {
 pub fn path_iter<'a>(p: &'a Path) -> (ret: Iter<'a>) 
     ensures
         ({
-            let (index, seq) = ret@;
+            let seq = ret.seq();
             let norm = p@.normalize();
-            &&& index == 0
+            &&& ret.idx() == 0
+            &&& ret.ridx() == seq.len()
             &&& !norm.abs ==> {
                 &&& seq.len() == norm.path.len()
                 &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
@@ -449,24 +457,60 @@ impl<'a> core::iter::Iterator for Iter<'a> {
     #[verifier::external_body]
     fn next(&mut self) -> (r: Option<Self::Item>)
         ensures
+            final(self).seq() == old(self).seq(),
+            final(self).ridx() == old(self).ridx(),
             ({
-                let (old_index, old_seq) = old(self)@;
+                let old_idx = old(self).idx();
+                let old_seq = old(self).seq();
                 match r {
                     None => {
-                        &&& final(self)@ == old(self)@
-                        &&& old_index >= old_seq.len()
+                        &&& final(self).idx() == old(self).idx()
+                        &&& old_idx == old(self).ridx()
+                        &&& 0 <= old_idx <= old_seq.len()
                     },
                     Some(k) => {
-                        let (new_index, new_seq) = final(self)@;
-                        &&& 0 <= old_index < old_seq.len()
-                        &&& new_seq == old_seq
-                        &&& new_index == old_index + 1
-                        &&& k == old_seq[old_index]
+                        let new_idx = final(self).idx();
+                        let new_seq = final(self).seq();
+                        &&& 0 <= old_idx < old(self).ridx() <= old_seq.len()
+                        &&& new_idx == old_idx + 1
+                        &&& k == old_seq[old_idx]
                     },
                 }
             }),
     {
         match self.0.next() {
+            Some(s) => unsafe { Some(str::from_utf8_unchecked(s.as_encoded_bytes())) },
+            None => None,
+        }
+    }
+}
+
+impl<'a> core::iter::DoubleEndedIterator for Iter<'a> {
+    #[verifier::external_body]
+    fn next_back(&mut self) -> (r: Option<<Self as core::iter::Iterator>::Item>)
+        ensures
+            final(self).seq() == old(self).seq(),
+            final(self).idx() == old(self).idx(),
+            ({
+                let old_ridx = old(self).ridx();
+                let old_seq = old(self).seq();
+                match r {
+                    None => {
+                        &&& final(self).ridx() == old(self).ridx()
+                        &&& old_ridx == old(self).idx()
+                        &&& 0 <= old_ridx <= old_seq.len()
+                    },
+                    Some(k) => {
+                        let new_ridx = final(self).ridx();
+                        let new_seq = final(self).seq();
+                        &&& 0 <= old(self).idx() < old_ridx <= old_seq.len()
+                        &&& new_ridx == old_ridx - 1
+                        &&& k == old_seq[new_ridx]
+                    },
+                }
+            }),
+    {
+        match self.0.next_back() {
             Some(s) => unsafe { Some(str::from_utf8_unchecked(s.as_encoded_bytes())) },
             None => None,
         }

@@ -41,7 +41,7 @@ use vstd::std_specs::result::{spec_unwrap, spec_unwrap_err};
 use crate::dummy;
 use crate::io::{Error, ErrorKind, Result};
 use crate::str::*;
-use crate::iter::IteratorView;
+use crate::iter::VergeIteratorView;
 use crate::error::ErrorSpec;
 
 pub use std::fs::{
@@ -899,8 +899,8 @@ impl Fs {
                         &&& dirs.inv()
                         // the order of entries is unspecified
                         &&& {
-                            let (index, seq) = dirs@;
-                            &&& index == 0
+                            let seq = dirs.seq();
+                            &&& dirs.idx() == 0
                             &&& seq.len() <= Fs::files_in_dir(old(self).epoch(), path).len()
                             // only the last item could be an error
                             &&& forall|i: int| 0 <= i < seq.len() - 1 ==> #[trigger] seq[i].is_ok()
@@ -970,30 +970,32 @@ impl Fs {
 }
 
 /// Implements `view()` on `ReadDir`.
-impl IteratorView for ReadDir {
+impl VergeIteratorView for ReadDir {
     type Item = Result<DirEntry>;
 
-    uninterp spec fn view(&self) -> (int, Seq<Self::Item>);
+    uninterp spec fn seq(&self) -> Seq<Self::Item>;
+    uninterp spec fn idx(&self) -> int;
+    open spec fn ridx(&self) -> int 
+        { self.seq().len() as int }
 }
 
 /// Enables `ReadDir` as an iterator.
 pub assume_specification [ ReadDir::next ] (this: &mut ReadDir) -> (r: Option<Result<DirEntry>>)
     ensures
         old(this).inv() ==> {
-            let (old_index, old_seq) = old(this)@;
             match r {
                 None => {
                     &&& final(this).inv()
-                    &&& final(this)@ == old(this)@
-                    &&& old_index >= old_seq.len()
+                    &&& final(this).seq() == old(this).seq()
+                    &&& final(this).idx() == old(this).idx()
+                    &&& old(this).idx() == old(this).seq().len()
                 },
                 Some(k) => {
-                    let (new_index, new_seq) = final(this)@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& k == old_seq[old_index]
                     &&& k.is_ok() ==> final(this).inv()
+                    &&& k == old(this).seq()[old(this).idx()]
+                    &&& final(this).seq() == old(this).seq()
+                    &&& final(this).idx() == old(this).idx() + 1
+                    &&& 0 <= old(this).idx() < old(this).seq().len()
                 },
             }
         },

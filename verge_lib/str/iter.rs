@@ -2,7 +2,12 @@
 
 #![allow(unused_imports)]
 use super::*;
-use crate::iter::{IteratorView, impl_iterator_default, impl_iterator_verge};
+use crate::iter::{
+    VergeIteratorView, VergeIterator,
+    impl_iterator_default, impl_double_ended_iterator_default,
+    impl_iterator_verge,
+};
+use vstd::std_specs::iter::*;
 
 use std::str::{
     CharIndices, SplitAsciiWhitespace, Lines,
@@ -16,10 +21,13 @@ verus! {
 pub struct ExCharIndices<'a>(CharIndices<'a>);
 
 impl_iterator_default!(
-    CharIndices['a] where Item = (usize, char)
+    CharIndices as VergeCharIndices ['a] where Item = (usize, char)
     [ str::char_indices ] (s: &'a str) -> |seq| {
         seq == s@.map(|i: int, c: char| (s@.take(i).as_bytes().len() as usize, c))
     }
+);
+impl_double_ended_iterator_default!(
+    CharIndices as VergeCharIndices ['a] where Item = (usize, char)
 );
 
 /// Enables `std::str::SplitAsciiWhitespace` as an iterator.
@@ -31,7 +39,7 @@ impl_iterator_default!(
 pub struct ExSplitAsciiWhitespace<'a>(SplitAsciiWhitespace<'a>);
 
 impl_iterator_default!(
-    SplitAsciiWhitespace['a] where Item = &'a str
+    SplitAsciiWhitespace as VergeSplitAsciiWhitespace ['a] where Item = &'a str
     [ str::split_ascii_whitespace ] (s: &'a str) -> |seq| {
         // splits cannot have whitespaces, and are not empty
         &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() ==> {
@@ -54,6 +62,9 @@ impl_iterator_default!(
         }
     }
 );
+impl_double_ended_iterator_default!(
+    SplitAsciiWhitespace as VergeSplitAsciiWhitespace ['a] where Item = &'a str
+);
 
 /// Enables `std::str::Lines` as an iterator.
 ///
@@ -68,7 +79,7 @@ impl_iterator_default!(
 pub struct ExLines<'a>(Lines<'a>);
 
 impl_iterator_default!(
-    Lines['a] where Item = &'a str
+    Lines as VergeLines ['a] where Item = &'a str
     [ str::lines ] (s: &'a str) -> |seq| {
         // lines cannot have `\n`
         &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() ==> 
@@ -89,6 +100,9 @@ impl_iterator_default!(
             )
         }
     }
+);
+impl_double_ended_iterator_default!(
+    Lines as VergeLines ['a] where Item = &'a str
 );
 
 /// Enables `Split` as an iterator (wrapping is needed because we don't fully support the `Pattern` trait bound).
@@ -270,11 +284,9 @@ impl_iterator_verge!(
 mod tests {
     use super::*;
 
-    fn test_char_indices() {
+    fn test_char_indices_old() {
         broadcast use crate::str::group_str_view;
-        proof {
-            reveal_strlit("ab");
-        }
+        proof { reveal_strlit("ab"); }
 
         let s = "ab";
         let mut it = s.char_indices();
@@ -286,7 +298,7 @@ mod tests {
             }
             None => { assert(false); }
         }
-        match it.next() {
+        match it.next_back() {
             Some((i, c)) => {
                 assert(i == 1usize);
                 assert(c == 'b');
@@ -296,6 +308,29 @@ mod tests {
         match it.next() {
             Some(_) => { assert(false); }
             None => { }
+        }
+        match it.next_back() {
+            Some(_) => { assert(false); }
+            None => { }
+        }
+    }
+
+    fn test_char_indices_new() {
+        broadcast use crate::str::group_str_view;
+        proof { reveal_strlit("ab"); }
+
+        let s = "ab";
+        for (i, c) in iter: s.char_indices().verge_iter() 
+            invariant
+                iter.seq() == seq![(0usize, 'a'), (1usize, 'b')],
+        {
+            assert(c.is_ascii());
+        }
+        for (i, c) in iter: s.char_indices().verge_iter().rev()
+            invariant
+                iter.seq() == seq![(1usize, 'b'), (0usize, 'a')],
+        {
+            assert(c.is_ascii());
         }
     }
 
@@ -377,7 +412,7 @@ mod tests {
         }
 
         let mut it = str_splitn("a,b,c", 2usize, ",");
-        let ghost seq = it@.1;
+        let ghost seq = it.seq();
 
         proof {
             assert_by_contradiction!(seq.len() == 2, {   
@@ -415,7 +450,7 @@ mod tests {
             Some(part) => {
                 assert(part == seq[0]);
                 assert(part@ =~= "a"@);
-                assert(it@.0 == 1);
+                assert(it.idx() == 1);
             }
             None => { assert(false); }
         }
@@ -423,15 +458,15 @@ mod tests {
             Some(part) => {
                 assert(part == seq[1]);
                 assert(part@ =~= "b,c"@);
-                assert(it@.0 == 2);
+                assert(it.idx() == 2);
             }
             None => { assert(false); }
         }
         match it.next() {
             Some(_) => { assert(false); }
             None => {
-                assert(it@.0 == seq.len());
-                assert(it@.1 == seq);
+                assert(it.idx() == seq.len());
+                assert(it.seq() == seq);
             }
         }
     }

@@ -23,6 +23,7 @@
 #![allow(rustdoc::invalid_rust_codeblocks)]
 #![feature(allocator_api)]
 #![feature(sized_hierarchy)]
+#![feature(pattern)]
 
 #[cfg(not(unix))]
 compile_error!("Verge is a Unix-only library.");
