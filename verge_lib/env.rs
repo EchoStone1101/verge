@@ -5,19 +5,10 @@ use vstd::prelude::*;
 use vstd::std_specs::iter::*;
 use crate::iter::*;
 
+use std::env::{args, vars};
 pub use std::env::{Args, Vars};
 
 verus! {
-
-/// Enables `std::env::Args` (iterator struct).
-#[verifier::external_body]
-#[verifier::external_type_specification]
-pub struct ExArgs(Args);
-
-/// Enables `std::env::Vars` (iterator struct).
-#[verifier::external_body]
-#[verifier::external_type_specification]
-pub struct ExVars(Vars);
 
 /// Specification for `env::Args` and `env::Vars`.
 pub struct Env;
@@ -30,24 +21,45 @@ impl Env {
     pub uninterp spec fn vars() -> Map<Seq<char>, Seq<char>>;
 }
 
-/// Enables `Args` as an iterator.
-impl_iterator_default!(
-    Args as VergeArgs [] where Item = String
-    [ std::env::args ] () -> |seq| {
+/// Specifies the iterator `VergeArgs` which wraps `Args`, 
+/// contructed via `args_iter()`.
+impl_iterator!(
+    Args[] as VergeArgs[] :: Item = String
+    [ args_iter via args ] () -> |seq| {
         Env::args() =~~= seq.map(|i: int, arg: String| arg@)
     }
 );
-impl_double_ended_iterator_default!(
-    Args as VergeArgs [] where Item = String
-);
+impl core::iter::Iterator for VergeArgs {
+    type Item = <Self as VergeIteratorSpec>::Item;
+    #[verifier::external_body]
+    fn next(&mut self) -> (ret: Option<<Self as VergeIteratorSpec>::Item>) 
+        { self.0.next() }
+}
 
-/// Enables `Vars` as an iterator.
-impl_iterator_default!(
-    Vars as VergeVars [] where Item = (String, String)
-    [ std::env::vars ] () -> |seq| {
+/// Specifies the iterator `VergeArgs` as a double-ended iterator.
+impl_double_ended_iterator!(
+    Args as VergeArgs [] :: Item = String
+);
+impl core::iter::DoubleEndedIterator for VergeArgs {
+    #[verifier::external_body]
+    fn next_back(&mut self) -> (ret: Option<<Self as VergeIteratorSpec>::Item>) 
+        { self.0.next_back() }
+}
+
+/// Specifies the iterator `VergeVars` which wraps `Vars`, 
+/// contructed via `vars_iter()`.
+impl_iterator!(
+    Vars[] as VergeVars[] :: Item = (String, String)
+    [ vars_iter via vars ] () -> |seq| {
         Env::vars().kv_pairs().to_seq() =~~= seq.map(|i: int, var: (String, String)| (var.0@, var.1@))
     }
 );
+impl core::iter::Iterator for VergeVars {
+    type Item = <Self as VergeIteratorSpec>::Item;
+    #[verifier::external_body]
+    fn next(&mut self) -> (ret: Option<<Self as VergeIteratorSpec>::Item>) 
+        { self.0.next() }
+}
 
 /// Enables `std::env::var`.
 #[verifier::external_body]

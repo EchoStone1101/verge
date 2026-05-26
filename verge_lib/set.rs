@@ -1,4 +1,4 @@
-//! Extended set specifications and lemmas for `Set` in Verus.
+//! Extended set specifications and lemmas for `Set` in vstd.
 
 use vstd::prelude::*;
 

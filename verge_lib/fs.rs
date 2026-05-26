@@ -38,10 +38,10 @@
 use vstd::prelude::*;
 use vstd::view::View;
 use vstd::std_specs::result::{spec_unwrap, spec_unwrap_err};
-use crate::dummy;
+use crate::{dummy, VergeView};
 use crate::io::{Error, ErrorKind, Result};
 use crate::str::*;
-use crate::iter::VergeIteratorView;
+use crate::iter::*;
 use crate::error::ErrorSpec;
 
 pub use std::fs::{
@@ -375,6 +375,7 @@ pub fn init() -> (ret: Fs)
 #[verifier::external_type_specification]
 pub struct ExFile(File);
 
+// TODO
 /// Iterator over the entries in a directory.
 #[verifier::external_body]
 #[verifier::external_type_specification]
@@ -969,8 +970,7 @@ impl Fs {
 
 }
 
-/// Implements `view()` on `ReadDir`.
-impl VergeIteratorView for ReadDir {
+impl VergeIteratorSpec for ReadDir {
     type Item = Result<DirEntry>;
 
     uninterp spec fn seq(&self) -> Seq<Self::Item>;
@@ -979,31 +979,30 @@ impl VergeIteratorView for ReadDir {
         { self.seq().len() as int }
 }
 
-/// Enables `ReadDir` as an iterator.
-pub assume_specification [ ReadDir::next ] (this: &mut ReadDir) -> (r: Option<Result<DirEntry>>)
-    ensures
-        old(this).inv() ==> {
-            match r {
-                None => {
-                    &&& final(this).inv()
-                    &&& final(this).seq() == old(this).seq()
-                    &&& final(this).idx() == old(this).idx()
-                    &&& old(this).idx() == old(this).seq().len()
-                },
-                Some(k) => {
-                    &&& k.is_ok() ==> final(this).inv()
-                    &&& k == old(this).seq()[old(this).idx()]
-                    &&& final(this).seq() == old(this).seq()
-                    &&& final(this).idx() == old(this).idx() + 1
-                    &&& 0 <= old(this).idx() < old(this).seq().len()
-                },
-            }
-        },
-;
+// /// Enables `ReadDir` as an iterator.
+// pub assume_specification [ ReadDir::next ] (this: &mut ReadDir) -> (r: Option<Result<DirEntry>>)
+//     ensures
+//         old(this).inv() ==> {
+//             match r {
+//                 None => {
+//                     &&& final(this).inv()
+//                     &&& final(this).seq() == old(this).seq()
+//                     &&& final(this).idx() == old(this).idx()
+//                     &&& old(this).idx() == old(this).seq().len()
+//                 },
+//                 Some(k) => {
+//                     &&& k.is_ok() ==> final(this).inv()
+//                     &&& k == old(this).seq()[old(this).idx()]
+//                     &&& final(this).seq() == old(this).seq()
+//                     &&& final(this).idx() == old(this).idx() + 1
+//                     &&& 0 <= old(this).idx() < old(this).seq().len()
+//                 },
+//             }
+//         },
+// ;
 
 /// This trait specifies `ReadDir`.
 pub trait ReadDirSpec {
-
     /// Invariant of the iterator (broke at the first error).
     spec fn inv(&self) -> bool;
     
@@ -1011,7 +1010,7 @@ pub trait ReadDirSpec {
     /// 
     /// This is essentially explicitly calling `drop`, but with `spec` to 
     /// update the file system states.
-    fn seal(self, fs: &mut Fs)
+    proof fn seal(self, fs: &mut Fs)
         requires 
             self.inv(),
             old(fs).read_dir_count() > 0,
@@ -1026,8 +1025,9 @@ pub trait ReadDirSpec {
 impl ReadDirSpec for ReadDir {
     uninterp spec fn inv(&self) -> bool;
 
-    #[verifier::external_body]
-    fn seal(self, fs: &mut Fs) {}
+    proof fn seal(self, fs: &mut Fs) {
+        admit()
+    }
 }
 
 /// This trait specifies `DirEntry`.

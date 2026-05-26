@@ -4,12 +4,15 @@
 //! for details.
 
 use super::*;
-use crate::iter::{
-    VergeIteratorView, impl_iterator_verge,
-};
+use crate::VergeView;
+use crate::iter::*;
+use vstd::std_specs::iter::*;
 
 pub use std::path::{
-    Path, PathBuf,
+    Path, PathBuf, 
+};
+use std::path::{
+    Ancestors, Iter,
 };
 
 verus! {
@@ -258,10 +261,16 @@ pub broadcast proof fn lemma_str_as_path_valid(s: Seq<char>)
     }
 }
 
+impl VergeView for Path {
+    type V = PathView;
+
+    open spec fn view(&self) -> PathView 
+        { self.str_view().as_path() }
+}
+
 /// This trait adds additional methods to the `Path` type.
 pub trait PathAdditionalFns {
     spec fn str_view(&self) -> Seq<char>;
-    spec fn view(&self) -> PathView;
 
     fn new(s: &str) -> &Path
         no_unwind;
@@ -276,13 +285,9 @@ pub trait PathAdditionalFns {
 }
 
 impl PathAdditionalFns for Path {
-
     /// Verge currently models paths as UTF-8 strings instead of the more accurate `OsString`s. 
     /// See the top-level comment of `fs` for more details.
     uninterp spec fn str_view(&self) -> Seq<char>;
-
-    open spec fn view(&self) -> PathView 
-        { self.str_view().as_path() }
 
     /// Directly wraps a string slice as a `Path` slice.
     #[verifier::external_body]
@@ -384,100 +389,53 @@ pub assume_specification [ Path::parent ] (p: &Path) -> (ret: Option<&Path>)
     no_unwind
 ;
 
-#[verifier::external]
-pub struct Ancestors<'a>(std::path::Ancestors<'a>);
-
-/// Enable `std::path::Ancestors` as an iterator.
-#[verifier::external_body]
-#[verifier::external_type_specification]
-pub struct ExAncestors<'a>(Ancestors<'a>);
-
-impl_iterator_verge!(
-    Ancestors['a] where Item = &'a Path
-    [ path_ancestors via Path::ancestors ] (p: &'a Path) -> |seq| {
-        let norm = p@.normalize();
+/// Specifies the iterator `VergeAncestors` which wraps `Ancestors`, 
+/// contructed via `path::ancestors_iter()`.
+impl_iterator!(
+    Ancestors['a] as VergeAncestors['_] :: Item = &'a Path
+    [ [Path as VergeView<V=PathView>] :: ancestors_iter via ancestors ] 
+    (&self,) -> |seq| {
+        let norm = self@.normalize();
         &&& seq.len() == norm.path.len() + 1
         &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
             ==> {
                 &&& seq[i]@.is_normalized()
-                &&& seq[i]@.abs == p@.abs
+                &&& seq[i]@.abs == self@.abs
                 &&& seq[i]@.path == norm.path.take(norm.path.len() - i)
             }
     }
 );
-
-// XXX: the following does not use `impl_iterator_verge!` because it contains a 
-// non-default implementation.
-
-#[verifier::external]
-pub struct Iter<'a>(std::path::Iter<'a>);
-
-/// Enable `std::path::Iter` as an iterator.
-#[verifier::external_body]
-#[verifier::external_type_specification]
-pub struct ExIter<'a>(Iter<'a>);
-
-impl<'a> VergeIteratorView for Iter<'a> {
-    type Item = &'a str;
-
-    uninterp spec fn seq(&self) -> Seq<Self::Item>;
-    uninterp spec fn idx(&self) -> int;
-    uninterp spec fn ridx(&self) -> int;
-}
-
-/// Enables `Path::iter()`.
-#[verifier::external_body]
-pub fn path_iter<'a>(p: &'a Path) -> (ret: Iter<'a>) 
-    ensures
-        ({
-            let seq = ret.seq();
-            let norm = p@.normalize();
-            &&& ret.idx() == 0
-            &&& ret.ridx() == seq.len()
-            &&& !norm.abs ==> {
-                &&& seq.len() == norm.path.len()
-                &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
-                    ==> seq[i]@ == norm.path[i].drop_last()
-            }
-            &&& norm.abs ==> {
-                &&& seq.len() == norm.path.len() + 1
-                &&& seq[0]@ == seq![MAIN_SEPARATOR]
-                &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
-                    ==> seq[i+1]@ == norm.path[i].drop_last()
-            }
-        }),
-    no_unwind
-{
-    Iter(p.iter())
-}
-
-impl<'a> core::iter::Iterator for Iter<'a> {
-    type Item = &'a str;
-
+impl<'a> core::iter::Iterator for VergeAncestors<'a> {
+    type Item = <Self as VergeIteratorSpec>::Item;
     #[verifier::external_body]
-    fn next(&mut self) -> (r: Option<Self::Item>)
-        ensures
-            final(self).seq() == old(self).seq(),
-            final(self).ridx() == old(self).ridx(),
-            ({
-                let old_idx = old(self).idx();
-                let old_seq = old(self).seq();
-                match r {
-                    None => {
-                        &&& final(self).idx() == old(self).idx()
-                        &&& old_idx == old(self).ridx()
-                        &&& 0 <= old_idx <= old_seq.len()
-                    },
-                    Some(k) => {
-                        let new_idx = final(self).idx();
-                        let new_seq = final(self).seq();
-                        &&& 0 <= old_idx < old(self).ridx() <= old_seq.len()
-                        &&& new_idx == old_idx + 1
-                        &&& k == old_seq[old_idx]
-                    },
-                }
-            }),
-    {
+    fn next(&mut self) -> (ret: Option<<Self as VergeIteratorSpec>::Item>) 
+        { self.0.next() }
+}
+
+/// Specifies the iterator `VergeIter` which wraps `Iter`, 
+/// contructed via `path::iterate()`.
+impl_iterator!(
+    Iter['a] as VergeIter['_] :: Item = &'a str
+    [ [Path as VergeView<V=PathView>] :: iterate via iter ] 
+    (&self,) -> |seq| {
+        let norm = self@.normalize();
+        &&& !norm.abs ==> {
+            &&& seq.len() == norm.path.len()
+            &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
+                ==> seq[i]@ == norm.path[i].drop_last()
+        }
+        &&& norm.abs ==> {
+            &&& seq.len() == norm.path.len() + 1
+            &&& seq[0]@ == seq![MAIN_SEPARATOR]
+            &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
+                ==> seq[i+1]@ == norm.path[i].drop_last()
+        }
+    }
+);
+impl<'a> core::iter::Iterator for VergeIter<'a> {
+    type Item = <Self as VergeIteratorSpec>::Item;
+    #[verifier::external_body]
+    fn next(&mut self) -> (ret: Option<<Self as VergeIteratorSpec>::Item>) { 
         match self.0.next() {
             Some(s) => unsafe { Some(str::from_utf8_unchecked(s.as_encoded_bytes())) },
             None => None,
@@ -485,31 +443,13 @@ impl<'a> core::iter::Iterator for Iter<'a> {
     }
 }
 
-impl<'a> core::iter::DoubleEndedIterator for Iter<'a> {
+/// Specifies the iterator `VergeIter` as a double-ended iterator.
+impl_double_ended_iterator!(
+    Iter as VergeIter ['a] :: Item = &'a str 
+);
+impl<'a> core::iter::DoubleEndedIterator for VergeIter<'a> {
     #[verifier::external_body]
-    fn next_back(&mut self) -> (r: Option<<Self as core::iter::Iterator>::Item>)
-        ensures
-            final(self).seq() == old(self).seq(),
-            final(self).idx() == old(self).idx(),
-            ({
-                let old_ridx = old(self).ridx();
-                let old_seq = old(self).seq();
-                match r {
-                    None => {
-                        &&& final(self).ridx() == old(self).ridx()
-                        &&& old_ridx == old(self).idx()
-                        &&& 0 <= old_ridx <= old_seq.len()
-                    },
-                    Some(k) => {
-                        let new_ridx = final(self).ridx();
-                        let new_seq = final(self).seq();
-                        &&& 0 <= old(self).idx() < old_ridx <= old_seq.len()
-                        &&& new_ridx == old_ridx - 1
-                        &&& k == old_seq[new_ridx]
-                    },
-                }
-            }),
-    {
+    fn next_back(&mut self) -> (ret: Option<<Self as VergeIteratorSpec>::Item>) { 
         match self.0.next_back() {
             Some(s) => unsafe { Some(str::from_utf8_unchecked(s.as_encoded_bytes())) },
             None => None,
@@ -520,7 +460,6 @@ impl<'a> core::iter::DoubleEndedIterator for Iter<'a> {
 /// This trait adds additional methods to the `PathBuf` type.
 pub trait PathBufAdditionalFns {
     spec fn str_view(&self) -> Seq<char>;
-    spec fn view(&self) -> PathView;
 
     fn as_str(&self) -> &str
         no_unwind;
@@ -529,12 +468,15 @@ pub trait PathBufAdditionalFns {
     fn push(&mut self, path: &Path);
 }
 
-impl PathBufAdditionalFns for PathBuf {
-
-    uninterp spec fn str_view(&self) -> Seq<char>;
+impl VergeView for PathBuf {
+    type V = PathView;
 
     open spec fn view(&self) -> PathView 
         { self.str_view().as_path() }
+}
+
+impl PathBufAdditionalFns for PathBuf {
+    uninterp spec fn str_view(&self) -> Seq<char>;
 
     /// Yields the underlying string slice.
     /// 

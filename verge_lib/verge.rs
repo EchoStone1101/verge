@@ -61,6 +61,7 @@ pub mod io;
 pub mod iter;
 pub mod mem;
 pub mod nt;
+pub mod seq;
 pub mod set;
 pub mod str;
 
@@ -70,11 +71,11 @@ pub trait ExAsRef<T: std::marker::PointeeSized>: std::marker::PointeeSized {
     type ExternalTraitSpecificationFor: std::convert::AsRef<T>;
 }
 
-/// Enable the `AsMut` trait.
-#[verifier::external_trait_specification]
-pub trait ExAsMut<T: std::marker::PointeeSized>: std::marker::PointeeSized {
-    type ExternalTraitSpecificationFor: std::convert::AsMut<T>;
-}
+// /// Enable the `AsMut` trait.
+// #[verifier::external_trait_specification]
+// pub trait ExAsMut<T: std::marker::PointeeSized>: std::marker::PointeeSized {
+//     type ExternalTraitSpecificationFor: std::convert::AsMut<T>;
+// }
 
 /// Used for a dummy one-term trigger.
 pub uninterp spec fn dummy<A>(a: A) -> ();
@@ -82,23 +83,16 @@ pub uninterp spec fn dummy<A>(a: A) -> ();
 /// Used for a dummy two-term trigger.
 pub uninterp spec fn dummy2<A, B>(a: A, b: B) -> ();
 
-/// Enables `Box::<T>::as_ref`.
-pub uninterp spec fn box_as_ref<T: ?Sized, A: Allocator>(ptr: &Box<T, A>) -> &T;
-#[verifier::when_used_as_spec(box_as_ref)]
-pub assume_specification<T: ?Sized, A: Allocator>[ Box::<T, A>::as_ref ](this: &Box<T, A>) -> (ret: &T)
-    ensures
-        this == ret,
-    no_unwind
-;
+// TODO: use this across the crate
+/// The `VergeView` trait adds the `view` method to a type that otherwise 
+/// does not implement `vstd::View`. 
+/// Semantically it is equivalent to implement `view` as part of the type's `impl` block, 
+/// but `VergeView` has the advantage of working as a trait bound.
+pub trait VergeView {
+    type V;
 
-/// Enables `Rc::<T>::as_ref`.
-pub uninterp spec fn rc_as_ref<T: ?Sized, A: Allocator>(ptr: &Rc<T, A>) -> &T;
-#[verifier::when_used_as_spec(rc_as_ref)]
-pub assume_specification<T: ?Sized, A: Allocator>[ Rc::<T, A>::as_ref ](this: &Rc<T, A>) -> (ret: &T)
-    ensures
-        this == ret,
-    no_unwind
-;
+    spec fn view(&self) -> Self::V;
+}
 
 }
 

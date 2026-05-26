@@ -344,33 +344,33 @@ pub assume_specification [ str::ceil_char_boundary ] (s: &str, index: usize) -> 
     no_unwind
 ;
 
-/// Enable basic (`&str`) pattern matching for `&str`.
-pub trait StrSliceExecPatternFns {
+// /// Enable basic (`&str`) pattern matching for `&str`.
+// pub trait StrSliceExecPatternFns {
 
-    fn contains_str(&self, pat: &str) -> bool
-        no_unwind;
+//     fn contains_str(&self, pat: &str) -> bool
+//         no_unwind;
 
-    fn starts_with_str(&self, pat: &str) -> bool
-        no_unwind;
+//     fn starts_with_str(&self, pat: &str) -> bool
+//         no_unwind;
 
-    fn ends_with_str(&self, pat: &str) -> bool
-        no_unwind;
+//     fn ends_with_str(&self, pat: &str) -> bool
+//         no_unwind;
 
-    fn find_str(&self, pat: &str) -> Option<usize>
-        no_unwind;
+//     fn find_str(&self, pat: &str) -> Option<usize>
+//         no_unwind;
 
-    fn rfind_str(&self, pat: &str) -> Option<usize>
-        no_unwind;
+//     fn rfind_str(&self, pat: &str) -> Option<usize>
+//         no_unwind;
     
-    fn strip_prefix_str(&self, prefix: &str) -> Option<&str>
-        no_unwind;
+//     fn strip_prefix_str(&self, prefix: &str) -> Option<&str>
+//         no_unwind;
     
-    fn strip_suffix_str(&self, suffix: &str) -> Option<&str>
-        no_unwind;
+//     fn strip_suffix_str(&self, suffix: &str) -> Option<&str>
+//         no_unwind;
         
-}
+// }
 
-/// Enables `&[start..end]` indexing for `&str`.
+/// Enables `&[start..end]` indexing for `&str` (parity with `vstd::slice::slice_subrange`).
 /// 
 /// Note that this function no longer panics, but requires proving that `start` and `end` 
 /// fall between code points. 
@@ -387,123 +387,123 @@ pub fn str_subrange(s: &str, start: usize, end: usize) -> (ret: &str)
     &s[start..end]
 }
 
-impl StrSliceExecPatternFns for str {
+// impl StrSliceExecPatternFns for str {
 
-    /// Enable `str::contains`.
-    #[verifier::external_body]
-    fn contains_str(&self, pat: &str) -> (ret: bool) 
-        returns 
-            exists|i: int| 
-                0 <= i <= self@.len() - pat@.len()
-                && #[trigger] self@.subrange(i, i + pat@.len()) =~= pat@,
-    {
-        self.contains(pat)
-    }
+//     /// Enable `str::contains`.
+//     #[verifier::external_body]
+//     fn contains_str(&self, pat: &str) -> (ret: bool) 
+//         returns 
+//             exists|i: int| 
+//                 0 <= i <= self@.len() - pat@.len()
+//                 && #[trigger] self@.subrange(i, i + pat@.len()) =~= pat@,
+//     {
+//         self.contains(pat)
+//     }
 
-    /// Enable `str::starts_with`.
-    #[verifier::external_body]
-    fn starts_with_str(&self, pat: &str) -> (ret: bool)
-        returns
-            pat@.is_prefix_of(self@),
-    {
-        self.starts_with(pat)
-    }
+//     /// Enable `str::starts_with`.
+//     #[verifier::external_body]
+//     fn starts_with_str(&self, pat: &str) -> (ret: bool)
+//         returns
+//             pat@.is_prefix_of(self@),
+//     {
+//         self.starts_with(pat)
+//     }
 
-    /// Enable `str::ends_with`.
-    #[verifier::external_body]
-    fn ends_with_str(&self, pat: &str) -> (ret: bool)
-        returns
-            pat@.is_suffix_of(self@),
-    {
-        self.ends_with(pat)
-    }
+//     /// Enable `str::ends_with`.
+//     #[verifier::external_body]
+//     fn ends_with_str(&self, pat: &str) -> (ret: bool)
+//         returns
+//             pat@.is_suffix_of(self@),
+//     {
+//         self.ends_with(pat)
+//     }
 
-    /// Enable `str::find`.
-    #[verifier::external_body]
-    fn find_str(&self, pat: &str) -> (ret: Option<usize>)
-        ensures
-            ({
-                let slen = self@.as_bytes().len();
-                let plen = pat@.as_bytes().len();
-                match ret {
-                    Some(idx) => {
-                        let idx = idx as int;
-                        &&& idx <= slen - plen
-                        &&& self@.as_bytes().subrange(idx, idx + plen) =~= pat@.as_bytes()
-                        &&& !exists|i: int| 
-                            0 <= i < idx 
-                            && #[trigger] self@.as_bytes().subrange(i, i + plen) =~= pat@.as_bytes()
-                    },
-                    None => {
-                        forall|i: int| 0 <= i <= slen - plen
-                            ==> !(#[trigger] self@.as_bytes().subrange(i, i + plen) =~= pat@.as_bytes())
-                    },
-                }
-            }),
-    {
-        self.find(pat)
-    }
+//     /// Enable `str::find`.
+//     #[verifier::external_body]
+//     fn find_str(&self, pat: &str) -> (ret: Option<usize>)
+//         ensures
+//             ({
+//                 let slen = self@.as_bytes().len();
+//                 let plen = pat@.as_bytes().len();
+//                 match ret {
+//                     Some(idx) => {
+//                         let idx = idx as int;
+//                         &&& idx <= slen - plen
+//                         &&& self@.as_bytes().subrange(idx, idx + plen) =~= pat@.as_bytes()
+//                         &&& !exists|i: int| 
+//                             0 <= i < idx 
+//                             && #[trigger] self@.as_bytes().subrange(i, i + plen) =~= pat@.as_bytes()
+//                     },
+//                     None => {
+//                         forall|i: int| 0 <= i <= slen - plen
+//                             ==> !(#[trigger] self@.as_bytes().subrange(i, i + plen) =~= pat@.as_bytes())
+//                     },
+//                 }
+//             }),
+//     {
+//         self.find(pat)
+//     }
 
-    /// Enable `str::rfind`.
-    #[verifier::external_body]
-    fn rfind_str(&self, pat: &str) -> (ret: Option<usize>)
-        ensures
-            ({
-                let slen = self@.as_bytes().len();
-                let plen = pat@.as_bytes().len();
-                match ret {
-                    Some(idx) => {
-                        let idx = idx as int;
-                        &&& idx <= slen - plen
-                        &&& self@.as_bytes().subrange(idx, idx + plen) =~= pat@.as_bytes()
-                        &&& !exists|i: int| 
-                            idx < i <= slen - plen
-                            && #[trigger] self@.as_bytes().subrange(i, i + plen) =~= pat@.as_bytes()
-                    },
-                    None => {
-                        forall|i: int| 0 <= i <= slen - plen
-                            ==> !(#[trigger] self@.as_bytes().subrange(i, i + plen) =~= pat@.as_bytes())
-                    },
-                }
-            }),
-    {
-        self.rfind(pat)
-    }
+//     /// Enable `str::rfind`.
+//     #[verifier::external_body]
+//     fn rfind_str(&self, pat: &str) -> (ret: Option<usize>)
+//         ensures
+//             ({
+//                 let slen = self@.as_bytes().len();
+//                 let plen = pat@.as_bytes().len();
+//                 match ret {
+//                     Some(idx) => {
+//                         let idx = idx as int;
+//                         &&& idx <= slen - plen
+//                         &&& self@.as_bytes().subrange(idx, idx + plen) =~= pat@.as_bytes()
+//                         &&& !exists|i: int| 
+//                             idx < i <= slen - plen
+//                             && #[trigger] self@.as_bytes().subrange(i, i + plen) =~= pat@.as_bytes()
+//                     },
+//                     None => {
+//                         forall|i: int| 0 <= i <= slen - plen
+//                             ==> !(#[trigger] self@.as_bytes().subrange(i, i + plen) =~= pat@.as_bytes())
+//                     },
+//                 }
+//             }),
+//     {
+//         self.rfind(pat)
+//     }
 
-    /// Enable `str::strip_prefix`.
-    #[verifier::external_body]
-    fn strip_prefix_str(&self, prefix: &str) -> (ret: Option<&str>)
-        ensures
-            ({
-                match ret {
-                    Some(s) => {
-                        &&& prefix@.is_prefix_of(self@)
-                        &&& s@ =~= self@.skip(prefix@.len() as int)
-                    },
-                    None => !prefix@.is_prefix_of(self@)
-                }
-            }),
-    {
-        self.strip_prefix(prefix)
-    }
+//     /// Enable `str::strip_prefix`.
+//     #[verifier::external_body]
+//     fn strip_prefix_str(&self, prefix: &str) -> (ret: Option<&str>)
+//         ensures
+//             ({
+//                 match ret {
+//                     Some(s) => {
+//                         &&& prefix@.is_prefix_of(self@)
+//                         &&& s@ =~= self@.skip(prefix@.len() as int)
+//                     },
+//                     None => !prefix@.is_prefix_of(self@)
+//                 }
+//             }),
+//     {
+//         self.strip_prefix(prefix)
+//     }
 
-    /// Enable `str::strip_suffix`.
-    #[verifier::external_body]
-    fn strip_suffix_str(&self, suffix: &str) -> (ret: Option<&str>)
-        ensures
-            ({
-                match ret {
-                    Some(s) => {
-                        &&& suffix@.is_suffix_of(self@)
-                        &&& s@ =~= self@.take((self@.len() - suffix@.len()) as int)
-                    },
-                    None => !suffix@.is_suffix_of(self@)
-                }
-            }),
-    {
-        self.strip_suffix(suffix)
-    }
-}
+//     /// Enable `str::strip_suffix`.
+//     #[verifier::external_body]
+//     fn strip_suffix_str(&self, suffix: &str) -> (ret: Option<&str>)
+//         ensures
+//             ({
+//                 match ret {
+//                     Some(s) => {
+//                         &&& suffix@.is_suffix_of(self@)
+//                         &&& s@ =~= self@.take((self@.len() - suffix@.len()) as int)
+//                     },
+//                     None => !suffix@.is_suffix_of(self@)
+//                 }
+//             }),
+//     {
+//         self.strip_suffix(suffix)
+//     }
+// }
 
 /// Enable `str::to_ascii_lowercase`.
 pub assume_specification [ str::to_ascii_lowercase ] (s: &str) -> (ret: String)
@@ -794,161 +794,161 @@ mod tests {
         assert(s@ =~= bytes@.as_str());
     }
 
-    fn test_str_slice_contains_and_not_found() {
-        broadcast use group_str_view;
-        proof {
-            reveal_strlit("abca");
-            reveal_strlit("bca");
-            reveal_strlit("zzz");
-            reveal_strlit("abc");
-        }
+    // fn test_str_slice_contains_and_not_found() {
+    //     broadcast use group_str_view;
+    //     proof {
+    //         reveal_strlit("abca");
+    //         reveal_strlit("bca");
+    //         reveal_strlit("zzz");
+    //         reveal_strlit("abc");
+    //     }
 
-        let s = "abca";
-        let contains_bca = s.contains_str("bca");
-        let contains_zzz = s.contains_str("zzz");
-        let find_zzz = s.find_str("zzz");
-        let rfind_zzz = s.rfind_str("zzz");
+    //     let s = "abca";
+    //     let contains_bca = s.contains_str("bca");
+    //     let contains_zzz = s.contains_str("zzz");
+    //     let find_zzz = s.find_str("zzz");
+    //     let rfind_zzz = s.rfind_str("zzz");
 
-        assert(exists|i: int|
-            0 <= i <= s@.len() - "bca"@.len()
-            && #[trigger] s@.subrange(i, i + "bca"@.len()) =~= "bca"@
-        ) by {
-            assert(s@.subrange(1, 1 + "bca"@.len() as int) =~= "bca"@);
-        }
-        assert(contains_bca);
+    //     assert(exists|i: int|
+    //         0 <= i <= s@.len() - "bca"@.len()
+    //         && #[trigger] s@.subrange(i, i + "bca"@.len()) =~= "bca"@
+    //     ) by {
+    //         assert(s@.subrange(1, 1 + "bca"@.len() as int) =~= "bca"@);
+    //     }
+    //     assert(contains_bca);
 
-        assert(s@.len() == 4 && s@.as_bytes().len() == 4);
-        assert("zzz"@.len() == 3 && "zzz"@.as_bytes().len() == 3);
+    //     assert(s@.len() == 4 && s@.as_bytes().len() == 4);
+    //     assert("zzz"@.len() == 3 && "zzz"@.as_bytes().len() == 3);
         
-        assert(s@.subrange(0, 0 + "zzz"@.len() as int) =~= "abc"@);
-        assert(s@.subrange(1, 1 + "zzz"@.len() as int) =~= "bca"@);
-        assert(!("abc"@ =~= "zzz"@) && !("bca"@ =~= "zzz"@)) by {
-            assert("abc"@[0] == 'a');
-            assert("bca"@[0] == 'b');
-            assert("zzz"@[0] == 'z');
-        }
+    //     assert(s@.subrange(0, 0 + "zzz"@.len() as int) =~= "abc"@);
+    //     assert(s@.subrange(1, 1 + "zzz"@.len() as int) =~= "bca"@);
+    //     assert(!("abc"@ =~= "zzz"@) && !("bca"@ =~= "zzz"@)) by {
+    //         assert("abc"@[0] == 'a');
+    //         assert("bca"@[0] == 'b');
+    //         assert("zzz"@[0] == 'z');
+    //     }
 
-        proof {
-            assert_by_contradiction!(!(exists|i: int|
-                0 <= i <= s@.len() - "zzz"@.len()
-                && #[trigger] s@.subrange(i, i + "zzz"@.len()) =~= "zzz"@
-            ), {
-                let i = choose|i: int|
-                    0 <= i <= s@.len() - "zzz"@.len()
-                    && #[trigger] s@.subrange(i, i + "zzz"@.len()) =~= "zzz"@;
-                assert(0 <= i <= 1);
-                let subrange = s@.subrange(i, i + "zzz"@.len());
-                // assert(s@.subrange(i, i + "zzz"@.len()) =~= "zzz"@);
-                assert(subrange =~= "abc"@ || subrange =~= "bca"@);
-            });
-        }
+    //     proof {
+    //         assert_by_contradiction!(!(exists|i: int|
+    //             0 <= i <= s@.len() - "zzz"@.len()
+    //             && #[trigger] s@.subrange(i, i + "zzz"@.len()) =~= "zzz"@
+    //         ), {
+    //             let i = choose|i: int|
+    //                 0 <= i <= s@.len() - "zzz"@.len()
+    //                 && #[trigger] s@.subrange(i, i + "zzz"@.len()) =~= "zzz"@;
+    //             assert(0 <= i <= 1);
+    //             let subrange = s@.subrange(i, i + "zzz"@.len());
+    //             // assert(s@.subrange(i, i + "zzz"@.len()) =~= "zzz"@);
+    //             assert(subrange =~= "abc"@ || subrange =~= "bca"@);
+    //         });
+    //     }
 
-        assert(s@.as_bytes().subrange(0, 0 + "zzz"@.as_bytes().len() as int) =~= "abc"@.as_bytes());
-        assert(s@.as_bytes().subrange(1, 1 + "zzz"@.as_bytes().len() as int) =~= "bca"@.as_bytes());
-        assert(!("abc"@.as_bytes() =~= "zzz"@.as_bytes()) && !("bca"@.as_bytes() =~= "zzz"@.as_bytes())) by {
-            assert("abc"@.as_bytes()[0] == 'a' as u8);
-            assert("bca"@.as_bytes()[0] == 'b' as u8);
-            assert("zzz"@.as_bytes()[0] == 'z' as u8);
-        }
+    //     assert(s@.as_bytes().subrange(0, 0 + "zzz"@.as_bytes().len() as int) =~= "abc"@.as_bytes());
+    //     assert(s@.as_bytes().subrange(1, 1 + "zzz"@.as_bytes().len() as int) =~= "bca"@.as_bytes());
+    //     assert(!("abc"@.as_bytes() =~= "zzz"@.as_bytes()) && !("bca"@.as_bytes() =~= "zzz"@.as_bytes())) by {
+    //         assert("abc"@.as_bytes()[0] == 'a' as u8);
+    //         assert("bca"@.as_bytes()[0] == 'b' as u8);
+    //         assert("zzz"@.as_bytes()[0] == 'z' as u8);
+    //     }
 
-        proof {
-            assert_by_contradiction!(!(exists|i: int|
-                0 <= i <= s@.as_bytes().len() - "zzz"@.as_bytes().len()
-                && #[trigger] s@.as_bytes().subrange(i, i + "zzz"@.as_bytes().len()) =~= "zzz"@.as_bytes()
-            ), {
-                let i = choose|i: int|
-                    0 <= i <= s@.as_bytes().len() - "zzz"@.as_bytes().len()
-                    && #[trigger] s@.as_bytes().subrange(i, i + "zzz"@.as_bytes().len()) =~= "zzz"@.as_bytes();
-                assert(0 <= i <= 1);
-                let subrange = s@.as_bytes().subrange(i, i + "zzz"@.as_bytes().len());
-                // assert(s@.as_bytes().subrange(i, i + "zzz"@.as_bytes().len()) =~= "zzz"@.as_bytes());
-                assert(subrange =~= "abc"@.as_bytes() || subrange =~= "bca"@.as_bytes());
-            });
-        }
+    //     proof {
+    //         assert_by_contradiction!(!(exists|i: int|
+    //             0 <= i <= s@.as_bytes().len() - "zzz"@.as_bytes().len()
+    //             && #[trigger] s@.as_bytes().subrange(i, i + "zzz"@.as_bytes().len()) =~= "zzz"@.as_bytes()
+    //         ), {
+    //             let i = choose|i: int|
+    //                 0 <= i <= s@.as_bytes().len() - "zzz"@.as_bytes().len()
+    //                 && #[trigger] s@.as_bytes().subrange(i, i + "zzz"@.as_bytes().len()) =~= "zzz"@.as_bytes();
+    //             assert(0 <= i <= 1);
+    //             let subrange = s@.as_bytes().subrange(i, i + "zzz"@.as_bytes().len());
+    //             // assert(s@.as_bytes().subrange(i, i + "zzz"@.as_bytes().len()) =~= "zzz"@.as_bytes());
+    //             assert(subrange =~= "abc"@.as_bytes() || subrange =~= "bca"@.as_bytes());
+    //         });
+    //     }
 
-        assert(!contains_zzz);
-        assert(rfind_zzz.is_none() && find_zzz.is_none());
-    }
+    //     assert(!contains_zzz);
+    //     assert(rfind_zzz.is_none() && find_zzz.is_none());
+    // }
 
-    fn test_str_slice_find_rfind() {
-        broadcast use group_str_view;
-        proof {
-            reveal_strlit("aba");
-            reveal_strlit("a");
-        }
+    // fn test_str_slice_find_rfind() {
+    //     broadcast use group_str_view;
+    //     proof {
+    //         reveal_strlit("aba");
+    //         reveal_strlit("a");
+    //     }
 
-        let s = "aba";
-        let found = s.find_str("a");
-        let rfound = s.rfind_str("a");
-        assert(found == Some(0usize)) by {
-            match found {
-                Some(idx) => {
-                    let i = idx as int;
-                    assert(0 <= i <= s@.as_bytes().len() - "a"@.as_bytes().len());
-                    assert(s@.as_bytes().subrange(i, i + "a"@.as_bytes().len()) =~= "a"@.as_bytes());
-                    assert_by_contradiction!(i <= 0, {
-                        assert(s@.as_bytes().subrange(0, 0 + "a"@.as_bytes().len() as int) =~= "a"@.as_bytes());
-                    })
-                }
-                None => {}
-            }
-        }
-        assert(rfound == Some(2usize)) by {
-            match rfound {
-                Some(idx) => {
-                    let i = idx as int;
-                    assert(0 <= i <= s@.as_bytes().len() - "a"@.as_bytes().len());
-                    assert(s@.as_bytes().subrange(i, i + "a"@.as_bytes().len()) =~= "a"@.as_bytes());
-                    assert_by_contradiction!(!(i < 2), {
-                        assert(s@.as_bytes().subrange(2, 2 + "a"@.as_bytes().len() as int) =~= "a"@.as_bytes());
-                    })
-                }
-                None => {}
-            }
-        }
-    }
+    //     let s = "aba";
+    //     let found = s.find_str("a");
+    //     let rfound = s.rfind_str("a");
+    //     assert(found == Some(0usize)) by {
+    //         match found {
+    //             Some(idx) => {
+    //                 let i = idx as int;
+    //                 assert(0 <= i <= s@.as_bytes().len() - "a"@.as_bytes().len());
+    //                 assert(s@.as_bytes().subrange(i, i + "a"@.as_bytes().len()) =~= "a"@.as_bytes());
+    //                 assert_by_contradiction!(i <= 0, {
+    //                     assert(s@.as_bytes().subrange(0, 0 + "a"@.as_bytes().len() as int) =~= "a"@.as_bytes());
+    //                 })
+    //             }
+    //             None => {}
+    //         }
+    //     }
+    //     assert(rfound == Some(2usize)) by {
+    //         match rfound {
+    //             Some(idx) => {
+    //                 let i = idx as int;
+    //                 assert(0 <= i <= s@.as_bytes().len() - "a"@.as_bytes().len());
+    //                 assert(s@.as_bytes().subrange(i, i + "a"@.as_bytes().len()) =~= "a"@.as_bytes());
+    //                 assert_by_contradiction!(!(i < 2), {
+    //                     assert(s@.as_bytes().subrange(2, 2 + "a"@.as_bytes().len() as int) =~= "a"@.as_bytes());
+    //                 })
+    //             }
+    //             None => {}
+    //         }
+    //     }
+    // }
 
-    fn test_str_slice_starts_with() {
-        broadcast use group_str_view;
-        proof {
-            reveal_strlit("abcabc");
-            reveal_strlit("abc");
-            reveal_strlit("bca");
-        }
+    // fn test_str_slice_starts_with() {
+    //     broadcast use group_str_view;
+    //     proof {
+    //         reveal_strlit("abcabc");
+    //         reveal_strlit("abc");
+    //         reveal_strlit("bca");
+    //     }
 
-        let s = "abcabc";
-        let starts_with_abc = s.starts_with_str("abc");
-        let starts_with_bca = s.starts_with_str("bca");
+    //     let s = "abcabc";
+    //     let starts_with_abc = s.starts_with_str("abc");
+    //     let starts_with_bca = s.starts_with_str("bca");
 
-        assert(starts_with_abc == "abc"@.is_prefix_of(s@));
-        assert(starts_with_bca == "bca"@.is_prefix_of(s@));
-        assert(starts_with_abc);
-        assert(!"bca"@.is_prefix_of(s@)) by {
-            assert("bca"@[0] == 'b');
-            assert(s@[0] == 'a');
-        }
-        assert(!starts_with_bca);
-    }
+    //     assert(starts_with_abc == "abc"@.is_prefix_of(s@));
+    //     assert(starts_with_bca == "bca"@.is_prefix_of(s@));
+    //     assert(starts_with_abc);
+    //     assert(!"bca"@.is_prefix_of(s@)) by {
+    //         assert("bca"@[0] == 'b');
+    //         assert(s@[0] == 'a');
+    //     }
+    //     assert(!starts_with_bca);
+    // }
 
-    fn test_str_slice_ends_with() {
-        broadcast use group_str_view;
-        proof {
-            reveal_strlit("abcabc");
-            reveal_strlit("abc");
-            reveal_strlit("bca");
-        }
+    // fn test_str_slice_ends_with() {
+    //     broadcast use group_str_view;
+    //     proof {
+    //         reveal_strlit("abcabc");
+    //         reveal_strlit("abc");
+    //         reveal_strlit("bca");
+    //     }
 
-        let s = "abcabc";
-        let ends_with_abc = s.ends_with_str("abc");
-        let ends_with_bca = s.ends_with_str("bca");
+    //     let s = "abcabc";
+    //     let ends_with_abc = s.ends_with_str("abc");
+    //     let ends_with_bca = s.ends_with_str("bca");
 
-        assert(ends_with_abc);
-        assert(!"bca"@.is_suffix_of(s@)) by {
-            assert("bca"@.last() == 'a');
-            assert(s@.last() == 'c');
-        }
-        assert(!ends_with_bca);
-    }
+    //     assert(ends_with_abc);
+    //     assert(!"bca"@.is_suffix_of(s@)) by {
+    //         assert("bca"@.last() == 'a');
+    //         assert(s@.last() == 'c');
+    //     }
+    //     assert(!ends_with_bca);
+    // }
 }
 
     
