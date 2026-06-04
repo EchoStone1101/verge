@@ -62,9 +62,11 @@ fn gen_enum(input: ItemEnum) -> TokenStream {
         trans_arms.extend(arms.trans_arms);
         refl_arms.extend(arms.refl_arms);
     }
+    let obeys_eq = eq_common::obeys_eq_spec_from_variants(variants);
     let code = StructFieldCode {
         eq_body: quote! { match (self, other) { #(#exec_arms,)* _ => false, } },
         eq_spec_body: quote! { match (self, other) { #(#spec_arms,)* _ => false, } },
+        obeys_eq_spec_body: obeys_eq,
         sym_body: quote! { match (a, b) { #(#sym_arms,)* _ => {}, } },
         trans_body: quote! { match (a, b, c) { #(#trans_arms,)* _ => {}, } },
         refl_body: quote! { match a { #(#refl_arms,)* } },
@@ -81,6 +83,7 @@ pub(crate) fn emit_eq(
 ) -> TokenStream {
     let eq_body = &code.eq_body;
     let eq_spec_body = &code.eq_spec_body;
+    let obeys_eq_spec_body = &code.obeys_eq_spec_body;
     let sym_body = &code.sym_body;
     let trans_body = &code.trans_body;
     let refl_body = &code.refl_body;
@@ -92,10 +95,11 @@ pub(crate) fn emit_eq(
             }
             impl #generics Eq for #name #ty_generics {}
             impl #generics vstd::std_specs::cmp::PartialEqSpecImpl for #name #ty_generics {
-                open spec fn obeys_eq_spec() -> bool { true }
+                open spec fn obeys_eq_spec() -> bool { #obeys_eq_spec_body }
                 #openness spec fn eq_spec(&self, other: &Self) -> bool { #eq_spec_body }
             }
             impl #generics verge::cmp::PartialEqVerified for #name #ty_generics {
+                proof fn lemma_obeys_eq_spec() {}
                 proof fn lemma_eq_symmetric(a: &Self, b: &Self) { #sym_body }
                 proof fn lemma_eq_transitive(a: &Self, b: &Self, c: &Self) { #trans_body }
             }

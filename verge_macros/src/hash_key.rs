@@ -99,9 +99,11 @@ fn gen_hash_key_enum(input: ItemEnum, with_clone: bool) -> TokenStream {
         trans_arms.extend(arms.trans_arms);
         refl_arms.extend(arms.refl_arms);
     }
+    let obeys_eq = obeys_eq_spec_from_variants(variants);
     let eq_code = StructFieldCode {
         eq_body: quote! { match (self, other) { #(#exec_arms,)* _ => false, } },
         eq_spec_body: quote! { match (self, other) { #(#spec_arms,)* _ => false, } },
+        obeys_eq_spec_body: obeys_eq,
         sym_body: quote! { match (a, b) { #(#sym_arms,)* _ => {}, } },
         trans_body: quote! { match (a, b, c) { #(#trans_arms,)* _ => {}, } },
         refl_body: quote! { match a { #(#refl_arms,)* } },

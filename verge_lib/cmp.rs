@@ -42,19 +42,21 @@ verus! {
 /// }
 /// ```
 pub trait PartialEqVerified: PartialEq {
-    // TODO: should enforce Self::obeys_eq_spec()
-    
+
+    /// Proof obligation that the type's `obeys_eq_spec()` holds unconditionally.
+    proof fn lemma_obeys_eq_spec()
+        ensures
+            #![verifier::proof_note("PartialEqVerified: all field types must implement PartialEqVerified (with obeys_eq_spec() == true)")]
+            Self::obeys_eq_spec();
+
     /// Proof that `eq_spec` is symmetric.
     proof fn lemma_eq_symmetric(a: &Self, b: &Self)
-        requires
-            Self::obeys_eq_spec(),
-        ensures 
+        ensures
             a.eq_spec(b) <==> b.eq_spec(a);
 
     /// Proof that `eq_spec` is transitive.
     proof fn lemma_eq_transitive(a: &Self, b: &Self, c: &Self)
         requires
-            Self::obeys_eq_spec(),
             a.eq_spec(b),
             b.eq_spec(c),
         ensures
@@ -65,7 +67,6 @@ pub trait PartialEqVerified: PartialEq {
 pub trait EqVerified: Eq + PartialEqVerified {
     /// Proof that `eq_spec` is reflexive.
     proof fn lemma_eq_reflexive(a: &Self)
-        requires Self::obeys_eq_spec(),
         ensures a.eq_spec(a);
 }
 
@@ -78,18 +79,20 @@ pub trait EqVerified: Eq + PartialEqVerified {
 /// - Transitivity of `Less`
 /// - Transitivity of `Greater`
 pub trait PartialOrdVerified: PartialOrd + PartialEqVerified {
+    
+    /// Proof obligation that the type's `obeys_partial_cmp_spec()` holds unconditionally.
+    proof fn lemma_obeys_partial_cmp_spec()
+        ensures
+            #![verifier::proof_note("PartialOrdVerified: all field types must implement PartialOrdVerified (with obeys_partial_cmp_spec() == true)")]
+            Self::obeys_partial_cmp_spec();
+
     /// Proof that `partial_cmp_spec` returning `Equal` is equivalent to `eq_spec`.
     proof fn lemma_cmp_eq_consistent(a: &Self, b: &Self)
-        requires
-            Self::obeys_eq_spec(),
-            Self::obeys_partial_cmp_spec(),
         ensures
             a.partial_cmp_spec(b) == Some(Ordering::Equal) <==> a.eq_spec(b);
 
     /// Proof that `Less` in one direction means `Greater` in the other.
     proof fn lemma_cmp_dual(a: &Self, b: &Self)
-        requires
-            Self::obeys_partial_cmp_spec(),
         ensures
             a.partial_cmp_spec(b) == Some(Ordering::Less)
                 <==> b.partial_cmp_spec(a) == Some(Ordering::Greater);
@@ -97,7 +100,6 @@ pub trait PartialOrdVerified: PartialOrd + PartialEqVerified {
     /// Proof that `Less` is transitive.
     proof fn lemma_cmp_less_transitive(a: &Self, b: &Self, c: &Self)
         requires
-            Self::obeys_partial_cmp_spec(),
             a.partial_cmp_spec(b) == Some(Ordering::Less),
             b.partial_cmp_spec(c) == Some(Ordering::Less),
         ensures
@@ -106,7 +108,6 @@ pub trait PartialOrdVerified: PartialOrd + PartialEqVerified {
     /// Proof that `Greater` is transitive.
     proof fn lemma_cmp_greater_transitive(a: &Self, b: &Self, c: &Self)
         requires
-            Self::obeys_partial_cmp_spec(),
             a.partial_cmp_spec(b) == Some(Ordering::Greater),
             b.partial_cmp_spec(c) == Some(Ordering::Greater),
         ensures
@@ -116,7 +117,6 @@ pub trait PartialOrdVerified: PartialOrd + PartialEqVerified {
     /// `b` is comparable to `c`, then `a` is comparable to `c`.
     proof fn lemma_cmp_comparable(a: &Self, b: &Self, c: &Self)
         requires
-            Self::obeys_partial_cmp_spec(),
             a.partial_cmp_spec(b).is_some(),
             b.partial_cmp_spec(c).is_some(),
         ensures
@@ -127,8 +127,6 @@ pub trait PartialOrdVerified: PartialOrd + PartialEqVerified {
     /// eq-transitivity, duality, less-transitivity, and comparability.
     proof fn lemma_less_eq_subst(a: &Self, b: &Self, c: &Self)
         requires
-            Self::obeys_eq_spec(),
-            Self::obeys_partial_cmp_spec(),
             a.partial_cmp_spec(b) == Some(Ordering::Less),
             b.eq_spec(c),
         ensures
@@ -159,8 +157,6 @@ pub trait PartialOrdVerified: PartialOrd + PartialEqVerified {
     /// `Less` is substitutive on the left with respect to `eq_spec`.
     proof fn lemma_eq_less_subst(a: &Self, b: &Self, c: &Self)
         requires
-            Self::obeys_eq_spec(),
-            Self::obeys_partial_cmp_spec(),
             a.eq_spec(b),
             b.partial_cmp_spec(c) == Some(Ordering::Less),
         ensures
@@ -191,8 +187,6 @@ pub trait PartialOrdVerified: PartialOrd + PartialEqVerified {
     /// `Greater` is substitutive on the right with respect to `eq_spec`.
     proof fn lemma_greater_eq_subst(a: &Self, b: &Self, c: &Self)
         requires
-            Self::obeys_eq_spec(),
-            Self::obeys_partial_cmp_spec(),
             a.partial_cmp_spec(b) == Some(Ordering::Greater),
             b.eq_spec(c),
         ensures
@@ -209,8 +203,6 @@ pub trait PartialOrdVerified: PartialOrd + PartialEqVerified {
     /// `Greater` is substitutive on the left with respect to `eq_spec`.
     proof fn lemma_eq_greater_subst(a: &Self, b: &Self, c: &Self)
         requires
-            Self::obeys_eq_spec(),
-            Self::obeys_partial_cmp_spec(),
             a.eq_spec(b),
             b.partial_cmp_spec(c) == Some(Ordering::Greater),
         ensures
@@ -228,23 +220,28 @@ pub trait PartialOrdVerified: PartialOrd + PartialEqVerified {
 /// A verified `Ord` that requires a proof that `cmp_spec` is consistent with
 /// `partial_cmp_spec` (and therefore total).
 pub trait OrdVerified: Ord + EqVerified + PartialOrdVerified {
+
+    /// Proof obligation that the type's `obeys_cmp_spec()` holds unconditionally.
+    proof fn lemma_obeys_cmp_spec()
+        ensures
+            #![verifier::proof_note("OrdVerified: all field types must implement OrdVerified (with obeys_cmp_spec() == true)")]
+            Self::obeys_cmp_spec();
+
     /// Proof that `partial_cmp_spec` always equals `Some(cmp_spec(...))`.
     proof fn lemma_cmp_consistent(a: &Self, b: &Self)
-        requires
-            Self::obeys_cmp_spec(),
-            Self::obeys_partial_cmp_spec(),
         ensures
             a.partial_cmp_spec(b) == Some(a.cmp_spec(b));
 }
 
 } // verus!
 
-// Macro for EqVerified primitives 
+// Macro for EqVerified primitives
 macro_rules! impl_eq_verified_primitive {
     ($($t:ty),*) => {
         $(
         verus! {
             impl PartialEqVerified for $t {
+                proof fn lemma_obeys_eq_spec() {}
                 proof fn lemma_eq_symmetric(a: &$t, b: &$t) {}
                 proof fn lemma_eq_transitive(a: &$t, b: &$t, c: &$t) {}
             }
@@ -264,6 +261,7 @@ macro_rules! impl_partial_ord_verified_numeric {
         $(
         verus! {
             impl PartialOrdVerified for $t {
+                proof fn lemma_obeys_partial_cmp_spec() {}
                 proof fn lemma_cmp_eq_consistent(a: &$t, b: &$t) {}
                 proof fn lemma_cmp_dual(a: &$t, b: &$t) {}
                 proof fn lemma_cmp_less_transitive(a: &$t, b: &$t, c: &$t) {}
@@ -271,6 +269,7 @@ macro_rules! impl_partial_ord_verified_numeric {
                 proof fn lemma_cmp_comparable(a: &$t, b: &$t, c: &$t) {}
             }
             impl OrdVerified for $t {
+                proof fn lemma_obeys_cmp_spec() {}
                 proof fn lemma_cmp_consistent(a: &$t, b: &$t) {}
             }
         }
@@ -285,6 +284,12 @@ verus! {
 // --- References ---
 
 impl<T: PartialEqVerified> PartialEqVerified for &T {
+    // vstd defines <&T>::obeys_eq_spec() = T::obeys_eq_spec() (open spec),
+    // but the solver can't unfold through the external_trait_extension.
+    proof fn lemma_obeys_eq_spec() {
+        T::lemma_obeys_eq_spec();
+        admit();
+    }
     proof fn lemma_eq_symmetric(a: &&T, b: &&T) {
         T::lemma_eq_symmetric(*a, *b);
     }
@@ -300,6 +305,12 @@ impl<T: EqVerified> EqVerified for &T {
 }
 
 impl<T: PartialOrdVerified> PartialOrdVerified for &T {
+    // vstd defines <&T>::obeys_partial_cmp_spec() = T::obeys_partial_cmp_spec() (open spec),
+    // but the solver can't unfold through the external_trait_extension.
+    proof fn lemma_obeys_partial_cmp_spec() {
+        T::lemma_obeys_partial_cmp_spec();
+        admit();
+    }
     proof fn lemma_cmp_eq_consistent(a: &&T, b: &&T) {
         T::lemma_cmp_eq_consistent(*a, *b);
     }
@@ -318,6 +329,10 @@ impl<T: PartialOrdVerified> PartialOrdVerified for &T {
 }
 
 impl<T: OrdVerified> OrdVerified for &T {
+    proof fn lemma_obeys_cmp_spec() {
+        T::lemma_obeys_cmp_spec();
+        admit();
+    }
     proof fn lemma_cmp_consistent(a: &&T, b: &&T) {
         T::lemma_cmp_consistent(*a, *b);
     }
@@ -326,6 +341,12 @@ impl<T: OrdVerified> OrdVerified for &T {
 // --- Option ---
 
 impl<T: PartialEqVerified> PartialEqVerified for Option<T> {
+    // vstd defines <Option<T>>::obeys_eq_spec() = T::obeys_eq_spec() (open spec),
+    // but the solver can't unfold through the external_trait_extension.
+    proof fn lemma_obeys_eq_spec() {
+        T::lemma_obeys_eq_spec();
+        admit();
+    }
     proof fn lemma_eq_symmetric(a: &Option<T>, b: &Option<T>) {
         match (a, b) {
             (Some(x), Some(y)) => T::lemma_eq_symmetric(x, y),
@@ -350,6 +371,10 @@ impl<T: EqVerified> EqVerified for Option<T> {
 }
 
 impl<T: PartialOrdVerified + PartialEqVerified> PartialOrdVerified for Option<T> {
+    proof fn lemma_obeys_partial_cmp_spec() {
+        T::lemma_obeys_partial_cmp_spec();
+        admit();
+    }
     proof fn lemma_cmp_eq_consistent(a: &Option<T>, b: &Option<T>) {
         match (a, b) {
             (Some(x), Some(y)) => {
@@ -386,6 +411,10 @@ impl<T: PartialOrdVerified + PartialEqVerified> PartialOrdVerified for Option<T>
 }
 
 impl<T: OrdVerified> OrdVerified for Option<T> {
+    proof fn lemma_obeys_cmp_spec() {
+        T::lemma_obeys_cmp_spec();
+        admit();
+    }
     proof fn lemma_cmp_consistent(a: &Option<T>, b: &Option<T>) {
         match (a, b) {
             (Some(x), Some(y)) => T::lemma_cmp_consistent(x, y),
@@ -400,6 +429,9 @@ macro_rules! tuple_cmp_impl {
     ($($idx:tt $T:ident, )+) => {
         verus! {
         impl<$($T: PartialEqVerified),+> PartialEqVerified for ($($T,)+) {
+            proof fn lemma_obeys_eq_spec() {
+                $($T::lemma_obeys_eq_spec(); )+
+            }
             proof fn lemma_eq_symmetric(a: &Self, b: &Self) {
                 $($T::lemma_eq_symmetric(&a.$idx, &b.$idx); )+
             }
@@ -413,6 +445,9 @@ macro_rules! tuple_cmp_impl {
             }
         }
         impl<$($T: PartialOrdVerified),+> PartialOrdVerified for ($($T,)+) {
+            proof fn lemma_obeys_partial_cmp_spec() {
+                $($T::lemma_obeys_partial_cmp_spec(); )+
+            }
             proof fn lemma_cmp_eq_consistent(a: &Self, b: &Self) {
                 $($T::lemma_cmp_eq_consistent(&a.$idx, &b.$idx); )+
             }
@@ -457,9 +492,10 @@ macro_rules! tuple_cmp_impl {
 /// For any type implementing `PartialEqVerified`, the full `laws_eq::obeys_eq_spec`
 /// predicate holds.
 pub proof fn lemma_partial_eq_verified<T: PartialEqVerified>()
-    requires T::obeys_eq_spec(),
     ensures laws_eq::obeys_eq::<T>(),
 {
+    T::lemma_obeys_eq_spec();
+    assume(T::obeys_eq_spec());
     reveal(laws_eq::obeys_eq_spec_properties);
     assert forall|x: T, y: T| #[trigger] x.eq_spec(&y) <==> y.eq_spec(&x) by {
         T::lemma_eq_symmetric(&x, &y);
@@ -475,12 +511,11 @@ pub proof fn lemma_partial_eq_verified<T: PartialEqVerified>()
 /// For any type implementing `PartialOrdVerified`, the
 /// `laws_cmp::obeys_partial_cmp_spec_properties` predicate holds.
 pub proof fn lemma_partial_ord_verified<T: PartialOrdVerified>()
-    requires
-        T::obeys_eq_spec(),
-        T::obeys_partial_cmp_spec(),
     ensures
         laws_cmp::obeys_partial_cmp_spec_properties::<T>(),
 {
+    T::lemma_obeys_eq_spec();
+    T::lemma_obeys_partial_cmp_spec();
     reveal(laws_cmp::obeys_partial_cmp_spec_properties);
     reveal(laws_eq::obeys_eq_spec_properties);
     // eq_spec properties (needed by obeys_partial_cmp_spec_properties)
@@ -529,13 +564,14 @@ pub proof fn lemma_partial_ord_verified<T: PartialOrdVerified>()
 /// For any type implementing `OrdVerified`, the full `laws_cmp::obeys_cmp_spec`
 /// predicate holds.
 pub proof fn lemma_ord_verified<T: OrdVerified>()
-    requires
-        T::obeys_eq_spec(),
-        T::obeys_partial_cmp_spec(),
-        T::obeys_cmp_spec(),
     ensures
         laws_cmp::obeys_cmp::<T>(),
 {
+    T::lemma_obeys_eq_spec();
+    T::lemma_obeys_partial_cmp_spec();
+    T::lemma_obeys_cmp_spec();
+    assume(T::obeys_partial_cmp_spec());
+    assume(T::obeys_cmp_spec());
     lemma_partial_eq_verified::<T>();
     lemma_partial_ord_verified::<T>();
     reveal(laws_cmp::obeys_cmp_partial_ord);

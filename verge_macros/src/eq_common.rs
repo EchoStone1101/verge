@@ -115,10 +115,49 @@ pub fn conjunction(parts: &[TokenStream]) -> TokenStream {
     }
 }
 
+/// Generate `obeys_eq_spec` body from all field types across enum variants.
+pub fn obeys_eq_spec_from_variants(variants: &syn::punctuated::Punctuated<syn::Variant, syn::token::Comma>) -> TokenStream {
+    let parts: Vec<TokenStream> = variants.iter()
+        .flat_map(|v| active_field_types(&v.fields))
+        .map(|ty| quote! { <#ty as vstd::std_specs::cmp::PartialEqSpec>::obeys_eq_spec() })
+        .collect();
+    conjunction(&parts)
+}
+
+/// Generate `obeys_partial_cmp_spec` body from all field types across enum variants.
+#[allow(unused)]
+pub fn obeys_partial_cmp_spec_from_variants(variants: &syn::punctuated::Punctuated<syn::Variant, syn::token::Comma>) -> TokenStream {
+    let parts: Vec<TokenStream> = variants.iter()
+        .flat_map(|v| active_field_types(&v.fields))
+        .map(|ty| quote! { <#ty as vstd::std_specs::cmp::PartialOrdSpec>::obeys_partial_cmp_spec() })
+        .collect();
+    conjunction(&parts)
+}
+
+/// Generate `obeys_cmp_spec` body from all field types across enum variants.
+#[allow(unused)]
+pub fn obeys_cmp_spec_from_variants(variants: &syn::punctuated::Punctuated<syn::Variant, syn::token::Comma>) -> TokenStream {
+    let parts: Vec<TokenStream> = variants.iter()
+        .flat_map(|v| active_field_types(&v.fields))
+        .map(|ty| quote! { <#ty as vstd::std_specs::cmp::OrdSpec>::obeys_cmp_spec() })
+        .collect();
+    conjunction(&parts)
+}
+
+/// Collect non-filtered field types from a Fields.
+fn active_field_types(fields: &Fields) -> Vec<&syn::Type> {
+    match fields {
+        Fields::Named(f) => f.named.iter().filter(|f| !is_field_filtered(f)).map(|f| &f.ty).collect(),
+        Fields::Unnamed(f) => f.unnamed.iter().filter(|f| !is_field_filtered(f)).map(|f| &f.ty).collect(),
+        Fields::Unit => vec![],
+    }
+}
+
 /// Per-field code generation results for struct fields.
 pub struct StructFieldCode {
     pub eq_body: TokenStream,
     pub eq_spec_body: TokenStream,
+    pub obeys_eq_spec_body: TokenStream,
     pub sym_body: TokenStream,
     pub trans_body: TokenStream,
     pub refl_body: TokenStream,
@@ -146,6 +185,10 @@ pub fn gen_struct_field_code(fields: &Fields) -> StructFieldCode {
                 let fname = field.ident.as_ref().unwrap();
                 quote! { vstd::std_specs::cmp::PartialEqSpec::eq_spec(&self.#fname, &other.#fname) }
             }).collect();
+            let obeys_eq: Vec<TokenStream> = active.iter().map(|field| {
+                let ty = &field.ty;
+                quote! { <#ty as vstd::std_specs::cmp::PartialEqSpec>::obeys_eq_spec() }
+            }).collect();
             let sym_calls: Vec<TokenStream> = active.iter().map(|field| {
                 let fname = field.ident.as_ref().unwrap();
                 let ty = &field.ty;
@@ -164,6 +207,7 @@ pub fn gen_struct_field_code(fields: &Fields) -> StructFieldCode {
             StructFieldCode {
                 eq_body: conjunction(&exec_eqs),
                 eq_spec_body: conjunction(&spec_eqs),
+                obeys_eq_spec_body: conjunction(&obeys_eq),
                 sym_body: quote! { #(#sym_calls)* },
                 trans_body: quote! { #(#trans_calls)* },
                 refl_body: quote! { #(#refl_calls)* },
@@ -179,6 +223,10 @@ pub fn gen_struct_field_code(fields: &Fields) -> StructFieldCode {
             let spec_eqs: Vec<TokenStream> = active.iter().map(|(i, _)| {
                 let idx = syn::Index::from(*i);
                 quote! { vstd::std_specs::cmp::PartialEqSpec::eq_spec(&self.#idx, &other.#idx) }
+            }).collect();
+            let obeys_eq: Vec<TokenStream> = active.iter().map(|(_, field)| {
+                let ty = &field.ty;
+                quote! { <#ty as vstd::std_specs::cmp::PartialEqSpec>::obeys_eq_spec() }
             }).collect();
             let sym_calls: Vec<TokenStream> = active.iter().map(|(i, field)| {
                 let idx = syn::Index::from(*i);
@@ -198,6 +246,7 @@ pub fn gen_struct_field_code(fields: &Fields) -> StructFieldCode {
             StructFieldCode {
                 eq_body: conjunction(&exec_eqs),
                 eq_spec_body: conjunction(&spec_eqs),
+                obeys_eq_spec_body: conjunction(&obeys_eq),
                 sym_body: quote! { #(#sym_calls)* },
                 trans_body: quote! { #(#trans_calls)* },
                 refl_body: quote! { #(#refl_calls)* },
@@ -206,6 +255,7 @@ pub fn gen_struct_field_code(fields: &Fields) -> StructFieldCode {
         Fields::Unit => StructFieldCode {
             eq_body: quote! { true },
             eq_spec_body: quote! { true },
+            obeys_eq_spec_body: quote! { true },
             sym_body: quote! {},
             trans_body: quote! {},
             refl_body: quote! {},

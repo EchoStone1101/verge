@@ -91,8 +91,14 @@ fn gen_struct(input: ItemStruct) -> TokenStream {
 
     let eq_body = &eq_code.eq_body;
     let eq_spec_body = &eq_code.eq_spec_body;
+    let obeys_eq_spec_body = &eq_code.obeys_eq_spec_body;
     let sym_body = &eq_code.sym_body;
     let trans_body = &eq_code.trans_body;
+
+    let obeys_pcmp_parts: Vec<TokenStream> = entries_self.iter()
+        .map(|(_, _, ty)| quote! { <#ty as vstd::std_specs::cmp::PartialOrdSpec>::obeys_partial_cmp_spec() })
+        .collect();
+    let obeys_partial_cmp_spec_body = eq_common::conjunction(&obeys_pcmp_parts);
 
     quote! {
         ::vstd::prelude::verus! {
@@ -104,11 +110,11 @@ fn gen_struct(input: ItemStruct) -> TokenStream {
                 fn partial_cmp(&self, other: &Self) -> (r: Option<core::cmp::Ordering>) { #exec_cmp }
             }
             impl #g vstd::std_specs::cmp::PartialEqSpecImpl for #name #tg {
-                open spec fn obeys_eq_spec() -> bool { true }
+                open spec fn obeys_eq_spec() -> bool { #obeys_eq_spec_body }
                 #openness spec fn eq_spec(&self, other: &Self) -> bool { #eq_spec_body }
             }
             impl #g vstd::std_specs::cmp::PartialOrdSpecImpl for #name #tg {
-                open spec fn obeys_partial_cmp_spec() -> bool { true }
+                open spec fn obeys_partial_cmp_spec() -> bool { #obeys_partial_cmp_spec_body }
                 #openness spec fn partial_cmp_spec(&self, other: &Self) -> Option<core::cmp::Ordering> { #spec_cmp }
             }
             impl #g #name #tg {
@@ -119,10 +125,12 @@ fn gen_struct(input: ItemStruct) -> TokenStream {
             #less_trans_fn
             #greater_trans_fn
             impl #g verge::cmp::PartialEqVerified for #name #tg {
+                proof fn lemma_obeys_eq_spec() {}
                 proof fn lemma_eq_symmetric(a: &Self, b: &Self) { #sym_body }
                 proof fn lemma_eq_transitive(a: &Self, b: &Self, c: &Self) { #trans_body }
             }
             impl #g verge::cmp::PartialOrdVerified for #name #tg {
+                proof fn lemma_obeys_partial_cmp_spec() {}
                 proof fn lemma_cmp_eq_consistent(a: &Self, b: &Self) { #eq_con_calls }
                 proof fn lemma_cmp_dual(a: &Self, b: &Self) { #dual_calls }
                 proof fn lemma_cmp_comparable(a: &Self, b: &Self, c: &Self) { #comparable_calls }

@@ -89,9 +89,20 @@ fn gen_struct(input: ItemStruct) -> TokenStream {
 
     let eq_body = &eq_code.eq_body;
     let eq_spec_body = &eq_code.eq_spec_body;
+    let obeys_eq_spec_body = &eq_code.obeys_eq_spec_body;
     let sym_body = &eq_code.sym_body;
     let trans_body = &eq_code.trans_body;
     let refl_body = &eq_code.refl_body;
+
+    let obeys_pcmp_parts: Vec<TokenStream> = entries_self_ord.iter()
+        .map(|(_, _, ty)| quote! { <#ty as vstd::std_specs::cmp::PartialOrdSpec>::obeys_partial_cmp_spec() })
+        .collect();
+    let obeys_partial_cmp_spec_body = eq_common::conjunction(&obeys_pcmp_parts);
+
+    let obeys_cmp_parts: Vec<TokenStream> = entries_self_ord.iter()
+        .map(|(_, _, ty)| quote! { <#ty as vstd::std_specs::cmp::OrdSpec>::obeys_cmp_spec() })
+        .collect();
+    let obeys_cmp_spec_body = eq_common::conjunction(&obeys_cmp_parts);
 
     quote! {
         ::vstd::prelude::verus! {
@@ -107,15 +118,15 @@ fn gen_struct(input: ItemStruct) -> TokenStream {
                 fn partial_cmp(&self, other: &Self) -> (r: Option<core::cmp::Ordering>) { Some(self.cmp(other)) }
             }
             impl #g vstd::std_specs::cmp::PartialEqSpecImpl for #name #tg {
-                open spec fn obeys_eq_spec() -> bool { true }
+                open spec fn obeys_eq_spec() -> bool { #obeys_eq_spec_body }
                 #openness spec fn eq_spec(&self, other: &Self) -> bool { #eq_spec_body }
             }
             impl #g vstd::std_specs::cmp::OrdSpecImpl for #name #tg {
-                open spec fn obeys_cmp_spec() -> bool { true }
+                open spec fn obeys_cmp_spec() -> bool { #obeys_cmp_spec_body }
                 #openness spec fn cmp_spec(&self, other: &Self) -> core::cmp::Ordering { #spec_ord }
             }
             impl #g vstd::std_specs::cmp::PartialOrdSpecImpl for #name #tg {
-                open spec fn obeys_partial_cmp_spec() -> bool { true }
+                open spec fn obeys_partial_cmp_spec() -> bool { #obeys_partial_cmp_spec_body }
                 #openness spec fn partial_cmp_spec(&self, other: &Self) -> Option<core::cmp::Ordering> { #spec_pcmp }
             }
             impl #g #name #tg {
@@ -126,6 +137,7 @@ fn gen_struct(input: ItemStruct) -> TokenStream {
             #less_trans_fn
             #greater_trans_fn
             impl #g verge::cmp::PartialEqVerified for #name #tg {
+                proof fn lemma_obeys_eq_spec() {}
                 proof fn lemma_eq_symmetric(a: &Self, b: &Self) { #sym_body }
                 proof fn lemma_eq_transitive(a: &Self, b: &Self, c: &Self) { #trans_body }
             }
@@ -133,6 +145,7 @@ fn gen_struct(input: ItemStruct) -> TokenStream {
                 proof fn lemma_eq_reflexive(a: &Self) { #refl_body }
             }
             impl #g verge::cmp::PartialOrdVerified for #name #tg {
+                proof fn lemma_obeys_partial_cmp_spec() {}
                 proof fn lemma_cmp_eq_consistent(a: &Self, b: &Self) { #eq_con_calls }
                 proof fn lemma_cmp_dual(a: &Self, b: &Self) { #dual_calls }
                 proof fn lemma_cmp_comparable(a: &Self, b: &Self, c: &Self) {}
@@ -140,6 +153,7 @@ fn gen_struct(input: ItemStruct) -> TokenStream {
                 proof fn lemma_cmp_greater_transitive(a: &Self, b: &Self, c: &Self) { Self::__greater_trans(a, b, c); }
             }
             impl #g verge::cmp::OrdVerified for #name #tg {
+                proof fn lemma_obeys_cmp_spec() {}
                 proof fn lemma_cmp_consistent(a: &Self, b: &Self) {}
             }
         }
