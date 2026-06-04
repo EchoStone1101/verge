@@ -15,6 +15,7 @@
 //! that use the Verge specs to specify and prove properties (automatically checked by Verus).
 //! These tests also double as examples, showing how the Verge APIs can be used.
 
+#![allow(incomplete_features)]
 #![allow(unused_parens)]
 #![allow(unused_imports)]
 #![allow(unused_doc_comments)]
@@ -24,11 +25,15 @@
 #![feature(allocator_api)]
 #![feature(sized_hierarchy)]
 #![feature(pattern)]
+#![feature(specialization)]
+#![feature(slice_index_methods)]
 
 #[cfg(not(unix))]
 compile_error!("Verge is a Unix-only library.");
 
 use vstd::prelude::*;
+use vstd::std_specs::core::IndexSpec;
+
 use core::alloc::Allocator;
 use std::rc::Rc;
 
@@ -71,11 +76,11 @@ pub trait ExAsRef<T: std::marker::PointeeSized>: std::marker::PointeeSized {
     type ExternalTraitSpecificationFor: std::convert::AsRef<T>;
 }
 
-// /// Enable the `AsMut` trait.
-// #[verifier::external_trait_specification]
-// pub trait ExAsMut<T: std::marker::PointeeSized>: std::marker::PointeeSized {
-//     type ExternalTraitSpecificationFor: std::convert::AsMut<T>;
-// }
+/// Enable the `AsMut` trait.
+#[verifier::external_trait_specification]
+pub trait ExAsMut<T: std::marker::PointeeSized>: std::marker::PointeeSized {
+    type ExternalTraitSpecificationFor: std::convert::AsMut<T>;
+}
 
 /// Used for a dummy one-term trigger.
 pub uninterp spec fn dummy<A>(a: A) -> ();
@@ -83,7 +88,6 @@ pub uninterp spec fn dummy<A>(a: A) -> ();
 /// Used for a dummy two-term trigger.
 pub uninterp spec fn dummy2<A, B>(a: A, b: B) -> ();
 
-// TODO: use this across the crate
 /// The `VergeView` trait adds the `view` method to a type that otherwise 
 /// does not implement `vstd::View`. 
 /// Semantically it is equivalent to implement `view` as part of the type's `impl` block, 

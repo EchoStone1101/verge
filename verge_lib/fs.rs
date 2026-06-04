@@ -38,16 +38,16 @@
 use vstd::prelude::*;
 use vstd::view::View;
 use vstd::std_specs::result::{spec_unwrap, spec_unwrap_err};
+use vstd::std_specs::iter::*;
 use crate::{dummy, VergeView};
 use crate::io::{Error, ErrorKind, Result};
 use crate::str::*;
 use crate::iter::*;
 use crate::error::ErrorSpec;
 
-pub use std::fs::{
-    File, ReadDir, DirEntry,
-};
+use std::fs::ReadDir;
 use std::sync::Once;
+pub use std::fs::{File, DirEntry};
 
 mod path;
 mod metadata;
@@ -173,7 +173,7 @@ impl Fs {
     pub closed spec fn ops(&self) -> Seq<FsMutOp> 
         { self.ops@ }
 
-    /// Number of outstanding `ReadDir` iterators.
+    /// Number of outstanding `VergeReadDir` iterators.
     /// 
     /// See the comments for `Fs::read_dir()`
     pub closed spec fn read_dir_count(&self) -> int 
@@ -375,13 +375,11 @@ pub fn init() -> (ret: Fs)
 #[verifier::external_type_specification]
 pub struct ExFile(File);
 
-// TODO
 /// Iterator over the entries in a directory.
 #[verifier::external_body]
-#[verifier::external_type_specification]
-pub struct ExReadDir(ReadDir);
+pub struct VergeReadDir(ReadDir);
 
-/// Entries returned by the `ReadDir` iterator.
+/// Entries returned by the `VergeReadDir` iterator.
 #[verifier::external_body]
 #[verifier::external_type_specification]
 pub struct ExDirEntry(DirEntry);
@@ -880,13 +878,13 @@ impl Fs {
     /// NOTE: the result of `read_dir` is unspecified if files are added to / removed from the directory 
     /// in between calls (https://pubs.opengroup.org/onlinepubs/007904875/functions/readdir_r.html), 
     /// in which case specification becomes impossible.
-    /// As such, Verge tracks the number of outstanding `ReadDir`s with `read_dir_count`, and 
+    /// As such, Verge tracks the number of outstanding `VergeReadDir`s with `read_dir_count`, and 
     /// further requires the count to be 0 before performing any operation that would alter 
     /// directories (e.g., creating a file). Note that banning access of the entire file system 
     /// is necessary because of potential links - `Fs::create` may create a file under 
-    /// a `ReadDir`-referenced directory, even if the path appears lexically different. 
+    /// a `VergeReadDir`-referenced directory, even if the path appears lexically different. 
     #[verifier::external_body]
-    pub fn read_dir(&mut self, path: &str) -> (ret: Result<ReadDir>)
+    pub fn read_dir(&mut self, path: &str) -> (ret: Result<VergeReadDir>)
         ensures
             old(self) <= final(self),
             final(self).ops() == old(self).ops(),
@@ -897,23 +895,27 @@ impl Fs {
                         &&& final(self).read_dir_count() == old(self).read_dir_count() + 1
                         &&& Fs::file_exists(old(self).epoch(), path)
                         &&& Fs::file_is_dir(old(self).epoch(), path) 
-                        &&& dirs.inv()
                         // the order of entries is unspecified
                         &&& {
                             let seq = dirs.seq();
                             &&& dirs.idx() == 0
-                            &&& seq.len() <= Fs::files_in_dir(old(self).epoch(), path).len()
-                            // only the last item could be an error
-                            &&& forall|i: int| 0 <= i < seq.len() - 1 ==> #[trigger] seq[i].is_ok()
+                            &&& seq.len() == Fs::files_in_dir(old(self).epoch(), path).len()
                             // error semantics
-                            &&& seq.last().is_err() ==> spec_unwrap_err(seq.last()).is_fs_error()
-                            // non-error item is an entry
-                            &&& forall|i: int| 0 <= i < seq.len() && #[trigger] seq[i].is_ok() 
-                                ==> Fs::files_in_dir(old(self).epoch(), path)
-                                        .contains(spec_unwrap(seq[i])@.normalize())
-                            // if no error, then all entries have been visited
-                            &&& (forall|i: int| 0 <= i < seq.len() ==> #[trigger] seq[i].is_ok()) 
-                                ==> seq.len() == Fs::files_in_dir(old(self).epoch(), path).len()
+                            &&& forall|i: int| 0 <= i < seq.len() && #[trigger] seq[i].is_err() 
+                                ==> spec_unwrap_err(seq[i]).is_fs_error()
+                            // non-error items form a subset of the entries
+                            &&& {
+                                let items = seq.filter_map(
+                                    |item: Result<DirEntry>| 
+                                    if item.is_ok() { 
+                                        Some(spec_unwrap(item)@.normalize()) 
+                                    } else { 
+                                        None 
+                                    }
+                                );
+                                &&& items.no_duplicates()
+                                &&& items.to_set().subset_of(Fs::files_in_dir(old(self).epoch(), path))
+                            }
                         }
                     },
                     Err(e) => {
@@ -936,7 +938,7 @@ impl Fs {
                 }
             })
     {
-        std::fs::read_dir(path)
+        Ok(VergeReadDir(std::fs::read_dir(path)?))
     }
 
     /// Enables `fs::metadata` (queries the file system to get information about a file).
@@ -967,10 +969,26 @@ impl Fs {
     {
         std::fs::metadata(path)
     }
-
 }
 
-impl VergeIteratorSpec for ReadDir {
+impl VergeReadDir {
+    /// Drops the iterator and decreases `read_dir_count`.
+    /// 
+    /// This is essentially explicitly calling `drop`, but with `spec` to 
+    /// update the file system states.
+    pub fn seal(self, fs: &mut Fs) 
+        requires 
+            old(fs).read_dir_count() > 0,
+        ensures 
+            old(fs) <= final(fs),
+            old(fs).ops() == final(fs).ops(),
+            old(fs).read_dir_count() - 1 == final(fs).read_dir_count(),
+    {
+        proof { admit() }
+    }
+}
+
+impl VergeIteratorSpec for VergeReadDir {
     type Item = Result<DirEntry>;
 
     uninterp spec fn seq(&self) -> Seq<Self::Item>;
@@ -979,64 +997,36 @@ impl VergeIteratorSpec for ReadDir {
         { self.seq().len() as int }
 }
 
-// /// Enables `ReadDir` as an iterator.
-// pub assume_specification [ ReadDir::next ] (this: &mut ReadDir) -> (r: Option<Result<DirEntry>>)
-//     ensures
-//         old(this).inv() ==> {
-//             match r {
-//                 None => {
-//                     &&& final(this).inv()
-//                     &&& final(this).seq() == old(this).seq()
-//                     &&& final(this).idx() == old(this).idx()
-//                     &&& old(this).idx() == old(this).seq().len()
-//                 },
-//                 Some(k) => {
-//                     &&& k.is_ok() ==> final(this).inv()
-//                     &&& k == old(this).seq()[old(this).idx()]
-//                     &&& final(this).seq() == old(this).seq()
-//                     &&& final(this).idx() == old(this).idx() + 1
-//                     &&& 0 <= old(this).idx() < old(this).seq().len()
-//                 },
-//             }
-//         },
-// ;
-
-/// This trait specifies `ReadDir`.
-pub trait ReadDirSpec {
-    /// Invariant of the iterator (broke at the first error).
-    spec fn inv(&self) -> bool;
-    
-    /// Drops the iterator and decreases `read_dir_count`.
-    /// 
-    /// This is essentially explicitly calling `drop`, but with `spec` to 
-    /// update the file system states.
-    proof fn seal(self, fs: &mut Fs)
-        requires 
-            self.inv(),
-            old(fs).read_dir_count() > 0,
-        ensures 
-            old(fs) <= final(fs),
-            old(fs).ops() == final(fs).ops(),
-            old(fs).read_dir_count() - 1 == final(fs).read_dir_count(),
-    ;
-
-}
-
-impl ReadDirSpec for ReadDir {
-    uninterp spec fn inv(&self) -> bool;
-
-    proof fn seal(self, fs: &mut Fs) {
-        admit()
+/// Enables `VergeReadDir` as an iterator.
+impl IteratorSpecImpl for VergeReadDir {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool 
+        { true }
+    open spec fn will_return_none(&self) -> bool 
+        { true }
+    open spec fn remaining(&self) -> Seq<Result<DirEntry>> 
+        { self.seq().subrange(self.idx(), self.ridx()) }
+    open spec fn decrease(&self) -> Option<nat> 
+        { Some((self.ridx() - self.idx()) as nat) }
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        &&& init.seq() == self.seq()
+        &&& init.idx() == self.idx()
+        &&& init.ridx() == self.ridx()
+    }
+    open spec fn peek(&self, i: int) -> Option<Result<DirEntry>> {
+        if 0 <= self.idx() + i < self.ridx() { Some(self.seq()[self.idx() + i]) } else { None }
     }
 }
-
-/// This trait specifies `DirEntry`.
-pub trait DirEntrySpec {
-    spec fn view(&self) -> PathView;
+impl core::iter::Iterator for VergeReadDir {
+    type Item = <Self as VergeIteratorSpec>::Item;
+    #[verifier::external_body]
+    fn next(&mut self) -> (ret: Option<<Self as VergeIteratorSpec>::Item>) 
+        { self.0.next() }
 }
 
-impl DirEntrySpec for DirEntry {
-    uninterp spec fn view(&self) -> PathView;
+impl VergeView for DirEntry {
+    type V = PathView;
+
+    uninterp spec fn view(&self) -> Self::V;
 }
 
 /// Enables `DirEntry::path`.

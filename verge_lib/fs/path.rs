@@ -392,7 +392,7 @@ pub assume_specification [ Path::parent ] (p: &Path) -> (ret: Option<&Path>)
 /// Specifies the iterator `VergeAncestors` which wraps `Ancestors`, 
 /// contructed via `path::ancestors_iter()`.
 impl_iterator!(
-    Ancestors['a] as VergeAncestors['_] :: Item = &'a Path
+    [ Ancestors['a] as VergeAncestors['_] :: Item = &'a Path ]
     [ [Path as VergeView<V=PathView>] :: ancestors_iter via ancestors ] 
     (&self,) -> |seq| {
         let norm = self@.normalize();
@@ -405,18 +405,13 @@ impl_iterator!(
             }
     }
 );
-impl<'a> core::iter::Iterator for VergeAncestors<'a> {
-    type Item = <Self as VergeIteratorSpec>::Item;
-    #[verifier::external_body]
-    fn next(&mut self) -> (ret: Option<<Self as VergeIteratorSpec>::Item>) 
-        { self.0.next() }
-}
 
 /// Specifies the iterator `VergeIter` which wraps `Iter`, 
 /// contructed via `path::iterate()`.
 impl_iterator!(
-    Iter['a] as VergeIter['_] :: Item = &'a str
+    [ Iter['a] as VergeIter['_] :: Item = &'a str ]
     [ [Path as VergeView<V=PathView>] :: iterate via iter ] 
+    #[custom_next]
     (&self,) -> |seq| {
         let norm = self@.normalize();
         &&& !norm.abs ==> {
@@ -445,6 +440,7 @@ impl<'a> core::iter::Iterator for VergeIter<'a> {
 
 /// Specifies the iterator `VergeIter` as a double-ended iterator.
 impl_double_ended_iterator!(
+    #[custom_next]
     Iter as VergeIter ['a] :: Item = &'a str 
 );
 impl<'a> core::iter::DoubleEndedIterator for VergeIter<'a> {

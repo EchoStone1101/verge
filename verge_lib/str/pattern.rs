@@ -3,7 +3,7 @@
 //! ## Specification Methodology
 //! To specify `str::split`, `str::contains`, and other methods that make use of 
 //! the `std::str::Pattern` trait, Verge directly models the `Pattern` trait by
-//! adding the core specs (`splitn` and `rsplitn`) as extension to the trait, 
+//! adding the core specs (`matches` and `rmatches`) as extension to the trait, 
 //! which are used to derive the general post-condition specs (e.g., `str_contains_post`) 
 //! regardless of the pattern type. Then, broadcast lemmas use the general 
 //! specs as triggers to automatically introduce actual specs per pattern type 
@@ -12,12 +12,8 @@
 
 use super::*;
 use crate::seq::*;
-use std::str::{
-    Split, SplitInclusive, SplitTerminator, SplitN, 
-};
-use std::str::pattern::{
-    Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher,
-};
+use crate::iter::*;
+use std::str::pattern::*;
 
 verus! {
 
@@ -27,23 +23,19 @@ verus! {
 pub trait ExPattern: Sized {
     type ExternalTraitSpecificationFor: Pattern;
 
-    /// Post-conditions for forward string splitting using this pattern.
+    /// Post-conditions for forward matching using this pattern.
     /// 
-    /// Semantically, this function specifies the uninterpreted spec function `spec_splitn`,
-    /// where the splits are captured as `seq` and the delimiters are captured as `delim`.
+    /// Semantically, this function specifies the uninterpreted spec function `spec_matches`,
+    /// where the matches are captured as `seq` and the delimiters are captured as `gap`.
     /// Other forward pattern-matching methods receive specs derived from this.
-    spec fn splitn_post<'a>(self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>) -> bool
-        recommends n > 0,
-    ;
+    spec fn matches_post(self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>) -> bool;
 
-    /// Post-conditions for backward string splitting using this pattern.
+    /// Post-conditions for backward matching using this pattern.
     /// 
-    /// Semantically, this function specifies the uninterpreted spec function `spec_rsplitn`, 
-    /// where the splits are captured as `seq` and the delimiters are captured as `delim`.
+    /// Semantically, this function specifies the uninterpreted spec function `spec_rmatches`, 
+    /// where the matches are captured as `seq` and the delimiters are captured as `gap`.
     /// Other backward pattern-matching methods receive specs derived from this.
-    spec fn rsplitn_post<'a>(self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>) -> bool
-        recommends n > 0,
-    ;
+    spec fn rmatches_post(self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>) -> bool;
 }
 
 #[verifier::external_trait_specification]
@@ -64,256 +56,598 @@ pub trait ExDoubleEndedSearcher<'a>: ReverseSearcher<'a> {
 // ---------- Inline helper specs ----------
 // These exist purely for deduplicating shared specs.
 
-/// Forward joining `seq` and `delim`.
+/// Forward joining `seq` and `gap`.
 #[verifier::inline]
-pub open spec fn join<'a>(seq: Seq<&'a str>, delim: Seq<&'a str>) -> Seq<char>
+pub open spec fn join(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>) -> Seq<char>
     recommends
-        delim.len() + 1 == seq.len(),
+        seq.len() + 1 == gap.len(),
 {
-    seq.first()@
-    + seq
+    gap.first()
+    + gap
         .drop_first()
-        .map(|i: int, ss: &'a str| delim[i]@ + ss@)
+        .map(|i: int, ss: Seq<char>| seq[i] + ss)
         .flatten()
 }
 
-/// Backward joining `seq` and `delim`.
+/// Backward joining `seq` and `gap`.
 #[verifier::inline]
-pub open spec fn rjoin<'a>(seq: Seq<&'a str>, delim: Seq<&'a str>) -> Seq<char>
+pub open spec fn rjoin(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>) -> Seq<char>
     recommends
-        delim.len() + 1 == seq.len(),
+        seq.len() + 1 == gap.len(),
 {
-    seq
+    gap
         .drop_first()
-        .map(|i: int, ss: &'a str| ss@ + delim[i]@)
+        .map(|i: int, ss: Seq<char>| ss + seq[i])
         .reverse()
         .flatten()
-    + seq.first()@
+    + gap.first()
 }
 
-/// Post-conditions for splitting by the `char` pattern, aside from the joining.
+/// Post-conditions for matching by the `char` pattern, aside from the joining.
 #[verifier::inline]
-pub open spec fn char_splits_post<'a>(
-    s: &'a str, n: int, c: char, seq: Seq<&'a str>, delim: Seq<&'a str>,
+pub open spec fn char_matches_post(
+    s: Seq<char>, c: char, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
 ) -> bool 
 {
-    // splits are never empty, and there are at most `n` of them
-    &&& 0 < seq.len() <= n
-    // splits (apart from the last) cannot contain the pattern
-    &&& forall |i: int| 0 <= i < seq.len() - 1 ==> !(#[trigger] seq[i]@.contains(c))
-    // last split (if not the n-th) cannot contain the pattern
-    &&& seq.len() < n ==> !seq.last()@.contains(c)
-    // delimiters have one item less than seq
-    &&& delim.len() + 1 == seq.len()
-    // delimiters match the pattern
-    &&& forall |i: int| 0 <= i < delim.len() ==> #[trigger] (delim[i]@ =~= seq![c])
+    // gaps are never empty
+    &&& gap.len() > 0
+    // gaps cannot contain the pattern
+    &&& forall |i: int| 0 <= i < gap.len() ==> !(#[trigger] gap[i].contains(c))
+    // matches have one item less than gaps
+    &&& seq.len() + 1 == gap.len() 
+    // matches match the pattern
+    &&& forall |i: int| 0 <= i < seq.len() ==> #[trigger] (seq[i] =~= seq![c])
 }
 
-/// Post-conditions for splitting by the closure pattern, aside from the joining.
+/// Post-conditions for matching by the closure pattern, aside from the joining.
 #[verifier::inline]
-pub open spec fn closure_splits_post<'a, F>(
-    s: &'a str, n: int, f: F, seq: Seq<&'a str>, delim: Seq<&'a str>,
+pub open spec fn closure_matches_post<F>(
+    s: Seq<char>, f: F, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
 ) -> bool 
 where F: FnMut(char) -> bool
 {
-    // splits are never empty, and there are at most `n` of them
-    &&& 0 < seq.len() <= n
-    // splits (apart from the last) cannot contain the pattern
-    &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() - 1 ==> 
-        seq[i]@.all(|c: char| call_ensures(f, (c,), false))
-    // last split (if not the n-th) cannot contain the pattern
-    &&& seq.len() < n ==> seq.last()@.all(|c: char| call_ensures(f, (c,), false))
-    // delimiters have one item less than seq
-    &&& delim.len() + 1 == seq.len()
-    // delimiters match the pattern
-    &&& forall |i: int| #![trigger delim[i]] 0 <= i < delim.len() ==> 
-        delim[i]@.len() == 1 && call_ensures(f, (delim[i]@[0],), true)
+    // gaps are never empty
+    &&& gap.len() > 0
+    // gaps cannot contain the pattern
+    &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() ==> 
+        gap[i].all(|c: char| call_ensures(f, (c,), false))
+    // matches have one item less than gaps
+    &&& seq.len() + 1 == gap.len() 
+    // matches match the pattern
+    &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() ==> 
+        seq[i].len() == 1 && call_ensures(f, (seq[i][0],), true)
 }
 
-/// Post-conditions for splitting by the char slice pattern, aside from the joining.
+/// Post-conditions for matching by the char slice pattern, aside from the joining.
 #[verifier::inline]
-pub open spec fn chars_splits_post<'a>(
-    s: &'a str, n: int, chars: Seq<char>, seq: Seq<&'a str>, delim: Seq<&'a str>,
+pub open spec fn chars_matches_post(
+    s: Seq<char>, chars: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
 ) -> bool 
 {
-    // splits are never empty, and there are at most `n` of them
-    &&& 0 < seq.len() <= n
-    // splits (apart from the last) cannot contain the pattern
-    &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() - 1 ==> 
-        chars.all(|c: char| !seq[i]@.contains(c))
-    // last split (if not the n-th) cannot contain the pattern
-    &&& seq.len() < n ==> chars.all(|c: char| !seq.last()@.contains(c))
-    // delimiters have one item less than seq
-    &&& delim.len() + 1 == seq.len()
-    // delimiters match the pattern
-    &&& forall |i: int| #![trigger delim[i]] 0 <= i < delim.len() ==> 
-        chars.any(|c: char| delim[i]@ == seq![c])
+    // gaps are never empty
+    &&& gap.len() > 0
+    // gaps cannot contain the pattern
+    &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() ==> 
+        chars.all(|c: char| !gap[i].contains(c))
+    // matches have one item less than gaps
+    &&& seq.len() + 1 == gap.len() 
+    // matches match the pattern
+    &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() ==> 
+        chars.any(|c: char| seq[i] == seq![c])
 }
 
-/// Post-conditions for forward splitting by the string pattern, aside from the joining.
+/// Post-conditions for matching by the empty string pattern, aside from the joining.
 #[verifier::inline]
-pub open spec fn str_splits_post<'a>(
-    s: &'a str, n: int, pat: Seq<char>, seq: Seq<&'a str>, delim: Seq<&'a str>,
+pub open spec fn empty_string_matches_post(
+    s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
 ) -> bool 
 {
-    // splits are never empty, and there are at most `n` splits
-    &&& 0 < seq.len() <= n
-    // `split + pat` (apart from the last) cannot have `pat` as a prefix or infix
-    &&& forall |i: int| 0 <= i < seq.len() - 1 ==> 
-        !(#[trigger] pat.is_prefix_of(seq[i]@ + pat) || #[trigger] pat.is_infix_of(seq[i]@ + pat))
-    // last split (if not the n-th) cannot have `pat` as a substring
-    &&& seq.len() < n ==> !(#[trigger] pat.is_subrange_of(seq.last()@))
-    // delimiters have one item less than seq
-    &&& delim.len() + 1 == seq.len()
-    // delimiters match the pattern
-    &&& forall |i: int| 0 <= i < delim.len() ==> #[trigger] (delim[i]@ =~= pat)
+    // "ab..z" => gap = ["", "a", "b", ..., "z", ""]
+    &&& seq.len() == s.len() + 1
+    &&& gap.len() == s.len() + 2
+    &&& forall |i: int| 0 <= i < seq.len() ==> 
+        #[trigger] seq[i].len() == 0
+    &&& gap.first().len() == 0 && gap.last().len() == 0
+    &&& forall |i: int| 1 <= i < gap.len() - 1 ==> 
+        #[trigger] gap[i] == seq![s[i-1]]
 }
 
-/// Post-conditions for backward splitting by the string pattern, aside from the joining.
+/// Post-conditions for forward matching by the string pattern, aside from the joining.
 #[verifier::inline]
-pub open spec fn str_rsplits_post<'a>(
-    s: &'a str, n: int, pat: Seq<char>, seq: Seq<&'a str>, delim: Seq<&'a str>,
+pub open spec fn string_matches_post(
+    s: Seq<char>, pat: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
 ) -> bool 
 {
-    // splits are never empty, and there are at most `n` splits
-    &&& 0 < seq.len() <= n
-    // `pat + split` (apart from the last) cannot have `pat` as a suffix or infix
-    &&& forall |i: int| 0 <= i < seq.len() - 1 ==> 
-        !(#[trigger] pat.is_suffix_of(pat + seq[i]@) || #[trigger] pat.is_infix_of(pat + seq[i]@))
-    // last split (if not the n-th) cannot have `pat` as a substring
-    &&& seq.len() < n ==> !(#[trigger] pat.is_subrange_of(seq.last()@))
-    // delimiters have one item less than seq
-    &&& delim.len() + 1 == seq.len()
-    // delimiters match the pattern
-    &&& forall |i: int| 0 <= i < delim.len() ==> #[trigger] (delim[i]@ =~= pat)
+    // corner case: empty string matching 
+    &&& pat.len() == 0 ==> empty_string_matches_post(s, seq, gap)
+    // general matching
+    &&& pat.len() > 0 ==> {
+        // gaps are never empty
+        &&& gap.len() > 0
+        // `gap + pat` (apart from the last) cannot have `pat` as a prefix or infix
+        &&& forall |i: int| 0 <= i < gap.len() - 1 ==> 
+            !(#[trigger] pat.is_prefix_of(gap[i] + pat) || #[trigger] pat.is_infix_of(gap[i] + pat))
+        // last gap cannot have `pat` as a substring
+        &&& !(pat.is_subrange_of(gap.last()))
+        // matches have one item less than gaps
+        &&& seq.len() + 1 == gap.len() 
+        // matches match the pattern
+        &&& forall |i: int| 0 <= i < seq.len() ==> #[trigger] (seq[i] =~= pat)
+    }
+}
+
+/// Post-conditions for backward matching by the string pattern, aside from the joining.
+#[verifier::inline]
+pub open spec fn string_rmatches_post(
+    s: Seq<char>, pat: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
+) -> bool 
+{
+    // corner case: empty string matching 
+    &&& pat.len() == 0 ==> empty_string_matches_post(s, seq, gap)
+    // general matching
+    &&& pat.len() > 0 ==> {
+        // gaps are never empty, and there are at most `n` splits
+        &&& gap.len() > 0
+        // `pat + gap` (apart from the last) cannot have `pat` as a suffix or infix
+        &&& forall |i: int| 0 <= i < gap.len() - 1 ==> 
+            !(#[trigger] pat.is_suffix_of(pat + gap[i]) || #[trigger] pat.is_infix_of(pat + gap[i]))
+        // last gap cannot have `pat` as a substring
+        &&& !(pat.is_subrange_of(gap.last()))
+        // matches have one item less than gaps
+        &&& seq.len() + 1 == gap.len() 
+        // matches match the pattern
+        &&& forall |i: int| 0 <= i < seq.len() ==> #[trigger] (seq[i] =~= pat)
+    }
 }
 
 // ---------- Trigger specs ----------
 // These exist as triggers for the per-type lemmas.
 
-/// Encodes forward splitting `s` by general pattern `pat`, into up to `n` items, 
-/// returning the splits and the matched delimiters.
-pub uninterp spec fn spec_splitn<'a, P: Pattern>(s: &'a str, n: int, pat: P) -> (Seq<&'a str>, Seq<&'a str>)
-    recommends n > 0,
-;
+/// Encodes forward matching `s` by the general pattern `pat`,
+/// returning the matches and gaps.
+pub uninterp spec fn spec_matches<P: Pattern>(s: Seq<char>, pat: P) -> (Seq<Seq<char>>, Seq<Seq<char>>);
 
-/// Encodes backward splitting `s` by general pattern `pat`, into up to `n` items, 
-/// returning the splits and the matched delimiters.
-pub uninterp spec fn spec_rsplitn<'a, P: Pattern>(s: &'a str, n: int, pat: P) -> (Seq<&'a str>, Seq<&'a str>)
-    recommends n > 0,
-;
+/// Encodes backward matching `s` by the general pattern `pat`,
+/// returning the matches and gaps.
+pub uninterp spec fn spec_rmatches<P: Pattern>(s: Seq<char>, pat: P) -> (Seq<Seq<char>>, Seq<Seq<char>>);
 
 /// Encodes `str::contains` for general patterns.
-pub closed spec fn str_contains_post<'a, P: Pattern>(s: &'a str, pat: P, ret: bool) -> bool {
-    let (seq, delim) = spec_splitn(s, 2, pat);
-    pat.splitn_post(s, 2, seq, delim) ==> {
-        ret == (delim.len() > 0)
+#[verifier::opaque]
+pub open spec fn str_contains_post<P: Pattern>(s: Seq<char>, pat: P, ret: bool) -> bool {
+    let (seq, gap) = spec_matches(s, pat);
+    pat.matches_post(s, seq, gap) ==> {
+        ret == (seq.len() > 0)
     }
 }
 
 /// Encodes `str::starts_with` for general patterns.
-pub closed spec fn str_starts_with_post<'a, P: Pattern>(s: &'a str, pat: P, ret: bool) -> bool {
-    let (seq, delim) = spec_splitn(s, 2, pat);
-    pat.splitn_post(s, 2, seq, delim) ==> {
-        ret == (delim.len() > 0 && seq.first()@.len() == 0)
+#[verifier::opaque]
+pub open spec fn str_starts_with_post<P: Pattern>(s: Seq<char>, pat: P, ret: bool) -> bool {
+    let (seq, gap) = spec_matches(s, pat);
+    pat.matches_post(s, seq, gap) ==> {
+        ret == (seq.len() > 0 && gap.first().len() == 0)
     }
 }
 
 /// Encodes `str::ends_with` for general patterns.
-pub closed spec fn str_ends_with_post<'a, P>(s: &'a str, pat: P, ret: bool) -> bool 
+#[verifier::opaque]
+pub open spec fn str_ends_with_post<P>(s: Seq<char>, pat: P, ret: bool) -> bool 
     where 
         P: Pattern,
         for<'b> <P as Pattern>::Searcher<'b>: ReverseSearcher<'b>,
 {
-    let (seq, delim) = spec_rsplitn(s, 2, pat);
-    pat.rsplitn_post(s, 2, seq, delim) ==> {
-        ret == (delim.len() > 0 && seq.first()@.len() == 0)
+    let (seq, gap) = spec_rmatches(s, pat);
+    pat.rmatches_post(s, seq, gap) ==> {
+        ret == (seq.len() > 0 && gap.first().len() == 0)
     }
 }
 
 /// Encodes `str::find` for general patterns.
-pub closed spec fn str_find_post<'a, P: Pattern>(s: &'a str, pat: P, ret: Option<usize>) -> bool {
-    let (seq, delim) = spec_splitn(s, 2, pat);
-    pat.splitn_post(s, 2, seq, delim) ==> {
-        &&& ret is None ==> delim.len() == 0
+#[verifier::opaque]
+pub open spec fn str_find_post<P: Pattern>(s: Seq<char>, pat: P, ret: Option<usize>) -> bool {
+    let (seq, gap) = spec_matches(s, pat);
+    pat.matches_post(s, seq, gap) ==> {
+        &&& ret is None ==> seq.len() == 0
         &&& ret is Some ==> 
-            delim.len() > 0 
-            && ret->0 == seq.first()@.as_bytes().len()
+            seq.len() > 0 
+            && ret->0 == gap.first().as_bytes().len()
     }
 }
 
 /// Encodes `str::rfind` for general patterns.
-pub closed spec fn str_rfind_post<'a, P>(s: &'a str, pat: P, ret: Option<usize>) -> bool 
+#[verifier::opaque]
+pub open spec fn str_rfind_post<P>(s: Seq<char>, pat: P, ret: Option<usize>) -> bool 
     where 
         P: Pattern,
-        for<'b> <P as Pattern>::Searcher<'b>: ReverseSearcher<'b>,
+        for<'a> <P as Pattern>::Searcher<'a>: ReverseSearcher<'a>,
 {
-    let (seq, delim) = spec_rsplitn(s, 2, pat);
-    pat.rsplitn_post(s, 2, seq, delim) ==> {
-        &&& ret is None ==> delim.len() == 0
+    let (seq, gap) = spec_matches(s, pat);
+    pat.rmatches_post(s, seq, gap) ==> {
+        &&& ret is None ==> seq.len() == 0
         &&& ret is Some ==> 
-            delim.len() > 0 
-            && ret->0 == s@.as_bytes().len() - seq.first()@.as_bytes().len() - delim.first()@.as_bytes().len()
+            seq.len() > 0 
+            && ret->0 == s.as_bytes().len() - gap.first().as_bytes().len() - seq.first().as_bytes().len()
     }
 }
 
-// TODO: 
-// add trait methods for xxx -> xxx_iter() (IteratorSpec encoding)
-// e.g., char_indices_iter; split_iter; ...
-// iter -> iterate 
+/// Encodes `str::split_iter` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_split_iter_post<'a, P: Pattern>(s: Seq<char>, pat: P, iter_seq: Seq<&'a str>) -> bool {
+    let (seq, gap) = spec_matches(s, pat);
+    pat.matches_post(s, seq, gap) ==> {
+        &&& iter_seq.len() == gap.len()
+        &&& forall |i: int| 0 <= i < iter_seq.len() ==>
+                #[trigger] iter_seq[i]@ == gap[i]
+    }
+}
 
-// pub assume_specification<P> [ str::ends_with ] (s: &str, pat: P) -> (ret: bool)
-//     where 
-//         P: Pattern, 
-//         for<'a> <P as Pattern>::Searcher<'a>: ReverseSearcher<'a>,
-//     ensures
-//         true,
-// ;
+/// Encodes `str::split_inclusive_iter` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_split_inclusive_iter_post<'a, P: Pattern>(
+    s: Seq<char>, pat: P, iter_seq: Seq<&'a str>,
+) -> bool {
+    let (seq, gap) = spec_matches(s, pat);
+    pat.matches_post(s, seq, gap) ==> {
+        &&& forall |i: int| 0 <= i < seq.len() ==>
+            #[trigger] iter_seq[i]@ == gap[i] + seq[i]
+        &&& gap.last().len() == 0 ==> iter_seq.len() == seq.len()
+        &&& gap.last().len() > 0 ==> 
+            iter_seq.len() == seq.len() + 1 && iter_seq.last()@ == gap.last()
+    }
+}
 
-// /// Encodes `str::split` for general patterns.
-// pub closed spec fn str_find_post<'a, P: Pattern>(s: &'a str, pat: P, ret: Split<'a, P>) -> bool {
-//     let (seq, delim) = spec_splitn(s, 2, pat);
-//     pat.splitn_post(s, 2, seq, delim) ==> {
-//         &&& ret is None ==> delim.len() == 0
-//         &&& ret is Some ==> 
-//             delim.len() > 0 
-//             && ret->0 == seq.first()@.as_bytes().len()
-//     }
-// }
+/// Encodes `str::rsplit_iter` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_rsplit_iter_post<'a, P>(s: Seq<char>, pat: P, iter_seq: Seq<&'a str>) -> bool 
+where 
+    P: Pattern,
+    <P as Pattern>::Searcher<'a>: ReverseSearcher<'a>,
+{
+    let (seq, gap) = spec_rmatches(s, pat);
+    pat.rmatches_post(s, seq, gap) ==> {
+        &&& iter_seq.len() == gap.len()
+        &&& forall |i: int| 0 <= i < iter_seq.len() ==>
+                #[trigger] iter_seq[i]@ == gap[i]
+    }
+}
 
+/// Encodes `str::split_terminator_iter` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_split_terminator_iter_post<'a, P: Pattern>(
+    s: Seq<char>, pat: P, iter_seq: Seq<&'a str>,
+) -> bool {
+    let (seq, gap) = spec_matches(s, pat);
+    pat.matches_post(s, seq, gap) ==> {
+        &&& forall |i: int| 0 <= i < seq.len() ==>
+            #[trigger] iter_seq[i]@ == gap[i]
+        &&& gap.last().len() == 0 ==> iter_seq.len() == seq.len()
+        &&& gap.last().len() > 0 ==> 
+            iter_seq.len() == seq.len() + 1 && iter_seq.last()@ == gap.last()
+    }
+}
 
-// pub proof fn lemma_str_contains_str<'a, 'b>(s: &'a str, pat: &'b str)
-//     requires
-//         str_contains(s, pat),
-//     ensures
-//         pat@.is_subrange_of(s@),
-// {
-//     admit()
-// }
+/// Encodes `str::rsplit_terminator_iter` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_rsplit_terminator_iter_post<'a, P>(
+    s: Seq<char>, pat: P, iter_seq: Seq<&'a str>,
+) -> bool 
+where
+    P: Pattern,
+    for<'x> <P as Pattern>::Searcher<'x>: ReverseSearcher<'x>,
+{
+    let (seq, gap) = spec_rmatches(s, pat);
+    pat.rmatches_post(s, seq, gap) ==> {
+        &&& forall |i: int| 0 <= i < seq.len() ==>
+            #[trigger] iter_seq[i]@ == gap[i]
+        &&& gap.last().len() == 0 ==> iter_seq.len() == seq.len()
+        &&& gap.last().len() > 0 ==> 
+            iter_seq.len() == seq.len() + 1 && iter_seq.last()@ == gap.last()
+    }
+}
 
+/// Encodes `str::splitn_iter` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_splitn_iter_post<'a, P: Pattern>(
+    s: Seq<char>, n: usize, pat: P, iter_seq: Seq<&'a str>,
+) -> bool {
+    let (seq, gap) = spec_matches(s, pat);
+    pat.matches_post(s, seq, gap) ==> {
+        &&& iter_seq.len() == n 
+        &&& forall |i: int| 0 <= i < n - 1 ==>
+            #[trigger] iter_seq[i]@ == gap[i]
+        &&& n > 0 ==> iter_seq.last()@ =~= join(seq.skip((n - 1) as int), gap.skip((n - 1) as int))
+    }
+}
+
+/// Encodes `str::rsplitn_iter` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_rsplitn_iter_post<'a, P>(
+    s: Seq<char>, n: usize, pat: P, iter_seq: Seq<&'a str>,
+) -> bool 
+where
+    P: Pattern,
+    for<'x> <P as Pattern>::Searcher<'x>: ReverseSearcher<'x>,
+{
+    let (seq, gap) = spec_rmatches(s, pat);
+    pat.rmatches_post(s, seq, gap) ==> {
+        &&& iter_seq.len() == n 
+        &&& forall |i: int| 0 <= i < n - 1 ==>
+            #[trigger] iter_seq[i]@ == gap[i]
+        &&& n > 0 ==> iter_seq.last()@ =~= rjoin(seq.skip((n - 1) as int), gap.skip((n - 1) as int))
+    }
+}
+
+/// Encodes `str::split_once` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_split_once_post<'a, P: Pattern>(
+    s: Seq<char>, delimiter: P, ret: Option<(&'a str, &'a str)>,
+) -> bool {
+    let (seq, gap) = spec_matches(s, delimiter);
+    delimiter.matches_post(s, seq, gap) ==> {
+        &&& ret is None ==> seq.len() == 0
+        &&& ret is Some ==> {
+            let (head, tail) = ret->0;
+            &&& seq.len() > 0
+            &&& head@ == gap.first()
+            &&& tail@ =~= join(seq.skip(1), gap.skip(1))
+        }
+    }
+}
+
+/// Encodes `str::rsplit_once` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_rsplit_once_post<'a, P>(
+    s: Seq<char>, delimiter: P, ret: Option<(&'a str, &'a str)>,
+) -> bool 
+where
+    P: Pattern,
+    for<'x> <P as Pattern>::Searcher<'x>: ReverseSearcher<'x>,
+{
+    let (seq, gap) = spec_rmatches(s, delimiter);
+    delimiter.rmatches_post(s, seq, gap) ==> {
+        &&& ret is None ==> seq.len() == 0
+        &&& ret is Some ==> {
+            let (head, tail) = ret->0;
+            &&& seq.len() > 0
+            &&& head@ == gap.first()
+            &&& tail@ =~= rjoin(seq.skip(1), gap.skip(1))
+        }
+    }
+}
+
+/// Encodes `str::split_whitespace_iter` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_split_whitespace_iter_post<'a>(
+    s: Seq<char>, iter_seq: Seq<&'a str>,
+) -> bool {
+    let pat = |c: char| c.is_whitespace();
+    let (seq, gap) = spec_matches(s, pat);
+    PatternSpec::matches_post(pat, s, seq, gap) ==> {
+        &&& iter_seq.len() == gap.count(|seg: Seq<char>| seg.len() > 0)
+        &&& forall |i: int| 0 <= i < iter_seq.len() ==>
+                #[trigger] iter_seq[i]@ == gap.filter(|seg: Seq<char>| seg.len() > 0)[i]
+    }
+}
+
+/// Encodes `str::split_ascii_whitespace_iter` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_split_ascii_whitespace_iter_post<'a>(
+    s: Seq<char>, iter_seq: Seq<&'a str>,
+) -> bool {
+    let pat = |c: char| c.is_ascii_whitespace();
+    let (seq, gap) = spec_matches(s, pat);
+    PatternSpec::matches_post(pat, s, seq, gap) ==> {
+        &&& iter_seq.len() == gap.count(|seg: Seq<char>| seg.len() > 0)
+        &&& forall |i: int| 0 <= i < iter_seq.len() ==>
+                #[trigger] iter_seq[i]@ == gap.filter(|seg: Seq<char>| seg.len() > 0)[i]
+    }
+}
+
+/// Encodes `str::matches_iter` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_matches_iter_post<'a, P: Pattern>(
+    s: Seq<char>, pat: P, iter_seq: Seq<&'a str>,
+) -> bool {
+    let (seq, gap) = spec_matches(s, pat);
+    pat.matches_post(s, seq, gap) ==> {
+        &&& iter_seq.len() == seq.len()
+        &&& forall |i: int| 0 <= i < iter_seq.len() ==>
+                #[trigger] iter_seq[i]@ == seq[i]
+    }
+}
+
+/// Encodes `str::rmatches_iter` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_rmatches_iter_post<'a, P>(
+    s: Seq<char>, pat: P, iter_seq: Seq<&'a str>,
+) -> bool 
+where 
+    P: Pattern,
+    <P as Pattern>::Searcher<'a>: ReverseSearcher<'a>,
+{
+    let (seq, gap) = spec_rmatches(s, pat);
+    pat.rmatches_post(s, seq, gap) ==> {
+        &&& iter_seq.len() == seq.len()
+        &&& forall |i: int| 0 <= i < iter_seq.len() ==>
+                #[trigger] iter_seq[i]@ == seq[i]
+    }
+}
+
+/// Encodes `str::match_indices_iter` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_match_indices_iter_post<'a, P: Pattern>(
+    s: Seq<char>, pat: P, iter_seq: Seq<(usize, &'a str)>,
+) -> bool {
+    let (seq, gap) = spec_matches(s, pat);
+    pat.matches_post(s, seq, gap) ==> {
+        &&& iter_seq.len() == seq.len()
+        &&& forall |i: int| 0 <= i < iter_seq.len() ==>
+                #[trigger] iter_seq[i].0 == join(seq.take(i), gap.take(i + 1)).as_bytes().len()
+                && #[trigger] iter_seq[i].1@ == seq[i]
+    }
+}
+
+/// Encodes `str::rmatch_indices_iter` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_rmatch_indices_iter_post<'a, P>(
+    s: Seq<char>, pat: P, iter_seq: Seq<(usize, &'a str)>,
+) -> bool 
+where 
+    P: Pattern,
+    <P as Pattern>::Searcher<'a>: ReverseSearcher<'a>,
+{
+    let (seq, gap) = spec_rmatches(s, pat);
+    pat.rmatches_post(s, seq, gap) ==> {
+        &&& iter_seq.len() == seq.len()
+        &&& forall |i: int| 0 <= i < iter_seq.len() ==>
+                #[trigger] iter_seq[i].0 == 
+                    s.as_bytes().len() - join(seq.take(i), gap.take(i + 1)).as_bytes().len()
+                && #[trigger] iter_seq[i].1@ == seq[i]
+    }
+}
+
+/// Encodes `str::trim_matches` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_trim_matches_post<'a, P: Pattern>(
+    s: Seq<char>, pat: P, ret: Seq<char>,
+) -> bool 
+where 
+    P: Pattern,
+    <P as Pattern>::Searcher<'a>: DoubleEndedSearcher<'a>,
+{
+    let (seq, gap) = spec_matches(s, pat);
+    pat.matches_post(s, seq, gap) ==> {
+        if gap.all(|ss: Seq<char>| ss.len() == 0) {
+            ret.len() == 0
+        } else {
+            let head = gap.count_while(|ss: Seq<char>| ss.len() == 0);
+            let tail = gap.rcount_while(|ss: Seq<char>| ss.len() == 0);
+            ret == join(
+                seq.subrange(head as int, seq.len() - tail), 
+                gap.subrange(head as int, gap.len() - tail),
+            )
+        }
+    }
+}
+
+/// Encodes `str::trim_start_matches` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_trim_start_matches_post<'a, P: Pattern>(
+    s: Seq<char>, pat: P, ret: Seq<char>,
+) -> bool {
+    let (seq, gap) = spec_matches(s, pat);
+    pat.matches_post(s, seq, gap) ==> {
+        let head = gap.count_while(|ss: Seq<char>| ss.len() == 0);
+        ret == join(
+            seq.skip(head as int), 
+            gap.skip(head as int),
+        )
+    }
+}
+
+/// Encodes `str::trim_end_matches` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_trim_end_matches_post<'a, P>(
+    s: Seq<char>, pat: P, ret: Seq<char>,
+) -> bool 
+where 
+    P: Pattern,
+    <P as Pattern>::Searcher<'a>: ReverseSearcher<'a>,
+{
+    let (seq, gap) = spec_rmatches(s, pat);
+    pat.rmatches_post(s, seq, gap) ==> {
+        let head = gap.count_while(|ss: Seq<char>| ss.len() == 0);
+        ret == rjoin(
+            seq.skip(head as int), 
+            gap.skip(head as int),
+        )
+    }
+}
+
+/// Encodes `str::strip_prefix` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_strip_prefix_post<'a, P: Pattern>(
+    s: Seq<char>, pat: P, ret: Option<&'a str>,
+) -> bool {
+    let (seq, gap) = spec_matches(s, pat);
+    pat.matches_post(s, seq, gap) ==> {
+        match ret {
+            Some(o) => 
+                seq.len() > 0 
+                && gap.first().len() == 0
+                && o@ == join(seq.skip(1), gap.skip(1)),
+            None => seq.len() == 0 || gap.first().len() > 0,
+        }
+    }
+}
+
+/// Encodes `str::strip_suffix` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_strip_suffix_post<'a, P: Pattern>(
+    s: Seq<char>, pat: P, ret: Option<&'a str>,
+) -> bool 
+where 
+    P: Pattern,
+    <P as Pattern>::Searcher<'a>: ReverseSearcher<'a>,
+{
+    let (seq, gap) = spec_rmatches(s, pat);
+    pat.rmatches_post(s, seq, gap) ==> {
+        match ret {
+            Some(o) => 
+                seq.len() > 0 
+                && gap.first().len() == 0
+                && o@ == rjoin(seq.skip(1), gap.skip(1)),
+            None => seq.len() == 0 || gap.first().len() > 0,
+        }
+    }
+}
+
+/// Encodes `str::replace` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_replace_post<'a, P: Pattern>(
+    s: Seq<char>, from: P, to: Seq<char>, ret: Seq<char>,
+) -> bool {
+    let (seq, gap) = spec_matches(s, from);
+    from.matches_post(s, seq, gap) ==> {
+        ret == join(Seq::new(seq.len(), |i: int| to), gap)
+    }
+}
+
+/// Encodes `str::replacen` for general patterns.
+#[verifier::opaque]
+pub open spec fn str_replacen_post<'a, P: Pattern>(
+    s: Seq<char>, from: P, to: Seq<char>, count: nat, ret: Seq<char>,
+) -> bool {
+    let (seq, gap) = spec_matches(s, from);
+    from.matches_post(s, seq, gap) ==> {
+        ret == join(
+            Seq::new(seq.len(), |i: int| if i < count { to } else { seq[i] }), 
+            gap,
+        )
+    }
+}
 
 // ---------- Specs for `Pattern` ----------
 
 // `char`
 
 impl PatternSpecImpl for char {
-    /// Forward splitting with the `char` pattern.
-    open spec fn splitn_post<'a>(
-        self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>,
+    /// Forward matching with the `char` pattern.
+    open spec fn matches_post(
+        self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
     ) -> bool 
     {
-        &&& char_splits_post(s, n, self, seq, delim)
-        &&& s@ =~= join(seq, delim)
+        &&& char_matches_post(s, self, seq, gap)
+        &&& s =~= join(seq, gap)
     }
 
-    /// Backward splitting with the `char` pattern.
-    open spec fn rsplitn_post<'a>(
-        self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>,
+    /// Backward matching with the `char` pattern.
+    open spec fn rmatches_post(
+        self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
     ) -> bool 
     {
-        // `char` splitting works the same backwards
-        &&& char_splits_post(s, n, self, seq, delim)
-        &&& s@ =~= rjoin(seq, delim)
+        &&& char_matches_post(s, self, seq, gap)
+        &&& s =~= rjoin(seq, gap)
     }
 }
 
@@ -322,151 +656,150 @@ impl PatternSpecImpl for char {
 impl<F> PatternSpecImpl for F 
     where F: FnMut(char) -> bool
 {
-    /// Forward splitting with the closure pattern.
-    open spec fn splitn_post<'a>(
-        self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>,
+    /// Forward matching with the closure pattern.
+    open spec fn matches_post(
+        self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
     ) -> bool 
     {
-        &&& closure_splits_post(s, n, self, seq, delim)
-        &&& s@ =~= join(seq, delim)
+        &&& closure_matches_post(s, self, seq, gap)
+        &&& s =~= join(seq, gap)
     }
 
-    /// Backward splitting with the closure pattern.
-    open spec fn rsplitn_post<'a>(
-        self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>,
+    /// Backward matching with the closure pattern.
+    open spec fn rmatches_post(
+        self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
     ) -> bool 
     {
-        // closure splitting works the same backwards
-        &&& closure_splits_post(s, n, self, seq, delim)
-        &&& s@ =~= rjoin(seq, delim)
+        &&& closure_matches_post(s, self, seq, gap)
+        &&& s =~= rjoin(seq, gap)
     }
 }
 
 // `&[char]` / `&[char; N]` / `[char; N]`
 
 impl<'b> PatternSpecImpl for &'b [char] {
-    /// Forward splitting with the `&[char]` pattern.
-    open spec fn splitn_post<'a>(
-        self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>,
+    /// Forward matching with the `&[char]` pattern.
+    open spec fn matches_post(
+        self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
     ) -> bool 
     {
-        &&& chars_splits_post(s, n, self@, seq, delim)
-        &&& s@ =~= join(seq, delim)
+        &&& chars_matches_post(s, self@, seq, gap)
+        &&& s =~= join(seq, gap)
     }
 
-    /// Backward splitting with the `&[char]` pattern.
-    open spec fn rsplitn_post<'a>(
-        self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>,
+    /// Backward matching with the `&[char]` pattern.
+    open spec fn rmatches_post(
+        self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
     ) -> bool 
     {
-        // `&[char]` splitting works the same backwards
-        &&& chars_splits_post(s, n, self@, seq, delim)
-        &&& s@ =~= rjoin(seq, delim)
+        &&& chars_matches_post(s, self@, seq, gap)
+        &&& s =~= rjoin(seq, gap)
     }
 }
 
 impl<'b, const N: usize> PatternSpecImpl for &'b [char; N] {
-    /// Forward splitting with the `&[char; N]` pattern.
-    open spec fn splitn_post<'a>(
-        self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>,
+    /// Forward matching with the `&[char; N]` pattern.
+    open spec fn matches_post(
+        self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
     ) -> bool 
     {
-        &&& chars_splits_post(s, n, self@, seq, delim)
-        &&& s@ =~= join(seq, delim)
+        &&& chars_matches_post(s, self@, seq, gap)
+        &&& s =~= join(seq, gap)
     }
 
-    /// Backward splitting with the `&[char; N]` pattern.
-    open spec fn rsplitn_post<'a>(
-        self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>,
+    /// Backward matching with the `&[char; N]` pattern.
+    open spec fn rmatches_post(
+        self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
     ) -> bool 
     {
-        // `&[char; N]` splitting works the same backwards
-        &&& chars_splits_post(s, n, self@, seq, delim)
-        &&& s@ =~= rjoin(seq, delim)
+        &&& chars_matches_post(s, self@, seq, gap)
+        &&& s =~= rjoin(seq, gap)
     }
 }
 
 impl<const N: usize> PatternSpecImpl for [char; N] {
-    /// Forward splitting with the `[char; N]` pattern.
-    open spec fn splitn_post<'a>(
-        self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>,
+    /// Forward matching with the `[char; N]` pattern.
+    open spec fn matches_post(
+        self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
     ) -> bool 
     {
-        &&& chars_splits_post(s, n, self@, seq, delim)
-        &&& s@ =~= join(seq, delim)
+        &&& chars_matches_post(s, self@, seq, gap)
+        &&& s =~= join(seq, gap)
     }
 
-    /// Backward splitting with the `[char; N]` pattern.
-    open spec fn rsplitn_post<'a>(
-        self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>,
+    /// Backward matching with the `[char; N]` pattern.
+    open spec fn rmatches_post(
+        self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
     ) -> bool 
     {
-        // `[char; N]` splitting works the same backwards
-        &&& chars_splits_post(s, n, self@, seq, delim)
-        &&& s@ =~= rjoin(seq, delim)
+        &&& chars_matches_post(s, self@, seq, gap)
+        &&& s =~= rjoin(seq, gap)
     }
 }
 
 // `&str` / `&String` / `&&str`
 
 impl<'b> PatternSpecImpl for &'b str {
-    /// Forward splitting with the `&str` pattern.
-    open spec fn splitn_post<'a>(
-        self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>,
+    /// Forward matching with the `&str` pattern.
+    open spec fn matches_post(
+        self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
     ) -> bool 
     {
-        &&& str_splits_post(s, n, self@, seq, delim)
-        &&& s@ =~= join(seq, delim)
+        &&& string_matches_post(s, self@, seq, gap)
+        &&& s =~= join(seq, gap)
     }
 
-    /// Backward splitting with the `&str` pattern.
-    open spec fn rsplitn_post<'a>(
-        self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>,
+    /// Backward matching with the `&str` pattern.
+    open spec fn rmatches_post(
+        self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
     ) -> bool 
     {
-        &&& str_rsplits_post(s, n, self@, seq, delim)
-        &&& s@ =~= rjoin(seq, delim)
+        &&& string_rmatches_post(s, self@, seq, gap)
+        &&& s =~= rjoin(seq, gap)
     }
 }
 
 impl<'b> PatternSpecImpl for &'b String {
-    /// Forward splitting with the `&String` pattern.
-    open spec fn splitn_post<'a>(
-        self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>,
+    /// Forward matching with the `&String` pattern.
+    open spec fn matches_post(
+        self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
     ) -> bool 
     {
-        &&& str_splits_post(s, n, self@, seq, delim)
-        &&& s@ =~= join(seq, delim)
+        &&& string_matches_post(s, self@, seq, gap)
+        &&& s =~= join(seq, gap)
     }
 
-    /// Backward splitting with the `&String` pattern.
-    open spec fn rsplitn_post<'a>(
-        self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>,
+    /// Backward matching with the `&String` pattern.
+    open spec fn rmatches_post(
+        self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
     ) -> bool 
     {
-        &&& str_rsplits_post(s, n, self@, seq, delim)
-        &&& s@ =~= rjoin(seq, delim)
+        &&& string_rmatches_post(s, self@, seq, gap)
+        &&& s =~= rjoin(seq, gap)
     }
 }
 
 impl<'b, 'c> PatternSpecImpl for &'c &'b str {
-    /// Forward splitting with the `&&str` pattern.
-    open spec fn splitn_post<'a>(
-        self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>,
+    /// Forward matching with the `&&str` pattern.
+    open spec fn matches_post(
+        self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
     ) -> bool 
     {
-        &&& str_splits_post(s, n, self@, seq, delim)
-        &&& s@ =~= join(seq, delim)
+        &&& string_matches_post(s, self@, seq, gap)
+        &&& s =~= join(seq, gap)
     }
 
-    /// Backward splitting with the `&&str` pattern.
-    open spec fn rsplitn_post<'a>(
-        self, s: &'a str, n: int, seq: Seq<&'a str>, delim: Seq<&'a str>,
+    /// Backward matching with the `&&str` pattern.
+    open spec fn rmatches_post(
+        self, s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
     ) -> bool 
     {
-        &&& str_rsplits_post(s, n, self@, seq, delim)
-        &&& s@ =~= rjoin(seq, delim)
+        &&& string_rmatches_post(s, self@, seq, gap)
+        &&& s =~= rjoin(seq, gap)
     }
 }
+
+// TODO: linking lemmas; document the linking lemma pattern?
+
 
 }

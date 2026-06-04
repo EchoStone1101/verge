@@ -11,29 +11,6 @@
 //! require the user to provide proofs of the relevant invariants as trait methods.
 //! Implementing these traits is the recommended way to establish trait correctness
 //! for custom types in verified Rust code.
-//!
-//! ## Known Limitations
-//! Tuples implement `PartialEq`, `Eq`, `PartialOrd`, and `Ord` in `std`; however their 
-//! specs are not in `vstd` yet, and Verge cannot provide that implementaton (since the spec
-//! extension traits are defined in `vstd`). 
-//! The current recommended workaround is to explictly define the tuple as a *tuple struct*, 
-//! then use the `derive_*` macros provided by Verge to get the derived trait implementation
-//! as well as proof of invariants. 
-//!
-//! For example:
-//! 
-//! ```ignore
-//! #[verge_macros::derive_eq]
-//! struct Pair(u8, i32); 
-//! 
-//! fn compare_pairs(p1: &Pair, p2: &Pair) -> (ret: bool)
-//!     returns
-//!         PartialEqSpec::eq_spec(p1, p2),
-//! {
-//!     proof { PartialEqVerified::lemma_eq_symmetric(p1, p2); }
-//!     p2 == p1
-//! }
-//! ```
 
 #[allow(unused_imports)]
 use vstd::prelude::*;
@@ -45,8 +22,6 @@ use core::cmp::Ordering;
 use std::hash::Hash;
 
 verus! {
-
-// TODO: check the proofs; reveal?
 
 /// A verified `PartialEq` that requires proofs of symmetry and transitivity
 /// for the type's `eq_spec`.
@@ -67,6 +42,8 @@ verus! {
 /// }
 /// ```
 pub trait PartialEqVerified: PartialEq {
+    // TODO: should enforce Self::obeys_eq_spec()
+    
     /// Proof that `eq_spec` is symmetric.
     proof fn lemma_eq_symmetric(a: &Self, b: &Self)
         requires
@@ -417,6 +394,64 @@ impl<T: OrdVerified> OrdVerified for Option<T> {
     }
 }
 
+// --- Tuples ---
+
+macro_rules! tuple_cmp_impl {
+    ($($idx:tt $T:ident, )+) => {
+        verus! {
+        impl<$($T: PartialEqVerified),+> PartialEqVerified for ($($T,)+) {
+            proof fn lemma_eq_symmetric(a: &Self, b: &Self) {
+                $($T::lemma_eq_symmetric(&a.$idx, &b.$idx); )+
+            }
+            proof fn lemma_eq_transitive(a: &Self, b: &Self, c: &Self) {
+                $($T::lemma_eq_transitive(&a.$idx, &b.$idx, &c.$idx); )+
+            }
+        }
+        impl<$($T: EqVerified),+> EqVerified for ($($T,)+) {
+            proof fn lemma_eq_reflexive(a: &Self) {
+                $($T::lemma_eq_reflexive(&a.$idx); )+
+            }
+        }
+        impl<$($T: PartialOrdVerified),+> PartialOrdVerified for ($($T,)+) {
+            proof fn lemma_cmp_eq_consistent(a: &Self, b: &Self) {
+                $($T::lemma_cmp_eq_consistent(&a.$idx, &b.$idx); )+
+            }
+            proof fn lemma_cmp_dual(a: &Self, b: &Self) { 
+                admit()
+                // TODO: prove that partial_cmp_spec <==> lexico_less
+                // $($T::lemma_cmp_dual(&a.$idx, &b.$idx); )+
+            }
+            proof fn lemma_cmp_less_transitive(a: &Self, b: &Self, c: &Self) { admit() }
+            proof fn lemma_cmp_greater_transitive(a: &Self, b: &Self, c: &Self) { admit() }
+            proof fn lemma_cmp_comparable(a: &Self, b: &Self, c: &Self) { admit() }
+        }
+        // impl<$($T: Ord + OrdSpec),+> OrdSpecImpl for ($($T,)+)
+        // {
+        //     open spec fn obeys_cmp_spec() -> bool {
+        //         $(&&& $T::obeys_cmp_spec())+
+        //     }
+
+        //     open spec fn cmp_spec(&self, other: &($($T,)+)) -> core::cmp::Ordering {
+        //         lexical_cmp_spec!($( self.$idx, other.$idx ),+)
+        //     }
+        // }
+        }
+    };
+}
+
+// tuple_cmp_impl!(0 T, );
+// tuple_cmp_impl!(0 U, 1 T, );
+// tuple_cmp_impl!(0 V, 1 U, 2 T, );
+// tuple_cmp_impl!(0 W, 1 V, 2 U, 3 T, );
+// tuple_cmp_impl!(0 X, 1 W, 2 V, 3 U, 4 T, );
+// tuple_cmp_impl!(0 Y, 1 X, 2 W, 3 V, 4 U, 5 T, );
+// tuple_cmp_impl!(0 Z, 1 Y, 2 X, 3 W, 4 V, 5 U, 6 T, );
+// tuple_cmp_impl!(0 A, 1 Z, 2 Y, 3 X, 4 W, 5 V, 6 U, 7 T, );
+// tuple_cmp_impl!(0 B, 1 A, 2 Z, 3 Y, 4 X, 5 W, 6 V, 7 U, 8 T, );
+// tuple_cmp_impl!(0 C, 1 B, 2 A, 3 Z, 4 Y, 5 X, 6 W, 7 V, 8 U, 9 T, );
+// tuple_cmp_impl!(0 D, 1 C, 2 B, 3 A, 4 Z, 5 Y, 6 X, 7 W, 8 V, 9 U, 10 T, );
+// tuple_cmp_impl!(0 E, 1 D, 2 C, 3 B, 4 A, 5 Z, 6 Y, 7 X, 8 W, 9 V, 10 U, 11 T, );
+
 // --- Bridging lemmas ---
 
 /// For any type implementing `PartialEqVerified`, the full `laws_eq::obeys_eq_spec`
@@ -521,58 +556,28 @@ pub proof fn lemma_ord_verified<T: OrdVerified>()
 }
 
 // --- Lexicographic ordering on sequences ---
-// Used by `verified_partial_ord` macro to prove transitivity of derived PartialOrd.
+// Used, for example, by `verified_partial_ord` macro to prove transitivity of derived PartialOrd.
 
-/// Lexicographic Less: the first non-Equal entry is Less.
+// Lexicographic Less: the first non-Equal entry is Less.
+#[doc(hidden)]
 pub open spec fn lexico_less(s: Seq<Option<Ordering>>) -> bool {
     exists|i: int| 0 <= i < s.len()
         && s[i] == Some(Ordering::Less)
         && forall|j: int| 0 <= j < i ==> s[j] == Some(Ordering::Equal)
 }
 
-/// Lexicographic Greater: the first non-Equal entry is Greater.
+// Lexicographic Greater: the first non-Equal entry is Greater.
+#[doc(hidden)]
 pub open spec fn lexico_greater(s: Seq<Option<Ordering>>) -> bool {
     exists|i: int| 0 <= i < s.len()
         && s[i] == Some(Ordering::Greater)
         && forall|j: int| 0 <= j < i ==> s[j] == Some(Ordering::Equal)
 }
 
-/// Lexicographic Equal: all entries are Equal.
+// Lexicographic Equal: all entries are Equal.
+#[doc(hidden)]
 pub open spec fn lexico_equal(s: Seq<Option<Ordering>>) -> bool {
     forall|i: int| 0 <= i < s.len() ==> s[i] == Some(Ordering::Equal)
 }
 
 } // verus!
-
-// --- Tuple PartialEq support ---
-// Std implements PartialEq for tuples up to 12 elements.
-// vstd has no support for this.
-//
-// Limitation: Rust's orphan rules prevent Verge from implementing vstd's
-// PartialEqSpecImpl for tuples (both the trait and the type are foreign).
-// Only vstd itself can add PartialEqSpecImpl for tuples.
-//
-// What Verge CAN provide: assume_specification for tuple eq,
-// making exec == callable. Without PartialEqSpecImpl, there's no eq_spec.
-
-macro_rules! impl_tuple_eq_spec {
-    ([$(($T:ident, $n:tt)),*]) => {
-        verus! {
-            pub assume_specification<$($T: PartialEq),*>
-                [<($($T,)*) as PartialEq>::eq](a: &($($T,)*), b: &($($T,)*)) -> bool;
-        }
-    }
-}
-
-impl_tuple_eq_spec!([(T0, 0)]);
-impl_tuple_eq_spec!([(T0, 0), (T1, 1)]);
-impl_tuple_eq_spec!([(T0, 0), (T1, 1), (T2, 2)]);
-impl_tuple_eq_spec!([(T0, 0), (T1, 1), (T2, 2), (T3, 3)]);
-impl_tuple_eq_spec!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4)]);
-impl_tuple_eq_spec!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5)]);
-impl_tuple_eq_spec!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6)]);
-impl_tuple_eq_spec!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7)]);
-impl_tuple_eq_spec!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8)]);
-impl_tuple_eq_spec!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), (T9, 9)]);
-impl_tuple_eq_spec!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), (T9, 9), (T10, 10)]);
-impl_tuple_eq_spec!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), (T9, 9), (T10, 10), (T11, 11)]);

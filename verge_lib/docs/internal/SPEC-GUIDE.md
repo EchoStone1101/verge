@@ -17,6 +17,8 @@ but specifying this API form adds unnecessary burden to the prover. Verge change
 to accept `pat: &str` - the most common case. 
 
 ## Specifying traits
+
+<!-- TODO: this needs update now that we have the "via" pattern -->
 Traits are introduced with `#[verifier::external_trait_specification]`. 
 To add specifications, Verge then adds a new trait that contains only `spec` and
 `proof` methods, then implement it as needed. For example, to specifiy `std::io::Read`, 

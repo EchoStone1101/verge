@@ -12,9 +12,9 @@ name = "verge"
 path = "verge.rs"
 
 [dependencies]
-vstd = "0.0.0-2026-05-17-0151"
+vstd = "0.0.0-2026-05-31-0205"
 verus_builtin = "0.0.0-2026-05-17-0151"
-verus_builtin_macros = "0.0.0-2026-05-10-0145"
+verus_builtin_macros = "0.0.0-2026-05-31-0205"
 verge_macros = { path = "../verge_macros" }
 paste = "1.0.15"
 
