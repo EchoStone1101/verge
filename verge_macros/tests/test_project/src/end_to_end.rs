@@ -91,14 +91,8 @@ impl PartialOrdVerified for CachedResult {
     proof fn lemma_cmp_dual(a: &Self, b: &Self) {
         <u32 as PartialOrdVerified>::lemma_cmp_dual(&a.key, &b.key);
     }
-    proof fn lemma_cmp_comparable(a: &Self, b: &Self, c: &Self) {
-        <u32 as PartialOrdVerified>::lemma_cmp_comparable(&a.key, &b.key, &c.key);
-    }
-    proof fn lemma_cmp_less_transitive(a: &Self, b: &Self, c: &Self) {
-        <u32 as PartialOrdVerified>::lemma_cmp_less_transitive(&a.key, &b.key, &c.key);
-    }
-    proof fn lemma_cmp_greater_transitive(a: &Self, b: &Self, c: &Self) {
-        <u32 as PartialOrdVerified>::lemma_cmp_greater_transitive(&a.key, &b.key, &c.key);
+    proof fn lemma_cmp_transitive(a: &Self, b: &Self, c: &Self) {
+        <u32 as PartialOrdVerified>::lemma_cmp_transitive(&a.key, &b.key, &c.key);
     }
 }
 

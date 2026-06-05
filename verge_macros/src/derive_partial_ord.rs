@@ -84,7 +84,6 @@ fn gen_struct(input: ItemStruct) -> TokenStream {
 
     let eq_con_calls = build_calls(fields, "lemma_cmp_eq_consistent", "PartialOrdVerified", true);
     let dual_calls = build_calls(fields, "lemma_cmp_dual", "PartialOrdVerified", true);
-    let comparable_calls = build_3arg_calls(fields, "lemma_cmp_comparable", "PartialOrdVerified");
     let less_trans_fn = pub_build_trans_proof_fn(&field_info, &name.to_string(), n, "Less");
     let greater_trans_fn = pub_build_trans_proof_fn(&field_info, &name.to_string(), n, "Greater");
     let equiv_lemma = pub_build_equiv_lemma(&name.to_string(), &vis.to_token_stream().to_string(), n);
@@ -133,12 +132,12 @@ fn gen_struct(input: ItemStruct) -> TokenStream {
                 proof fn lemma_obeys_partial_cmp_spec() {}
                 proof fn lemma_cmp_eq_consistent(a: &Self, b: &Self) { #eq_con_calls }
                 proof fn lemma_cmp_dual(a: &Self, b: &Self) { #dual_calls }
-                proof fn lemma_cmp_comparable(a: &Self, b: &Self, c: &Self) { #comparable_calls }
-                proof fn lemma_cmp_less_transitive(a: &Self, b: &Self, c: &Self) {
-                    Self::__less_trans(a, b, c);
-                }
-                proof fn lemma_cmp_greater_transitive(a: &Self, b: &Self, c: &Self) {
-                    Self::__greater_trans(a, b, c);
+                proof fn lemma_cmp_transitive(a: &Self, b: &Self, c: &Self) {
+                    if a.partial_cmp_spec(b) == Some(core::cmp::Ordering::Less) {
+                        Self::__less_trans(a, b, c);
+                    } else {
+                        Self::__greater_trans(a, b, c);
+                    }
                 }
             }
         }
@@ -167,32 +166,18 @@ fn build_calls(fields: &Fields, lemma: &str, trait_name: &str, with_eq_sym: bool
     quote! { #(#calls)* }
 }
 
-fn build_3arg_calls(fields: &Fields, lemma: &str, trait_name: &str) -> TokenStream {
-    let lemma_id = Ident::new(lemma, proc_macro2::Span::call_site());
-    let trait_id = Ident::new(trait_name, proc_macro2::Span::call_site());
-    let calls: Vec<TokenStream> = match fields {
-        Fields::Named(f) => f.named.iter().filter(|f| !eq_common::is_field_filtered(f)).map(|field| {
-            let fname = field.ident.as_ref().unwrap(); let ty = &field.ty;
-            quote! { <#ty as verge::cmp::#trait_id>::#lemma_id(&a.#fname, &b.#fname, &c.#fname); }
-        }).collect(),
-        Fields::Unnamed(f) => f.unnamed.iter().enumerate().filter(|(_, f)| !eq_common::is_field_filtered(f)).map(|(i, field)| {
-            let idx = syn::Index::from(i); let ty = &field.ty;
-            quote! { <#ty as verge::cmp::#trait_id>::#lemma_id(&a.#idx, &b.#idx, &c.#idx); }
-        }).collect(),
-        Fields::Unit => vec![],
-    };
-    quote! { #(#calls)* }
-}
 
 /// Build standalone trans proof fn, wrapped in `impl T { ... }`.
 /// The fn is named `__less_trans` or `__greater_trans` and calls
-/// `Self::partial_cmp_spec_seq` and `Self::lemma_partial_cmp_spec_equiv`.
+/// `Self::partial_cmp_spec_seq`, `Self::lemma_partial_cmp_spec_equiv`,
+/// and `verge::cmp::lemma_lexico_{dir}_transitive`.
 pub(crate) fn pub_build_trans_proof_fn(fields: &[FieldInfo], type_name: &str, n: usize, dir: &str) -> TokenStream {
     if n == 0 { return quote! {}; }
     let dir_lower = dir.to_lowercase();
     let fn_name = format!("__{}_trans", dir_lower);
-    let trans_lemma = format!("lemma_cmp_{}_transitive", dir_lower);
+    let trans_lemma = "lemma_cmp_transitive";
     let mut lines = Vec::new();
+    // Call per-field lemmas to establish element-wise properties
     for f in fields {
         for (x, y) in [("a", "b"), ("b", "c"), ("a", "c")] {
             let xa = f.a_acc.replace("a.", &format!("{}.", x));
@@ -209,21 +194,20 @@ pub(crate) fn pub_build_trans_proof_fn(fields: &[FieldInfo], type_name: &str, n:
                 <{ty} as verge::cmp::PartialOrdVerified>::{trans}(&{a}, &{b}, &{c}); \
              }}", ty = f.ty_str, a = f.a_acc, b = f.b_acc, c = f.c_acc, dir = dir, trans = trans_lemma));
     }
-    lines.push(format!("let s_ab = Self::partial_cmp_spec_seq(a, b);"));
-    lines.push(format!("let s_bc = Self::partial_cmp_spec_seq(b, c);"));
-    lines.push(format!("let s_ac = Self::partial_cmp_spec_seq(a, c);"));
-    lines.push(format!("Self::lemma_partial_cmp_spec_equiv(a, b);"));
-    lines.push(format!("Self::lemma_partial_cmp_spec_equiv(b, c);"));
-    lines.push(format!("Self::lemma_partial_cmp_spec_equiv(a, c);"));
+    // Build sequences and bridge to lexico form
+    lines.push("let s_ab = Self::partial_cmp_spec_seq(a, b);".to_string());
+    lines.push("let s_bc = Self::partial_cmp_spec_seq(b, c);".to_string());
+    lines.push("let s_ac = Self::partial_cmp_spec_seq(a, c);".to_string());
+    lines.push("Self::lemma_partial_cmp_spec_equiv(a, b);".to_string());
+    lines.push("Self::lemma_partial_cmp_spec_equiv(b, c);".to_string());
+    lines.push("Self::lemma_partial_cmp_spec_equiv(a, c);".to_string());
+    // Assert per-element transitivity property (the forall precondition of the generic lemma)
     let combos = [("Equal", "Equal", "Equal"), (dir, "Equal", dir), ("Equal", dir, dir), (dir, dir, dir)];
     for (ab, bc, ac) in &combos {
         lines.push(format!("assert forall|j: int| 0 <= j < {n} && s_ab[j] == Some(core::cmp::Ordering::{ab}) && s_bc[j] == Some(core::cmp::Ordering::{bc}) implies s_ac[j] == Some(core::cmp::Ordering::{ac}) by {{}};"));
     }
-    lines.push(format!("let i1 = choose|i: int| 0 <= i < {n} && s_ab[i] == Some(core::cmp::Ordering::{dir}) && forall|j: int| 0 <= j < i ==> s_ab[j] == Some(core::cmp::Ordering::Equal);"));
-    lines.push(format!("let i2 = choose|i: int| 0 <= i < {n} && s_bc[i] == Some(core::cmp::Ordering::{dir}) && forall|j: int| 0 <= j < i ==> s_bc[j] == Some(core::cmp::Ordering::Equal);"));
-    lines.push("let k = if i1 <= i2 { i1 } else { i2 };".to_string());
-    lines.push(format!("assert(s_ac[k] == Some(core::cmp::Ordering::{dir}));"));
-    lines.push("assert forall|j: int| 0 <= j < k implies s_ac[j] == Some(core::cmp::Ordering::Equal) by {};".to_string());
+    // Call generic lexico transitivity lemma
+    lines.push(format!("verge::cmp::lemma_lexico_{dir_lower}_transitive(s_ab, s_bc, s_ac);"));
 
     let body = lines.join("\n");
     let code = format!(

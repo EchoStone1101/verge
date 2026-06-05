@@ -148,9 +148,10 @@ fn gen_struct(input: ItemStruct) -> TokenStream {
                 proof fn lemma_obeys_partial_cmp_spec() {}
                 proof fn lemma_cmp_eq_consistent(a: &Self, b: &Self) { #eq_con_calls }
                 proof fn lemma_cmp_dual(a: &Self, b: &Self) { #dual_calls }
-                proof fn lemma_cmp_comparable(a: &Self, b: &Self, c: &Self) {}
-                proof fn lemma_cmp_less_transitive(a: &Self, b: &Self, c: &Self) { Self::__less_trans(a, b, c); }
-                proof fn lemma_cmp_greater_transitive(a: &Self, b: &Self, c: &Self) { Self::__greater_trans(a, b, c); }
+                proof fn lemma_cmp_transitive(a: &Self, b: &Self, c: &Self) {
+                    if a.partial_cmp_spec(b) == Some(core::cmp::Ordering::Less) { Self::__less_trans(a, b, c); }
+                    else { Self::__greater_trans(a, b, c); }
+                }
             }
             impl #g verge::cmp::OrdVerified for #name #tg {
                 proof fn lemma_obeys_cmp_spec() {}
