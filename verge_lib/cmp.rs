@@ -320,42 +320,66 @@ macro_rules! tuple_cmp_impl {
                 $($T::lemma_cmp_eq_consistent(&b.$idx, &a.$idx); )+
             }
             proof fn lemma_cmp_transitive(a: &Self, b: &Self, c: &Self) {
-                $($T::lemma_cmp_eq_consistent(&a.$idx, &b.$idx); )+
-                $($T::lemma_cmp_eq_consistent(&b.$idx, &c.$idx); )+
-                $($T::lemma_cmp_eq_consistent(&a.$idx, &c.$idx); )+
-                $($T::lemma_cmp_dual(&a.$idx, &b.$idx); )+
-                $($T::lemma_cmp_dual(&b.$idx, &c.$idx); )+
-                $($T::lemma_cmp_dual(&a.$idx, &c.$idx); )+
-                $(<$T as PartialEqVerified>::lemma_eq_symmetric(&a.$idx, &b.$idx); )+
-                $(if <$T as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&a.$idx, &b.$idx) == <$T as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&b.$idx, &c.$idx)
-                    && (<$T as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&a.$idx, &b.$idx) == Some(core::cmp::Ordering::Less)
-                        || <$T as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&a.$idx, &b.$idx) == Some(core::cmp::Ordering::Greater)) {
-                    $T::lemma_cmp_transitive(&a.$idx, &b.$idx, &c.$idx);
-                })+
                 let s_ab: Seq<Option<core::cmp::Ordering>> = seq![$(<$T as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&a.$idx, &b.$idx)),+];
                 let s_bc: Seq<Option<core::cmp::Ordering>> = seq![$(<$T as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&b.$idx, &c.$idx)),+];
                 let s_ac: Seq<Option<core::cmp::Ordering>> = seq![$(<$T as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&a.$idx, &c.$idx)),+];
                 if <Self as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(a, b) == Some(core::cmp::Ordering::Less) {
-                    assume(lexico_less(s_ab) <==> <Self as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(a, b) == Some(core::cmp::Ordering::Less));
-                    assume(lexico_less(s_bc) <==> <Self as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(b, c) == Some(core::cmp::Ordering::Less));
-                    assume(lexico_less(s_ac) <==> <Self as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(a, c) == Some(core::cmp::Ordering::Less));
-                    assume(forall|j: int| 0 <= j < s_ab.len() ==> {
+                    // Backward: partial_cmp_spec == Some(Less) → lexico_less (for inputs s_ab, s_bc)
+                    $(if s_ab[$idx as int] != Some(core::cmp::Ordering::Equal) { assert(s_ab[$idx as int] == Some(core::cmp::Ordering::Less)); } else)+ {}
+                    $(if s_bc[$idx as int] != Some(core::cmp::Ordering::Equal) { assert(s_bc[$idx as int] == Some(core::cmp::Ordering::Less)); } else)+ {}
+                    // Forward: lexico_less → partial_cmp_spec == Some(Less) (for output s_ac)
+                    if lexico_less(s_ac) {
+                        let i = choose|i: int| 0 <= i < s_ac.len() && s_ac[i] == Some(core::cmp::Ordering::Less) && forall|j: int| 0 <= j < i ==> s_ac[j] == Some(core::cmp::Ordering::Equal);
+                        $(if i == $idx as int {} else)+ {}
+                    }
+                    // Per-element substitutivity
+                    assert forall|j: int| 0 <= j < s_ab.len() implies {
                         &&& (s_ab[j] == Some(core::cmp::Ordering::Equal) && s_bc[j] == Some(core::cmp::Ordering::Equal) ==> s_ac[j] == Some(core::cmp::Ordering::Equal))
                         &&& (s_ab[j] == Some(core::cmp::Ordering::Less) && s_bc[j] == Some(core::cmp::Ordering::Equal) ==> s_ac[j] == Some(core::cmp::Ordering::Less))
                         &&& (s_ab[j] == Some(core::cmp::Ordering::Equal) && s_bc[j] == Some(core::cmp::Ordering::Less) ==> s_ac[j] == Some(core::cmp::Ordering::Less))
                         &&& (s_ab[j] == Some(core::cmp::Ordering::Less) && s_bc[j] == Some(core::cmp::Ordering::Less) ==> s_ac[j] == Some(core::cmp::Ordering::Less))
-                    });
+                    } by {
+                        $(if j == $idx as int {
+                            $T::lemma_cmp_eq_consistent(&a.$idx, &b.$idx);
+                            $T::lemma_cmp_eq_consistent(&b.$idx, &c.$idx);
+                            $T::lemma_cmp_dual(&b.$idx, &a.$idx);
+                            $T::lemma_cmp_dual(&c.$idx, &a.$idx);
+                            if <$T as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&a.$idx, &b.$idx) == Some(core::cmp::Ordering::Less)
+                                && <$T as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&b.$idx, &c.$idx) == Some(core::cmp::Ordering::Less) {
+                                $T::lemma_cmp_transitive(&a.$idx, &b.$idx, &c.$idx);
+                            }
+                        } else)+
+                        {}
+                    };
                     lemma_lexico_less_transitive(s_ab, s_bc, s_ac);
                 } else {
-                    assume(lexico_greater(s_ab) <==> <Self as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(a, b) == Some(core::cmp::Ordering::Greater));
-                    assume(lexico_greater(s_bc) <==> <Self as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(b, c) == Some(core::cmp::Ordering::Greater));
-                    assume(lexico_greater(s_ac) <==> <Self as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(a, c) == Some(core::cmp::Ordering::Greater));
-                    assume(forall|j: int| 0 <= j < s_ab.len() ==> {
+                    // Backward: partial_cmp_spec == Some(Greater) → lexico_greater (for inputs s_ab, s_bc)
+                    $(if s_ab[$idx as int] != Some(core::cmp::Ordering::Equal) { assert(s_ab[$idx as int] == Some(core::cmp::Ordering::Greater)); } else)+ {}
+                    $(if s_bc[$idx as int] != Some(core::cmp::Ordering::Equal) { assert(s_bc[$idx as int] == Some(core::cmp::Ordering::Greater)); } else)+ {}
+                    // Forward: lexico_greater → partial_cmp_spec == Some(Greater) (for output s_ac)
+                    if lexico_greater(s_ac) {
+                        let i = choose|i: int| 0 <= i < s_ac.len() && s_ac[i] == Some(core::cmp::Ordering::Greater) && forall|j: int| 0 <= j < i ==> s_ac[j] == Some(core::cmp::Ordering::Equal);
+                        $(if i == $idx as int {} else)+ {}
+                    }
+                    // Per-element substitutivity
+                    assert forall|j: int| 0 <= j < s_ab.len() implies {
                         &&& (s_ab[j] == Some(core::cmp::Ordering::Equal) && s_bc[j] == Some(core::cmp::Ordering::Equal) ==> s_ac[j] == Some(core::cmp::Ordering::Equal))
                         &&& (s_ab[j] == Some(core::cmp::Ordering::Greater) && s_bc[j] == Some(core::cmp::Ordering::Equal) ==> s_ac[j] == Some(core::cmp::Ordering::Greater))
                         &&& (s_ab[j] == Some(core::cmp::Ordering::Equal) && s_bc[j] == Some(core::cmp::Ordering::Greater) ==> s_ac[j] == Some(core::cmp::Ordering::Greater))
                         &&& (s_ab[j] == Some(core::cmp::Ordering::Greater) && s_bc[j] == Some(core::cmp::Ordering::Greater) ==> s_ac[j] == Some(core::cmp::Ordering::Greater))
-                    });
+                    } by {
+                        $(if j == $idx as int {
+                            $T::lemma_cmp_eq_consistent(&a.$idx, &b.$idx);
+                            $T::lemma_cmp_eq_consistent(&b.$idx, &c.$idx);
+                            $T::lemma_cmp_dual(&b.$idx, &a.$idx);
+                            $T::lemma_cmp_dual(&c.$idx, &a.$idx);
+                            if <$T as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&a.$idx, &b.$idx) == Some(core::cmp::Ordering::Greater)
+                                && <$T as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&b.$idx, &c.$idx) == Some(core::cmp::Ordering::Greater) {
+                                $T::lemma_cmp_transitive(&a.$idx, &b.$idx, &c.$idx);
+                            }
+                        } else)+
+                        {}
+                    };
                     lemma_lexico_greater_transitive(s_ab, s_bc, s_ac);
                 }
             }
@@ -487,31 +511,28 @@ pub proof fn lemma_ord_verified<T: OrdVerified>()
 }
 
 // --- Lexicographic ordering on sequences ---
-// Used, for example, by `verified_partial_ord` macro to prove transitivity of derived PartialOrd.
 
-// Lexicographic Less: the first non-Equal entry is Less.
-#[doc(hidden)]
+/// This function encodes the lexicographic Less: the first non-Equal entry is Less.
 pub open spec fn lexico_less(s: Seq<Option<Ordering>>) -> bool {
     exists|i: int| 0 <= i < s.len()
         && s[i] == Some(Ordering::Less)
         && forall|j: int| 0 <= j < i ==> s[j] == Some(Ordering::Equal)
 }
 
-// Lexicographic Greater: the first non-Equal entry is Greater.
-#[doc(hidden)]
+/// This function encodes the lexicographic Greater: the first non-Equal entry is Greater.
 pub open spec fn lexico_greater(s: Seq<Option<Ordering>>) -> bool {
     exists|i: int| 0 <= i < s.len()
         && s[i] == Some(Ordering::Greater)
         && forall|j: int| 0 <= j < i ==> s[j] == Some(Ordering::Equal)
 }
 
-// Lexicographic Equal: all entries are Equal.
-#[doc(hidden)]
+/// This function encodes the lexicographic Equal: all entries are Equal.
 pub open spec fn lexico_equal(s: Seq<Option<Ordering>>) -> bool {
     forall|i: int| 0 <= i < s.len() ==> s[i] == Some(Ordering::Equal)
 }
 
-#[doc(hidden)]
+/// Proof that if `lexico_less(s_ab)`, `lexico_less(s_bc)`, and `s_ac` upholds 
+/// transitivity from `a` to `c` via `b`, then `lexico_less(s_ac)`.
 pub proof fn lemma_lexico_less_transitive(
     s_ab: Seq<Option<Ordering>>, s_bc: Seq<Option<Ordering>>, s_ac: Seq<Option<Ordering>>,
 )
@@ -539,7 +560,8 @@ pub proof fn lemma_lexico_less_transitive(
     assert forall|j: int| 0 <= j < k implies s_ac[j] == Some(Ordering::Equal) by {};
 }
 
-#[doc(hidden)]
+/// Proof that if `lexico_greater(s_ab)`, `lexico_greater(s_bc)`, and `s_ac` upholds 
+/// transitivity from `a` to `c` via `b`, then `lexico_greater(s_ac)`.
 pub proof fn lemma_lexico_greater_transitive(
     s_ab: Seq<Option<Ordering>>, s_bc: Seq<Option<Ordering>>, s_ac: Seq<Option<Ordering>>,
 )
@@ -567,37 +589,7 @@ pub proof fn lemma_lexico_greater_transitive(
     assert forall|j: int| 0 <= j < k implies s_ac[j] == Some(Ordering::Equal) by {};
 }
 
-// Helper: given any non-Equal position, there exists a first one with all-Equal prefix.
-#[doc(hidden)]
-proof fn lemma_lexico_first_non_equal(s: Seq<Option<Ordering>>, witness: int)
-    requires
-        0 <= witness < s.len(),
-        s[witness] != Some(Ordering::Equal),
-    ensures
-        exists|i: int| 0 <= i < s.len()
-            && s[i] != Some(Ordering::Equal)
-            && forall|j: int| 0 <= j < i ==> s[j] == Some(Ordering::Equal),
-    decreases witness,
-{
-    if witness == 0 || s[witness - 1] != Some(Ordering::Equal) {
-        if witness == 0 {
-            assert(forall|j: int| 0 <= j < 0int ==> s[j] == Some(Ordering::Equal));
-        } else {
-            lemma_lexico_first_non_equal(s, witness - 1);
-        }
-    } else {
-        // s[witness-1] == Some(Equal), recurse not needed; witness itself works if prefix is all-Equal
-        // Check: does there exist a smaller non-Equal?
-        if forall|j: int| 0 <= j < witness ==> s[j] == Some(Ordering::Equal) {
-            // witness is the first
-        } else {
-            let smaller = choose|j: int| 0 <= j < witness && s[j] != Some(Ordering::Equal);
-            lemma_lexico_first_non_equal(s, smaller);
-        }
-    }
-}
-
-#[doc(hidden)]
+/// Proof that exactly one of `lexico_less(s)`, `lexico_less(equal)`, and `lexico_greater(s)` holds.
 pub proof fn lemma_lexico_trichotomy(s: Seq<Option<Ordering>>)
     requires forall|j: int| 0 <= j < s.len() ==> s[j].is_some(),
     ensures
@@ -639,6 +631,36 @@ pub proof fn lemma_lexico_trichotomy(s: Seq<Option<Ordering>>)
             && s[i] == Some(Ordering::Greater)
             && forall|j: int| 0 <= j < i ==> s[j] == Some(Ordering::Equal);
         assert(false);
+    }
+}
+
+// Helper: given any non-Equal position, there exists a first one with all-Equal prefix.
+#[doc(hidden)]
+proof fn lemma_lexico_first_non_equal(s: Seq<Option<Ordering>>, witness: int)
+    requires
+        0 <= witness < s.len(),
+        s[witness] != Some(Ordering::Equal),
+    ensures
+        exists|i: int| 0 <= i < s.len()
+            && s[i] != Some(Ordering::Equal)
+            && forall|j: int| 0 <= j < i ==> s[j] == Some(Ordering::Equal),
+    decreases witness,
+{
+    if witness == 0 || s[witness - 1] != Some(Ordering::Equal) {
+        if witness == 0 {
+            assert(forall|j: int| 0 <= j < 0int ==> s[j] == Some(Ordering::Equal));
+        } else {
+            lemma_lexico_first_non_equal(s, witness - 1);
+        }
+    } else {
+        // s[witness-1] == Some(Equal), recurse not needed; witness itself works if prefix is all-Equal
+        // Check: does there exist a smaller non-Equal?
+        if forall|j: int| 0 <= j < witness ==> s[j] == Some(Ordering::Equal) {
+            // witness is the first
+        } else {
+            let smaller = choose|j: int| 0 <= j < witness && s[j] != Some(Ordering::Equal);
+            lemma_lexico_first_non_equal(s, smaller);
+        }
     }
 }
 

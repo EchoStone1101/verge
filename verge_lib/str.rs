@@ -323,7 +323,7 @@ pub assume_specification [ str::ceil_char_boundary ] (s: &str, index: usize) -> 
 // -- `Index` and the `get` variants; not that `IndexMut` is currently *not* supported.
 
 // TODO: we can now actually support indexes other than `Range<usize>`;
-// consider move these into a first-class `index.rs`
+// consider move these into a first-class `index` module
 
 pub open spec fn str_range_index_requires(s: &str, start: int, end: int) -> bool {
     &&& 0 <= start <= end <= s@.as_bytes().len()

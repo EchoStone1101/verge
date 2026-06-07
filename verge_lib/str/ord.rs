@@ -173,7 +173,6 @@ pub broadcast axiom fn lemma_string_lexico_cmp_spec(a: &String, b: &String)
             lexicographical_ordering(a@.as_bytes(), b@.as_bytes()),
 ;
 
-// TODO: full tests
 fn test_partial_ord() {
     proof {
         broadcast use group_str_axioms;
