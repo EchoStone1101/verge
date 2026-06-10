@@ -91,6 +91,31 @@ impl<A> SeqAdditionalSpec for Seq<A> {
 }
 
 // --- Related lemmas ---
+pub broadcast group group_seq_additional_lemmas {
+    lemma_seq_is_infix_subrange,
+    lemma_seq_is_subrange_subrange,
+    lemma_seq_is_subrange_alt,
+    lemma_seq_concat_while,
+    lemma_seq_skip_while_ensures,
+    lemma_seq_take_while_ensures,
+    lemma_seq_skip_skip_while,
+    lemma_seq_skip_take_while,
+    lemma_seq_take_skip_while,
+    lemma_seq_take_take_while,
+    lemma_seq_rconcat_while,
+    lemma_seq_rskip_while_ensures,
+    lemma_seq_rtake_while_ensures,
+    lemma_seq_take_rskip_while,
+    lemma_seq_take_rtake_while,
+    lemma_seq_skip_rskip_while,
+    lemma_seq_skip_rtake_while,
+    lemma_seq_rskip_while_reverse,
+    lemma_seq_rtake_while_reverse,
+    lemma_seq_count_while_upper_bound,
+    lemma_seq_count_while_lower_bound,
+    lemma_seq_rcount_while_upper_bound,
+    lemma_seq_rcount_while_lower_bound,
+}
 
 /// Proof that if `s1` is an infix of `s`, then any subrange of `s1` is also an infix of `s`.
 pub broadcast proof fn lemma_seq_is_infix_subrange<A>(s: Seq<A>, s1: Seq<A>, i: int, j: int)
@@ -272,7 +297,7 @@ pub broadcast proof fn lemma_seq_skip_take_while<A>(s: Seq<A>, n: int, pred: spe
 /// Proof that `s.take(n).skip_while(pred)` is 
 /// (1) empty, if `n <= s.take_while(pred).len()`
 /// (2) `s.skip_while(pred).take(n - s.take_while(pred).len())`, otherwise
-pub proof fn lemma_seq_take_skip_while<A>(s: Seq<A>, n: int, pred: spec_fn(A) -> bool)
+pub broadcast proof fn lemma_seq_take_skip_while<A>(s: Seq<A>, n: int, pred: spec_fn(A) -> bool)
     requires
         0 <= n <= s.len(),
     ensures 
@@ -300,7 +325,7 @@ pub proof fn lemma_seq_take_skip_while<A>(s: Seq<A>, n: int, pred: spec_fn(A) ->
 /// Proof that `s.take(n).take_while(pred)` is 
 /// (1) `s.take(n)`, if `n <= s.take_while(pred).len()`
 /// (2) `s.take_while(pred)`, otherwise
-pub proof fn lemma_seq_take_take_while<A>(s: Seq<A>, n: int, pred: spec_fn(A) -> bool)
+pub broadcast proof fn lemma_seq_take_take_while<A>(s: Seq<A>, n: int, pred: spec_fn(A) -> bool)
     requires
         0 <= n <= s.len(),
     ensures 
@@ -483,7 +508,7 @@ pub broadcast proof fn lemma_seq_take_rtake_while<A>(s: Seq<A>, n: int, pred: sp
 /// Proof that `s.skip(n).rskip_while(pred)` is 
 /// (1) empty, if `n >= s.rskip_while(pred).len()`
 /// (2) `s.rskip_while(pred).skip(n)`, otherwise
-pub proof fn lemma_seq_skip_rskip_while<A>(s: Seq<A>, n: int, pred: spec_fn(A) -> bool)
+pub broadcast proof fn lemma_seq_skip_rskip_while<A>(s: Seq<A>, n: int, pred: spec_fn(A) -> bool)
     requires
         0 <= n <= s.len(),
     ensures 
@@ -511,7 +536,7 @@ pub proof fn lemma_seq_skip_rskip_while<A>(s: Seq<A>, n: int, pred: spec_fn(A) -
 /// Proof that `s.skip(n).rtake_while(pred)` is 
 /// (1) `s.skip(n)`, if `n >= s.rskip_while(pred).len()`
 /// (2) `s.rtake_while(pred)`, otherwise
-pub proof fn lemma_seq_skip_rtake_while<A>(s: Seq<A>, n: int, pred: spec_fn(A) -> bool)
+pub broadcast proof fn lemma_seq_skip_rtake_while<A>(s: Seq<A>, n: int, pred: spec_fn(A) -> bool)
     requires
         0 <= n <= s.len(),
     ensures 

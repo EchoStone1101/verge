@@ -36,6 +36,7 @@ use vstd::std_specs::core::IndexSpec;
 
 use core::alloc::Allocator;
 use std::rc::Rc;
+use std::marker::Tuple;
 
 pub mod prelude;
 
@@ -70,6 +71,12 @@ pub mod seq;
 pub mod set;
 pub mod str;
 
+#[verifier::broadcast_use_by_default_when_this_crate_is_imported]
+pub broadcast group group_verge_lemmas {
+    str::group_str_axioms,
+    seq::group_seq_additional_lemmas,
+}
+
 /// Enable the `AsRef` trait.
 #[verifier::external_trait_specification]
 pub trait ExAsRef<T: std::marker::PointeeSized>: std::marker::PointeeSized {
@@ -81,6 +88,45 @@ pub trait ExAsRef<T: std::marker::PointeeSized>: std::marker::PointeeSized {
 pub trait ExAsMut<T: std::marker::PointeeSized>: std::marker::PointeeSized {
     type ExternalTraitSpecificationFor: std::convert::AsMut<T>;
 }
+
+// TODO: a function.rs for these, and perhaps lemmas
+
+/// This function encodes whether an `exec`-mode function `f` is deterministic.
+pub open spec fn is_deterministic<F, Args: Tuple>(f: F) -> bool 
+where 
+    F: FnMut<Args>,
+    Args: Tuple,
+{
+    forall |args: Args, o1: <F as FnOnce<Args>>::Output, o2: <F as FnOnce<Args>>::Output|
+        #![trigger call_ensures(f, args, o1), call_ensures(f, args, o2)]
+        call_requires(f, args) && call_ensures(f, args, o1) && call_ensures(f, args, o2) ==> o1 == o2
+}
+
+/// This function encodes whether an `exec`-mode function `f` is total.
+pub open spec fn is_total<F, Args: Tuple>(f: F) -> bool 
+where 
+    F: FnMut<Args>,
+    Args: Tuple,
+{
+    forall |args: Args| #[trigger] call_requires(f, args)
+}
+
+// use vstd::assert_by_contradiction;
+// fn test_is_deterministic() {
+//     let f1 = |x: i32| -> (ret: bool)
+//         ensures ret == (x > 0)
+//     { x > 0 };
+//     assert(is_deterministic(f1));
+
+//     let f2 = |x: &mut i32| -> (ret: bool)
+//         ensures ret == (*old(x) > 0)
+//     { 
+//         let ret = *x > 0;
+//         *x = 0;
+//         ret
+//     };
+//     assert(is_deterministic(f2));
+// }
 
 /// Used for a dummy one-term trigger.
 pub uninterp spec fn dummy<A>(a: A) -> ();

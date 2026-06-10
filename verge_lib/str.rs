@@ -107,7 +107,6 @@ impl BytesView for Seq<char> {
 }
 
 /// Full string lemmas.
-#[verifier::broadcast_use_by_default_when_this_crate_is_imported]
 pub broadcast group group_str_axioms {
     group_str_view,
     group_str_traits,
