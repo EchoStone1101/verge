@@ -550,6 +550,8 @@ pub assume_specification[ str::trim ](s: &str) -> (ret: &str)
         ret@.is_subrange_of(s@),
         ret@.len() > 0 ==> 
             !ret@.first().is_whitespace() && !ret@.last().is_whitespace(),
+        ret@ == s@.skip_while(|c: char| c.is_whitespace())
+                    .rskip_while(|c: char| c.is_whitespace()),
 ;
 
 /// Enables `str::trim_start`.
@@ -557,6 +559,8 @@ pub assume_specification[ str::trim_start ](s: &str) -> (ret: &str)
     ensures
         ret@.is_suffix_of(s@),
         ret@.len() > 0 ==> !ret@.first().is_whitespace(),
+        forall|i: int| 0 <= i < s@.len() - ret@.len()
+            ==> #[trigger] s@[i].is_whitespace(),
 ;
 
 /// Enables `str::trim_end`.
@@ -564,6 +568,8 @@ pub assume_specification[ str::trim_end ](s: &str) -> (ret: &str)
     ensures
         ret@.is_prefix_of(s@),
         ret@.len() > 0 ==> !ret@.last().is_whitespace(),
+        forall|i: int| ret@.len() <= i < s@.len()
+            ==> #[trigger] s@[i].is_whitespace(),
 ;
 
 /// Enables `str::trim_matches`.
@@ -664,18 +670,6 @@ pub assume_specification [ str::trim_ascii ] (s: &str) -> (ret: &str)
         },
         ret@.len() > 0 ==> !ret@.first().is_ascii_whitespace() && !ret@.last().is_ascii_whitespace(),
     no_unwind
-;
-
-/// Enable `str::replace`.
-pub assume_specification<P: Pattern> [ str::replace ] (s: &str, from: P, to: &str) -> (ret: String)
-    ensures 
-        str_replace_post(s@, from, to@, ret@),
-;
-
-/// Enable `str::replacen`.
-pub assume_specification<P: Pattern> [ str::replacen ] (s: &str, from: P, to: &str, count: usize) -> (ret: String)
-    ensures 
-        str_replacen_post(s@, from, to@, count as nat, ret@),
 ;
 
 /// Enable `str::repeat`.

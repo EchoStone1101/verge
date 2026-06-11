@@ -310,23 +310,6 @@ impl_iterator!(
     [ [str as View<V=Seq<char>>] :: split_ascii_whitespace_iter via split_ascii_whitespace ] 
     (&self,) -> |iter| {
         str_split_ascii_whitespace_iter_post(self@, iter)
-        // // splits cannot have whitespaces, and are not empty
-        // &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() ==> {
-        //     &&& seq[i]@.len() > 0
-        //     &&& forall |j: int| #![trigger seq[i]@[j]] 0 <= j < seq[i]@.len() ==> 
-        //             !seq[i]@[j].is_ascii_whitespace()
-        // }
-        // &&& exists |ws: Seq<Seq<char>>| {
-        //     // delimeters are all whitespaces
-        //     &&& #[trigger] ws.len() == seq.len() + 1
-        //     &&& forall |i: int| #![trigger ws[i]] 0 <= i < ws.len() ==> {
-        //         &&& 1 <= i < ws.len() - 1 ==> ws[i].len() > 0
-        //         &&& forall |j: int| #![trigger ws[i][j]] 0 <= j < ws[i].len() ==> 
-        //                 ws[i][j].is_ascii_whitespace()
-        //     }    
-        //     // delimeters and splits make up the original string
-        //     &&& self@ =~= join(ws, Seq::new(seq.len(), |i: int| seq[i]@))
-        // }
     }
 );
 

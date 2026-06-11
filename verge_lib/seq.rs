@@ -4,7 +4,7 @@ use vstd::prelude::*;
 use vstd::seq::*;
 use vstd::{calc, assert_by_contradiction};
 
-use crate::dummy;
+use crate::VergeView;
 
 verus! {
 
@@ -89,6 +89,14 @@ impl<A> SeqAdditionalSpec for Seq<A> {
     where Self::A: View,
         { Seq::new(self.len(), |i: int| self[i]@ ) }
 }
+
+// impl<A: View> VergeView for Seq<A> {
+//     type V = Seq<<A as View>::V>;
+
+//     open spec fn view(&self) -> Self::V {
+//         Seq::new(self.len(), |i: int| self[i]@)
+//     }
+// }
 
 // --- Related lemmas ---
 pub broadcast group group_seq_additional_lemmas {
