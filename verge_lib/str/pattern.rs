@@ -27,6 +27,9 @@ use crate::{is_deterministic, is_total, VergeView};
 use crate::seq::*;
 use crate::iter::*;
 use vstd::{calc, assert_seqs_equal};
+use vstd::seq_lib::{
+    lemma_flatten_concat, lemma_concat_associative,
+};
 
 use std::str::pattern::*;
 
@@ -345,7 +348,7 @@ pub open spec fn str_splitn_iter_post<'a, P: Pattern>(
     s: Seq<char>, n: usize, pat: P, iter_seq: Seq<&'a str>,
 ) -> bool {
     let (seq, gap) = spec_matches(s, pat);
-    &&& iter_seq.len() <= min(n as int, gap.len() as int)
+    &&& iter_seq.len() == min(n as int, gap.len() as int)
     &&& forall |i: int| 0 <= i < iter_seq.len() - 1 ==>
             #[trigger] iter_seq[i]@ == gap[i]
     &&& n > 0 ==> {
@@ -364,7 +367,7 @@ where
     for<'x> <P as Pattern>::Searcher<'x>: ReverseSearcher<'x>,
 {
     let (seq, gap) = spec_rmatches(s, pat);
-    &&& iter_seq.len() <= min(n as int, gap.len() as int)
+    &&& iter_seq.len() == min(n as int, gap.len() as int)
     &&& forall |i: int| 0 <= i < iter_seq.len() - 1 ==>
             #[trigger] iter_seq[i]@ == gap[i]
     &&& n > 0 ==> {
@@ -1386,11 +1389,11 @@ pub broadcast proof fn lemma_str_rfind_char(s: Seq<char>, ch: char, ret: Option<
             assert(parts.reverse().last() == parts.first());
             assert(parts.reverse().flatten_alt() == rest_parts.reverse().flatten_alt() + (gap[1] + seq[0]));
             assert(s == parts.reverse().flatten_alt() + gap[0]);
-            vstd::seq_lib::lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
+            lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
             assert(rest == rest_parts.reverse().flatten_alt() + gap[1]);
             assert(s == rest + seq[0] + gap[0]);
             assert(seq[0] == seq![ch]);
-            vstd::seq_lib::lemma_concat_associative(rest, seq[0], gap[0]);
+            lemma_concat_associative(rest, seq[0], gap[0]);
             assert(s == rest + (seq[0] + gap[0]));
             lemma_str_concat_lower(seq[0], gap[0]);
             lemma_str_concat_lower(rest, seq[0] + gap[0]);
@@ -1471,11 +1474,11 @@ pub broadcast proof fn lemma_str_rfind_closure<F>(s: Seq<char>, f: F, ret: Optio
             assert(parts.reverse().last() == parts.first());
             assert(parts.reverse().flatten_alt() == rest_parts.reverse().flatten_alt() + (gap[1] + seq[0]));
             assert(s == parts.reverse().flatten_alt() + gap[0]);
-            vstd::seq_lib::lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
+            lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
             assert(rest == rest_parts.reverse().flatten_alt() + gap[1]);
             assert(s == rest + seq[0] + gap[0]);
             assert(seq[0].len() == 1 && call_ensures(f, (seq[0][0],), true));
-            vstd::seq_lib::lemma_concat_associative(rest, seq[0], gap[0]);
+            lemma_concat_associative(rest, seq[0], gap[0]);
             assert(s == rest + (seq[0] + gap[0]));
             lemma_str_concat_lower(seq[0], gap[0]);
             lemma_str_concat_lower(rest, seq[0] + gap[0]);
@@ -1552,11 +1555,11 @@ pub broadcast proof fn lemma_str_rfind_chars<'b>(s: Seq<char>, chars: &'b [char]
             assert(parts.reverse().last() == parts.first());
             assert(parts.reverse().flatten_alt() == rest_parts.reverse().flatten_alt() + (gap[1] + seq[0]));
             assert(s == parts.reverse().flatten_alt() + gap[0]);
-            vstd::seq_lib::lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
+            lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
             assert(rest == rest_parts.reverse().flatten_alt() + gap[1]);
             assert(s == rest + seq[0] + gap[0]);
             assert(seq[0].len() == 1 && chars@.contains(seq[0][0]));
-            vstd::seq_lib::lemma_concat_associative(rest, seq[0], gap[0]);
+            lemma_concat_associative(rest, seq[0], gap[0]);
             assert(s == rest + (seq[0] + gap[0]));
             lemma_str_concat_lower(seq[0], gap[0]);
             lemma_str_concat_lower(rest, seq[0] + gap[0]);
@@ -1648,11 +1651,11 @@ pub broadcast proof fn lemma_str_rfind_string<'b>(s: Seq<char>, pat: &'b str, re
                 assert(parts.reverse().last() == parts.first());
                 assert(parts.reverse().flatten_alt() == rest_parts.reverse().flatten_alt() + (gap[1] + seq[0]));
                 assert(s == parts.reverse().flatten_alt() + gap[0]);
-                vstd::seq_lib::lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
+                lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
                 assert(rest == rest_parts.reverse().flatten_alt() + gap[1]);
                 assert(s == rest + seq[0] + gap[0]);
                 assert(seq[0] == pat@);
-                vstd::seq_lib::lemma_concat_associative(rest, seq[0], gap[0]);
+                lemma_concat_associative(rest, seq[0], gap[0]);
                 assert(s == rest + (seq[0] + gap[0]));
                 lemma_str_concat_lower(seq[0], gap[0]);
                 lemma_str_concat_lower(rest, seq[0] + gap[0]);
@@ -3601,7 +3604,49 @@ pub broadcast proof fn lemma_str_splitn_iter_char<'a>(s: Seq<char>, n: usize, ch
                     .map_values(|ss: &'a str| ss@.push(ch))
                     .flatten() + iter_seq.last()@,
 {
-    admit()
+    axiom_char_matches_post(s, ch);
+    reveal(str_splitn_iter_post);
+    let (seq, gap) = spec_matches(s, ch);
+    // #1
+    assert(iter_seq.len() <= n && (n > 0 ==> iter_seq.len() > 0));
+    // #2
+    assert forall |i: int| 0 <= i < iter_seq.len() - 1
+    implies !(#[trigger] iter_seq[i]@.contains(ch))
+    by { assert(!gap[i].contains(ch)) }
+    // #3
+    if iter_seq.len() < n {
+        assert(iter_seq.len() == gap.len());
+        calc!{
+            (==)
+            iter_seq.last()@; {}
+            join(seq.skip(iter_seq.len() - 1), gap.skip(iter_seq.len() - 1)); {}
+            join(seq![], seq![gap.last()]); {
+                reveal_with_fuel(Seq::<_>::flatten, 2);
+            }
+            gap.last();
+        }
+        assert(!gap.last().contains(ch));
+    }
+    // #4
+    if n > 0 {
+        let k = iter_seq.len() - 1;
+        assert(0 <= k <= seq.len());
+        lemma_join_split_at(seq, gap, k);
+        let join_parts = seq.take(k).map(|i: int, ss: Seq<char>| gap[i] + ss);
+        let iter_parts = iter_seq.drop_last().map_values(|ss: &'a str| ss@.push(ch));
+        assert_seqs_equal!(join_parts == iter_parts, i => {
+            assert(iter_seq.drop_last()[i]@ == iter_seq[i]@);
+            assert(iter_seq[i]@ == gap[i]);
+            assert(seq[i] =~= seq![ch]);
+        });
+        calc!{
+            (==)
+            s; {}
+            join(seq, gap); { lemma_join_split_at(seq, gap, k); }
+            join_parts.flatten() + join(seq.skip(k), gap.skip(k)); {}
+            iter_parts.flatten() + iter_seq.last()@;
+        }
+    }
 }
 
 /// Proof that links the full spec to `str::splitn` with a closure pattern.
@@ -3629,7 +3674,71 @@ pub broadcast proof fn lemma_str_splitn_iter_closure<'a, F>(s: Seq<char>, n: usi
                     .flatten() + iter_seq.last()@
         },
 {
-    admit()
+    axiom_closure_matches_post(s, f);
+    reveal(str_splitn_iter_post);
+    let (seq, gap) = spec_matches(s, f);
+    let gap_pred = |c: char| call_ensures(f, (c,), false);
+    // #1
+    assert(iter_seq.len() <= n && (n > 0 ==> iter_seq.len() > 0));
+    // #2
+    assert forall |i: int| 0 <= i < iter_seq.len() - 1
+    implies (#[trigger] iter_seq[i]@).all(|c: char| call_ensures(f, (c,), false))
+    by {
+        assert(iter_seq[i]@ == gap[i]);
+        assert(gap[i].all(gap_pred));
+    }
+    // #3
+    if iter_seq.len() < n {
+        assert(iter_seq.len() == gap.len());
+        calc!{
+            (==)
+            iter_seq.last()@; {}
+            join(seq.skip(iter_seq.len() - 1), gap.skip(iter_seq.len() - 1)); {}
+            join(seq![], seq![gap.last()]); {
+                reveal_with_fuel(Seq::<_>::flatten, 2);
+            }
+            gap.last();
+        }
+        assert(gap.last().all(gap_pred));
+    }
+    // #4
+    if n > 0 {
+        let delim = Seq::<char>::new((iter_seq.len() - 1) as nat, |i: int| seq[i][0]);
+        assert forall |i: int| 0 <= i < delim.len()
+            implies #[trigger] call_ensures(f, (delim[i],), true)
+        by {
+            assert(delim[i] == seq[i][0]);
+            assert(seq[i].len() == 1 && call_ensures(f, (seq[i][0],), true));
+        }
+        let k = iter_seq.len() - 1;
+        assert(0 <= k <= seq.len());
+        lemma_join_split_at(seq, gap, k);
+        let join_parts = seq.take(k).map(|i: int, ss: Seq<char>| gap[i] + ss);
+        let iter_parts = iter_seq.drop_last().map(|i: int, ss: &'a str| ss@.push(delim[i]));
+        assert_seqs_equal!(join_parts == iter_parts, i => {
+            assert(iter_seq.drop_last()[i]@ == iter_seq[i]@);
+            assert(iter_seq[i]@ == gap[i]);
+            assert(delim[i] == seq[i][0]);
+            assert(seq[i].len() == 1);
+            assert_seqs_equal!(seq[i] == seq![delim[i]]);
+        });
+        calc!{
+            (==)
+            s; {}
+            join(seq, gap); { lemma_join_split_at(seq, gap, k); }
+            join_parts.flatten() + join(seq.skip(k), gap.skip(k)); {}
+            iter_parts.flatten() + iter_seq.last()@;
+        }
+        assert(delim.len() == iter_seq.len() - 1);
+        assert(exists |d: Seq<char>| {
+            &&& #[trigger] d.len() == iter_seq.len() - 1
+            &&& forall |i: int| 0 <= i < d.len()
+                    ==> #[trigger] call_ensures(f, (d[i],), true)
+            &&& s == iter_seq.drop_last()
+                    .map(|i: int, ss: &'a str| ss@.push(d[i]))
+                    .flatten() + iter_seq.last()@
+        });
+    }
 }
 
 /// Proof that links the full spec to `str::splitn` with a `&[char]` pattern.
@@ -3654,7 +3763,71 @@ pub broadcast proof fn lemma_str_splitn_iter_chars<'a, 'b>(s: Seq<char>, n: usiz
                     .flatten() + iter_seq.last()@
         },
 {
-    admit()
+    axiom_chars_matches_post(s, chars);
+    reveal(str_splitn_iter_post);
+    let (seq, gap) = spec_matches(s, chars);
+    let gap_pred = |c: char| !chars@.contains(c);
+    // #1
+    assert(iter_seq.len() <= n && (n > 0 ==> iter_seq.len() > 0));
+    // #2
+    assert forall |i: int| 0 <= i < iter_seq.len() - 1
+    implies (#[trigger] iter_seq[i]@).all(|c: char| !chars@.contains(c))
+    by {
+        assert(iter_seq[i]@ == gap[i]);
+        assert(gap[i].all(gap_pred));
+    }
+    // #3
+    if iter_seq.len() < n {
+        assert(iter_seq.len() == gap.len());
+        calc!{
+            (==)
+            iter_seq.last()@; {}
+            join(seq.skip(iter_seq.len() - 1), gap.skip(iter_seq.len() - 1)); {}
+            join(seq![], seq![gap.last()]); {
+                reveal_with_fuel(Seq::<_>::flatten, 2);
+            }
+            gap.last();
+        }
+        assert(gap.last().all(gap_pred));
+    }
+    // #4
+    if n > 0 {
+        let delim = Seq::<char>::new((iter_seq.len() - 1) as nat, |i: int| seq[i][0]);
+        assert forall |i: int| 0 <= i < delim.len()
+            implies #[trigger] chars@.contains(delim[i])
+        by {
+            assert(delim[i] == seq[i][0]);
+            assert(seq[i].len() == 1 && chars@.contains(seq[i][0]));
+        }
+        let k = iter_seq.len() - 1;
+        assert(0 <= k <= seq.len());
+        lemma_join_split_at(seq, gap, k);
+        let join_parts = seq.take(k).map(|i: int, ss: Seq<char>| gap[i] + ss);
+        let iter_parts = iter_seq.drop_last().map(|i: int, ss: &'a str| ss@.push(delim[i]));
+        assert_seqs_equal!(join_parts == iter_parts, i => {
+            assert(iter_seq.drop_last()[i]@ == iter_seq[i]@);
+            assert(iter_seq[i]@ == gap[i]);
+            assert(delim[i] == seq[i][0]);
+            assert(seq[i].len() == 1);
+            assert_seqs_equal!(seq[i] == seq![delim[i]]);
+        });
+        calc!{
+            (==)
+            s; {}
+            join(seq, gap); { lemma_join_split_at(seq, gap, k); }
+            join_parts.flatten() + join(seq.skip(k), gap.skip(k)); {}
+            iter_parts.flatten() + iter_seq.last()@;
+        }
+        assert(delim.len() == iter_seq.len() - 1);
+        assert(exists |d: Seq<char>| {
+            &&& #[trigger] d.len() == iter_seq.len() - 1
+            &&& forall |i: int| 0 <= i < d.len()
+                    ==> #[trigger] chars@.contains(d[i])
+            &&& s == iter_seq.drop_last()
+                    .map(|i: int, ss: &'a str| ss@.push(d[i]))
+                    .flatten() + iter_seq.last()@
+        });
+    }
 }
 
 /// Proof that links the full spec to `str::splitn` with a string pattern.
@@ -3678,7 +3851,54 @@ pub broadcast proof fn lemma_str_splitn_iter_string<'a, 'b>(s: Seq<char>, n: usi
         // delimiters and splits make up the original string
         n > 0 ==> s == iter_seq.drop_last().map(|i: int, ss: &'a str| ss@ + pat@).flatten() + iter_seq.last()@,
 {
-    admit()
+    axiom_string_matches_post(s, pat);
+    reveal(str_splitn_iter_post);
+    let (seq, gap) = spec_matches(s, pat);
+    // #1
+    assert(iter_seq.len() <= n && (n > 0 ==> iter_seq.len() > 0));
+    // #2
+    assert forall |i: int| #![trigger iter_seq[i]@]
+        0 <= i < iter_seq.len() - 1 && iter_seq[i]@.len() > 0
+        implies !pat@.is_prefix_of(iter_seq[i]@ + pat@) && !pat@.is_infix_of(iter_seq[i]@ + pat@)
+    by {
+        assert(iter_seq[i]@ == gap[i]);
+        assert(gap[i].len() > 0 ==> !pat@.is_prefix_of(gap[i] + pat@) && !pat@.is_infix_of(gap[i] + pat@));
+    }
+    // #3
+    if iter_seq.len() < n {
+        assert(iter_seq.len() == gap.len());
+        calc!{
+            (==)
+            iter_seq.last()@; {}
+            join(seq.skip(iter_seq.len() - 1), gap.skip(iter_seq.len() - 1)); {}
+            join(seq![], seq![gap.last()]); {
+                reveal_with_fuel(Seq::<_>::flatten, 2);
+            }
+            gap.last();
+        }
+        assert(!(pat@.is_subrange_of(gap.last())));
+    }
+    // #4
+    if n > 0 {
+        let k = iter_seq.len() - 1;
+        assert(0 <= k <= seq.len());
+        lemma_join_split_at(seq, gap, k);
+        let join_parts = seq.take(k).map(|i: int, ss: Seq<char>| gap[i] + ss);
+        let iter_parts = iter_seq.drop_last().map(|i: int, ss: &'a str| ss@ + pat@);
+        assert_seqs_equal!(join_parts == iter_parts, i => {
+            assert(iter_seq.drop_last()[i]@ == iter_seq[i]@);
+            assert(iter_seq[i]@ == gap[i]);
+            assert(seq[i] =~= pat@);
+            assert(seq[i] == pat@);
+        });
+        calc!{
+            (==)
+            s; {}
+            join(seq, gap); { lemma_join_split_at(seq, gap, k); }
+            join_parts.flatten() + join(seq.skip(k), gap.skip(k)); {}
+            iter_parts.flatten() + iter_seq.last()@;
+        }
+    }
 }
 
 /// Proof that links the full spec to `str::rsplitn` with a `char` pattern.
@@ -3699,7 +3919,57 @@ pub broadcast proof fn lemma_str_rsplitn_iter_char<'a>(s: Seq<char>, n: usize, c
                     .map_values(|ss: &'a str| ss@.insert(0, ch))
                     .reverse().flatten(),
 {
-    admit()
+    axiom_char_rmatches_post(s, ch);
+    reveal(str_rsplitn_iter_post);
+    let (seq, gap) = spec_rmatches(s, ch);
+    let k = iter_seq.len() - 1;
+
+    assert(iter_seq.len() <= n && (n > 0 ==> iter_seq.len() > 0));
+    assert forall |i: int| 0 <= i < iter_seq.len() - 1
+        implies !(#[trigger] iter_seq[i]@.contains(ch))
+    by {
+        assert(iter_seq[i]@ == gap[i]);
+        assert(!gap[i].contains(ch));
+    }
+    if iter_seq.len() < n {
+        assert(iter_seq.len() == gap.len());
+        calc!{
+            (==)
+            iter_seq.last()@; {}
+            rjoin(seq.skip(k), gap.skip(k)); {}
+            rjoin(seq![], seq![gap.last()]); {
+                reveal_with_fuel(Seq::<_>::flatten_alt, 2);
+            }
+            gap.last();
+        }
+        assert(!gap.last().contains(ch));
+    }
+    if n > 0 {
+        assert(0 <= k <= seq.len());
+        lemma_rjoin_split_at(seq, gap, k);
+        let join_parts = seq.take(k).map(|i: int, ss: Seq<char>| ss + gap[i]);
+        let iter_parts = iter_seq.drop_last().map_values(|ss: &'a str| ss@.insert(0, ch));
+        assert_seqs_equal!(join_parts == iter_parts, i => {
+            let g = gap[i];
+            assert(iter_seq.drop_last()[i]@ == iter_seq[i]@);
+            assert(iter_seq[i]@ == g);
+            assert(seq[i] =~= seq![ch]);
+            assert(seq[i] == seq![ch]);
+            g.insert_ensures(0, ch);
+            assert_seqs_equal!(g.insert(0, ch) == seq![ch] + g);
+        });
+        assert(join_parts.reverse() == iter_parts.reverse());
+        iter_parts.reverse().lemma_flatten_and_flatten_alt_are_equivalent();
+        calc!{
+            (==)
+            s; {}
+            rjoin(seq, gap); { lemma_rjoin_split_at(seq, gap, k); }
+            rjoin(seq.skip(k), gap.skip(k)) + join_parts.reverse().flatten_alt(); {}
+            iter_seq.last()@ + join_parts.reverse().flatten_alt(); {}
+            iter_seq.last()@ + iter_parts.reverse().flatten_alt(); {}
+            iter_seq.last()@ + iter_parts.reverse().flatten();
+        }
+    }
 }
 
 /// Proof that links the full spec to `str::rsplitn` with a closure pattern.
@@ -3727,7 +3997,69 @@ pub broadcast proof fn lemma_str_rsplitn_iter_closure<'a, F>(s: Seq<char>, n: us
                     .reverse().flatten()
         },
 {
-    admit()
+    axiom_closure_rmatches_post(s, f);
+    reveal(str_rsplitn_iter_post);
+    let (seq, gap) = spec_rmatches(s, f);
+    let gap_pred = |c: char| call_ensures(f, (c,), false);
+    let k = iter_seq.len() - 1;
+
+    assert(iter_seq.len() <= n && (n > 0 ==> iter_seq.len() > 0));
+    assert forall |i: int| 0 <= i < iter_seq.len() - 1
+        implies (#[trigger] iter_seq[i]@).all(|c: char| call_ensures(f, (c,), false))
+    by {
+        assert(iter_seq[i]@ == gap[i]);
+        assert(gap[i].all(gap_pred));
+    }
+    if iter_seq.len() < n {
+        assert(iter_seq.len() == gap.len());
+        calc!{
+            (==)
+            iter_seq.last()@; {}
+            rjoin(seq.skip(k), gap.skip(k)); {}
+            rjoin(seq![], seq![gap.last()]); {
+                reveal_with_fuel(Seq::<_>::flatten_alt, 2);
+            }
+            gap.last();
+        }
+        assert(gap.last().all(gap_pred));
+    }
+    if n > 0 {
+        assert(0 <= k <= seq.len());
+        let delim = Seq::<char>::new(k as nat, |i: int| seq[i][0]);
+        assert(delim.len() == iter_seq.len() - 1);
+        assert forall |i: int| 0 <= i < delim.len()
+            implies #[trigger] call_ensures(f, (delim[i],), true)
+        by {
+            assert(delim[i] == seq[i][0]);
+            assert(seq[i].len() == 1 && call_ensures(f, (seq[i][0],), true));
+        }
+
+        lemma_rjoin_split_at(seq, gap, k);
+        let join_parts = seq.take(k).map(|i: int, ss: Seq<char>| ss + gap[i]);
+        let iter_parts = iter_seq.drop_last().map(|i: int, ss: &'a str| ss@.insert(0, delim[i]));
+        assert_seqs_equal!(join_parts == iter_parts, i => {
+            let g = gap[i];
+            let d = delim[i];
+            assert(iter_seq.drop_last()[i]@ == iter_seq[i]@);
+            assert(iter_seq[i]@ == g);
+            assert(d == seq[i][0]);
+            assert(seq[i].len() == 1);
+            assert_seqs_equal!(seq[i] == seq![d]);
+            g.insert_ensures(0, d);
+            assert_seqs_equal!(g.insert(0, d) == seq![d] + g);
+        });
+        assert(join_parts.reverse() == iter_parts.reverse());
+        iter_parts.reverse().lemma_flatten_and_flatten_alt_are_equivalent();
+        calc!{
+            (==)
+            s; {}
+            rjoin(seq, gap); { lemma_rjoin_split_at(seq, gap, k); }
+            rjoin(seq.skip(k), gap.skip(k)) + join_parts.reverse().flatten_alt(); {}
+            iter_seq.last()@ + join_parts.reverse().flatten_alt(); {}
+            iter_seq.last()@ + iter_parts.reverse().flatten_alt(); {}
+            iter_seq.last()@ + iter_parts.reverse().flatten();
+        }
+    }
 }
 
 /// Proof that links the full spec to `str::rsplitn` with a `&[char]` pattern.
@@ -3752,7 +4084,69 @@ pub broadcast proof fn lemma_str_rsplitn_iter_chars<'a, 'b>(s: Seq<char>, n: usi
                     .reverse().flatten()
         },
 {
-    admit()
+    axiom_chars_rmatches_post(s, chars);
+    reveal(str_rsplitn_iter_post);
+    let (seq, gap) = spec_rmatches(s, chars);
+    let gap_pred = |c: char| !chars@.contains(c);
+    let k = iter_seq.len() - 1;
+
+    assert(iter_seq.len() <= n && (n > 0 ==> iter_seq.len() > 0));
+    assert forall |i: int| 0 <= i < iter_seq.len() - 1
+        implies (#[trigger] iter_seq[i]@).all(|c: char| !chars@.contains(c))
+    by {
+        assert(iter_seq[i]@ == gap[i]);
+        assert(gap[i].all(gap_pred));
+    }
+    if iter_seq.len() < n {
+        assert(iter_seq.len() == gap.len());
+        calc!{
+            (==)
+            iter_seq.last()@; {}
+            rjoin(seq.skip(k), gap.skip(k)); {}
+            rjoin(seq![], seq![gap.last()]); {
+                reveal_with_fuel(Seq::<_>::flatten_alt, 2);
+            }
+            gap.last();
+        }
+        assert(gap.last().all(gap_pred));
+    }
+    if n > 0 {
+        assert(0 <= k <= seq.len());
+        let delim = Seq::<char>::new(k as nat, |i: int| seq[i][0]);
+        assert(delim.len() == iter_seq.len() - 1);
+        assert forall |i: int| 0 <= i < delim.len()
+            implies #[trigger] chars@.contains(delim[i])
+        by {
+            assert(delim[i] == seq[i][0]);
+            assert(seq[i].len() == 1 && chars@.contains(seq[i][0]));
+        }
+
+        lemma_rjoin_split_at(seq, gap, k);
+        let join_parts = seq.take(k).map(|i: int, ss: Seq<char>| ss + gap[i]);
+        let iter_parts = iter_seq.drop_last().map(|i: int, ss: &'a str| ss@.insert(0, delim[i]));
+        assert_seqs_equal!(join_parts == iter_parts, i => {
+            let g = gap[i];
+            let d = delim[i];
+            assert(iter_seq.drop_last()[i]@ == iter_seq[i]@);
+            assert(iter_seq[i]@ == g);
+            assert(d == seq[i][0]);
+            assert(seq[i].len() == 1);
+            assert_seqs_equal!(seq[i] == seq![d]);
+            g.insert_ensures(0, d);
+            assert_seqs_equal!(g.insert(0, d) == seq![d] + g);
+        });
+        assert(join_parts.reverse() == iter_parts.reverse());
+        iter_parts.reverse().lemma_flatten_and_flatten_alt_are_equivalent();
+        calc!{
+            (==)
+            s; {}
+            rjoin(seq, gap); { lemma_rjoin_split_at(seq, gap, k); }
+            rjoin(seq.skip(k), gap.skip(k)) + join_parts.reverse().flatten_alt(); {}
+            iter_seq.last()@ + join_parts.reverse().flatten_alt(); {}
+            iter_seq.last()@ + iter_parts.reverse().flatten_alt(); {}
+            iter_seq.last()@ + iter_parts.reverse().flatten();
+        }
+    }
 }
 
 /// Proof that links the full spec to `str::rsplitn` with a string pattern.
@@ -3778,7 +4172,55 @@ pub broadcast proof fn lemma_str_rsplitn_iter_string<'a, 'b>(s: Seq<char>, n: us
                         .map(|i: int, ss: &'a str| pat@ + ss@)
                         .reverse().flatten(),
 {
-    admit()
+    axiom_string_rmatches_post(s, pat);
+    reveal(str_rsplitn_iter_post);
+    let (seq, gap) = spec_rmatches(s, pat);
+    let k = iter_seq.len() - 1;
+
+    assert(iter_seq.len() <= n && (n > 0 ==> iter_seq.len() > 0));
+    assert forall |i: int| #![trigger iter_seq[i]@]
+        0 <= i < iter_seq.len() - 1 && iter_seq[i]@.len() > 0
+        implies !pat@.is_suffix_of(pat@ + iter_seq[i]@) && !pat@.is_infix_of(pat@ + iter_seq[i]@)
+    by {
+        assert(iter_seq[i]@ == gap[i]);
+        assert(gap[i].len() > 0 ==> !pat@.is_suffix_of(pat@ + gap[i]) && !pat@.is_infix_of(pat@ + gap[i]));
+    }
+    if iter_seq.len() < n {
+        assert(iter_seq.len() == gap.len());
+        calc!{
+            (==)
+            iter_seq.last()@; {}
+            rjoin(seq.skip(k), gap.skip(k)); {}
+            rjoin(seq![], seq![gap.last()]); {
+                reveal_with_fuel(Seq::<_>::flatten_alt, 2);
+            }
+            gap.last();
+        }
+        assert(!(pat@.is_subrange_of(gap.last())));
+    }
+    if n > 0 {
+        assert(0 <= k <= seq.len());
+        lemma_rjoin_split_at(seq, gap, k);
+        let join_parts = seq.take(k).map(|i: int, ss: Seq<char>| ss + gap[i]);
+        let iter_parts = iter_seq.drop_last().map(|i: int, ss: &'a str| pat@ + ss@);
+        assert_seqs_equal!(join_parts == iter_parts, i => {
+            assert(iter_seq.drop_last()[i]@ == iter_seq[i]@);
+            assert(iter_seq[i]@ == gap[i]);
+            assert(seq[i] =~= pat@);
+            assert(seq[i] == pat@);
+        });
+        assert(join_parts.reverse() == iter_parts.reverse());
+        iter_parts.reverse().lemma_flatten_and_flatten_alt_are_equivalent();
+        calc!{
+            (==)
+            s; {}
+            rjoin(seq, gap); { lemma_rjoin_split_at(seq, gap, k); }
+            rjoin(seq.skip(k), gap.skip(k)) + join_parts.reverse().flatten_alt(); {}
+            iter_seq.last()@ + join_parts.reverse().flatten_alt(); {}
+            iter_seq.last()@ + iter_parts.reverse().flatten_alt(); {}
+            iter_seq.last()@ + iter_parts.reverse().flatten();
+        }
+    }
 }
 
 /// Proof that links the full spec to `str::split_once` with a `char` pattern.
@@ -3821,7 +4263,7 @@ pub broadcast proof fn lemma_str_split_once_char<'a>(s: Seq<char>, ch: char, ret
             assert(parts.first() == seq[0] + gap[1]);
             assert_seqs_equal!(parts.drop_first() == rest_parts);
             assert(rest == gap[1] + rest_parts.flatten());
-            vstd::seq_lib::lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
+            lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
             assert(parts.flatten() == seq[0] + rest);
             assert(s == gap.first() + parts.flatten());
             assert(s == gap.first() + seq[0] + rest);
@@ -3889,7 +4331,7 @@ pub broadcast proof fn lemma_str_split_once_closure<'a, F>(s: Seq<char>, f: F, r
             assert(parts.first() == seq[0] + gap[1]);
             assert_seqs_equal!(parts.drop_first() == rest_parts);
             assert(rest == gap[1] + rest_parts.flatten());
-            vstd::seq_lib::lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
+            lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
             assert(parts.flatten() == seq[0] + rest);
             assert(s == gap.first() + parts.flatten());
             assert(s == head@ + seq[0] + tail@);
@@ -3960,7 +4402,7 @@ pub broadcast proof fn lemma_str_split_once_chars<'a, 'b>(s: Seq<char>, chars: &
             assert(parts.first() == seq[0] + gap[1]);
             assert_seqs_equal!(parts.drop_first() == rest_parts);
             assert(rest == gap[1] + rest_parts.flatten());
-            vstd::seq_lib::lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
+            lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
             assert(parts.flatten() == seq[0] + rest);
             assert(s == gap.first() + parts.flatten());
             assert(s == head@ + seq[0] + tail@);
@@ -4378,7 +4820,30 @@ pub broadcast proof fn lemma_str_matches_iter_string<'a, 'b>(s: Seq<char>, pat: 
             &&& s == iter_seq.map(|i: int, ss: &'a str| gap[i] + ss@).flatten() + gap.last()
         },
 {
-    admit()
+    axiom_string_matches_post(s, pat);
+    reveal(str_matches_iter_post);
+    let (seq, gap) = spec_matches(s, pat);
+    // #1
+    assert forall |i: int| 0 <= i < iter_seq.len()
+    implies #[trigger] iter_seq[i]@ == pat@
+    by { assert(iter_seq[i]@ =~= pat@) }
+    // #2
+    assert(iter_seq.len() == 0 <==> !pat@.is_subrange_of(s)) by {
+        assert(iter_seq.len() == seq.len());
+        reveal(str_contains_post);
+        lemma_str_contains_string(s, pat, seq.len() > 0);
+    }
+    // #3
+    assert(gap.len() == iter_seq.len() + 1);
+    assert forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() - 1 && gap[i].len() > 0
+    implies !pat@.is_prefix_of(gap[i] + pat@) && !pat@.is_infix_of(gap[i] + pat@)
+    by {}
+    assert(s == iter_seq.map(|i: int, ss: &'a str| gap[i] + ss@).flatten() + gap.last()) by {
+        lemma_join_alt(seq, gap);
+        let s1 = iter_seq.map(|i: int, ss: &'a str| gap[i] + ss@);
+        let s2 = seq.map(|i: int, ss: Seq<char>| gap[i] + ss);
+        assert_seqs_equal!(s1 == s2);
+    }
 }
 
 /// Proof that links the full spec to `str::rmatches` with a `char` pattern.
@@ -4506,7 +4971,59 @@ pub broadcast proof fn lemma_str_rmatches_iter_string<'a, 'b>(s: Seq<char>, pat:
             &&& s == gap.last() + iter_seq.map(|i: int, ss: &'a str| ss@ + gap[i]).reverse().flatten()
         },
 {
-    admit()
+    axiom_string_rmatches_post(s, pat);
+    reveal(str_rmatches_iter_post);
+    let (seq, gap) = spec_rmatches(s, pat);
+    // #1
+    assert forall |i: int| 0 <= i < iter_seq.len()
+    implies #[trigger] iter_seq[i]@ == pat@
+    by {
+        assert(iter_seq[i]@ == seq[i]);
+        assert(seq[i] =~= pat@);
+    }
+    // #2
+    assert(iter_seq.len() == 0 <==> !pat@.is_subrange_of(s)) by {
+        assert(iter_seq.len() == seq.len());
+        if iter_seq.len() == 0 {
+            assert(gap.len() == 1);
+            reveal_with_fuel(Seq::<_>::flatten_alt, 2);
+            assert(s == gap.last());
+            assert(!pat@.is_subrange_of(gap.last()));
+        }
+        if !pat@.is_subrange_of(s) {
+            assert_by_contradiction!(iter_seq.len() == 0, {
+                assert(seq.len() > 0);
+                assert(seq[0] == pat@);
+                lemma_rjoin_uncons(seq, gap);
+                let rest = rjoin(seq.skip(1), gap.skip(1));
+                lemma_concat_associative(rest, seq[0], gap[0]);
+                assert(s == rest + (seq[0] + gap[0]));
+                assert(seq[0] =~= s.subrange(rest.len() as int, rest.len() + seq[0].len() as int));
+                assert(seq[0].is_subrange_of(s)) by {
+                    assert(exists |i: int| 0 <= i <= s.len() - seq[0].len()
+                        && seq[0] =~= #[trigger] s.subrange(i, i + seq[0].len()));
+                }
+                assert(pat@.is_subrange_of(s));
+            });
+        }
+    }
+    // #3
+    assert(gap.len() == iter_seq.len() + 1);
+    assert forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() - 1 && gap[i].len() > 0
+    implies !pat@.is_suffix_of(pat@ + gap[i]) && !pat@.is_infix_of(pat@ + gap[i])
+    by {}
+    assert(s == gap.last() + iter_seq.map(|i: int, ss: &'a str| ss@ + gap[i]).reverse().flatten()) by {
+        lemma_rjoin_alt_for_matches(seq, gap);
+        let s1 = iter_seq.map(|i: int, ss: &'a str| ss@ + gap[i]);
+        let s2 = seq.map(|i: int, ss: Seq<char>| ss + gap[i]);
+        assert_seqs_equal!(s1 == s2, i => {
+            assert(iter_seq[i]@ == seq[i]);
+            assert(seq[i] == pat@);
+        });
+        assert(s1.reverse() == s2.reverse());
+        s1.reverse().lemma_flatten_and_flatten_alt_are_equivalent();
+        assert(s2.reverse().flatten_alt() == s1.reverse().flatten());
+    }
 }
 
 /// Proof that links the full spec to `str::match_indices` with a `char` pattern.
@@ -4962,7 +5479,7 @@ pub broadcast proof fn lemma_str_strip_prefix_char<'a>(s: Seq<char>, ch: char, r
             assert(parts.first() == seq[0] + gap[1]);
             assert_seqs_equal!(parts.drop_first() == rest_parts);
             assert(rest == gap[1] + rest_parts.flatten());
-            vstd::seq_lib::lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
+            lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
             assert(parts.flatten() == seq[0] + rest);
             assert(s == parts.flatten());
             assert(s == seq[0] + rest);
@@ -5029,7 +5546,7 @@ pub broadcast proof fn lemma_str_strip_prefix_closure<'a, F>(s: Seq<char>, f: F,
             assert(parts.first() == seq[0] + gap[1]);
             assert_seqs_equal!(parts.drop_first() == rest_parts);
             assert(rest == gap[1] + rest_parts.flatten());
-            vstd::seq_lib::lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
+            lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
             assert(parts.flatten() == seq[0] + rest);
             assert(s == parts.flatten());
             assert(s == seq[0] + rest);
@@ -5092,7 +5609,7 @@ pub broadcast proof fn lemma_str_strip_prefix_chars<'a, 'b>(s: Seq<char>, chars:
             assert(parts.first() == seq[0] + gap[1]);
             assert_seqs_equal!(parts.drop_first() == rest_parts);
             assert(rest == gap[1] + rest_parts.flatten());
-            vstd::seq_lib::lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
+            lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
             assert(parts.flatten() == seq[0] + rest);
             assert(s == parts.flatten());
             assert(s == seq[0] + rest);
@@ -5143,7 +5660,7 @@ pub broadcast proof fn lemma_str_strip_prefix_string<'a, 'b>(s: Seq<char>, pat: 
                         assert(parts.len() > 0);
                         assert(parts.first() == seq[0] + gap[1]);
                         assert(s == gap[0] + parts.flatten());
-                        vstd::seq_lib::lemma_concat_associative(gap[0], seq[0], gap[1]);
+                        lemma_concat_associative(gap[0], seq[0], gap[1]);
                         assert(s == (gap[0] + pat@ + gap[1]) + parts.drop_first().flatten());
                         assert((gap[0] + pat@).is_prefix_of(s));
                         assert(pat@.is_prefix_of(gap[0] + pat@));
@@ -5168,7 +5685,7 @@ pub broadcast proof fn lemma_str_strip_prefix_string<'a, 'b>(s: Seq<char>, pat: 
             assert(parts.first() == seq[0] + gap[1]);
             assert_seqs_equal!(parts.drop_first() == rest_parts);
             assert(rest == gap[1] + rest_parts.flatten());
-            vstd::seq_lib::lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
+            lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
             assert(parts.flatten() == seq[0] + rest);
             assert(s == gap[0] + parts.flatten());
             assert(gap[0] == Seq::<char>::empty());
@@ -5231,7 +5748,7 @@ pub broadcast proof fn lemma_str_strip_suffix_char<'a>(s: Seq<char>, ch: char, r
             assert(parts.reverse().last() == parts.first());
             assert(parts.reverse().flatten_alt() == rest_parts.reverse().flatten_alt() + (gap[1] + seq[0]));
             assert(s == parts.reverse().flatten_alt() + gap[0]);
-            vstd::seq_lib::lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
+            lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
             assert(rest == rest_parts.reverse().flatten_alt() + gap[1]);
             assert(s == rest + seq[0] + gap[0]);
             assert(gap[0] == Seq::<char>::empty());
@@ -5302,7 +5819,7 @@ pub broadcast proof fn lemma_str_strip_suffix_closure<'a, F>(s: Seq<char>, f: F,
             assert(parts.reverse().last() == parts.first());
             assert(parts.reverse().flatten_alt() == rest_parts.reverse().flatten_alt() + (gap[1] + seq[0]));
             assert(s == parts.reverse().flatten_alt() + gap[0]);
-            vstd::seq_lib::lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
+            lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
             assert(rest == rest_parts.reverse().flatten_alt() + gap[1]);
             assert(s == rest + seq[0] + gap[0]);
             assert(gap[0] == Seq::<char>::empty());
@@ -5372,7 +5889,7 @@ pub broadcast proof fn lemma_str_strip_suffix_chars<'a, 'b>(s: Seq<char>, chars:
             assert(parts.reverse().last() == parts.first());
             assert(parts.reverse().flatten_alt() == rest_parts.reverse().flatten_alt() + (gap[1] + seq[0]));
             assert(s == parts.reverse().flatten_alt() + gap[0]);
-            vstd::seq_lib::lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
+            lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
             assert(rest == rest_parts.reverse().flatten_alt() + gap[1]);
             assert(s == rest + seq[0] + gap[0]);
             assert(gap[0] == Seq::<char>::empty());
@@ -5430,7 +5947,7 @@ pub broadcast proof fn lemma_str_strip_suffix_string<'a, 'b>(s: Seq<char>, pat: 
                         assert(parts.reverse().last() == parts.first());
                         assert(parts.reverse().flatten_alt() == parts.reverse().drop_last().flatten_alt() + parts.reverse().last());
                         assert(s == parts.reverse().flatten_alt() + gap[0]);
-                        vstd::seq_lib::lemma_concat_associative(parts.reverse().drop_last().flatten_alt(), gap[1], seq[0]);
+                        lemma_concat_associative(parts.reverse().drop_last().flatten_alt(), gap[1], seq[0]);
                         assert(s == (parts.reverse().drop_last().flatten_alt() + gap[1]) + pat@ + gap[0]);
                         assert((pat@ + gap[0]).is_suffix_of(s));
                         assert(pat@.is_suffix_of(pat@ + gap[0]));
@@ -5458,7 +5975,7 @@ pub broadcast proof fn lemma_str_strip_suffix_string<'a, 'b>(s: Seq<char>, pat: 
             assert(parts.reverse().last() == parts.first());
             assert(parts.reverse().flatten_alt() == rest_parts.reverse().flatten_alt() + (gap[1] + seq[0]));
             assert(s == parts.reverse().flatten_alt() + gap[0]);
-            vstd::seq_lib::lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
+            lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
             assert(rest == rest_parts.reverse().flatten_alt() + gap[1]);
             assert(s == rest + seq[0] + gap[0]);
             assert(gap[0] == Seq::<char>::empty());
@@ -5490,10 +6007,10 @@ proof fn lemma_join_uncons(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
     assert(parts.first() == seq[0] + gap[1]);
     assert_seqs_equal!(parts.drop_first() == rest_parts);
     assert(rest == gap[1] + rest_parts.flatten());
-    vstd::seq_lib::lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
+    lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
     assert(parts.flatten() == seq[0] + rest);
     assert(join(seq, gap) == gap[0] + parts.flatten());
-    vstd::seq_lib::lemma_concat_associative(gap[0], seq[0], rest);
+    lemma_concat_associative(gap[0], seq[0], rest);
     assert(join(seq, gap) == gap[0] + seq[0] + rest);
 }
 
@@ -5514,7 +6031,7 @@ proof fn lemma_rjoin_uncons(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
     assert_seqs_equal!(parts.reverse().drop_last() == rest_parts.reverse());
     assert(parts.reverse().last() == parts.first());
     assert(parts.reverse().flatten_alt() == rest_parts.reverse().flatten_alt() + (gap[1] + seq[0]));
-    vstd::seq_lib::lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
+    lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
     assert(rest == rest_parts.reverse().flatten_alt() + gap[1]);
     assert(rjoin(seq, gap) == parts.reverse().flatten_alt() + gap[0]);
     assert(rjoin(seq, gap) == rest + seq[0] + gap[0]);
@@ -5546,6 +6063,49 @@ proof fn lemma_join_alt(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
     }
 }
 
+proof fn lemma_join_split_at(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>, k: int)
+    requires
+        seq.len() + 1 == gap.len(),
+        0 <= k <= seq.len(),
+    ensures
+        join(seq, gap) == seq.take(k).map(|i: int, ss: Seq<char>| gap[i] + ss).flatten()
+            + join(seq.skip(k), gap.skip(k)),
+    decreases
+        k,
+{
+    if k == 0 {
+        assert_seqs_equal!(seq.skip(k) == seq);
+        assert_seqs_equal!(gap.skip(k) == gap);
+        assert(seq.take(k).map(|i: int, ss: Seq<char>| gap[i] + ss).len() == 0);
+        reveal_with_fuel(Seq::<_>::flatten, 2);
+    } else {
+        let rest_seq = seq.skip(1);
+        let rest_gap = gap.skip(1);
+        lemma_join_uncons(seq, gap);
+        lemma_join_split_at(rest_seq, rest_gap, k - 1);
+
+        let parts = seq.take(k).map(|i: int, ss: Seq<char>| gap[i] + ss);
+        let rest_parts = rest_seq.take(k - 1).map(|i: int, ss: Seq<char>| rest_gap[i] + ss);
+        assert(parts.len() > 0);
+        assert(parts.first() == gap[0] + seq[0]);
+        assert_seqs_equal!(parts.drop_first() == rest_parts, i => {
+            assert(parts.drop_first()[i] == parts[i + 1]);
+            assert(seq.take(k)[i + 1] == seq[i + 1]);
+            assert(rest_seq.take(k - 1)[i] == rest_seq[i]);
+            assert(rest_seq[i] == seq[i + 1]);
+            assert(rest_gap[i] == gap[i + 1]);
+        });
+        reveal_with_fuel(Seq::<_>::flatten, 2);
+        assert(parts.flatten() == (gap[0] + seq[0]) + rest_parts.flatten());
+        assert(join(seq, gap) == (gap[0] + seq[0]) + join(rest_seq, rest_gap));
+        assert(join(rest_seq, rest_gap) == rest_parts.flatten() + join(rest_seq.skip(k - 1), rest_gap.skip(k - 1)));
+        assert_seqs_equal!(rest_seq.skip(k - 1) == seq.skip(k));
+        assert_seqs_equal!(rest_gap.skip(k - 1) == gap.skip(k));
+        lemma_concat_associative(gap[0] + seq[0], rest_parts.flatten(), join(seq.skip(k), gap.skip(k)));
+        assert(join(seq, gap) == parts.flatten() + join(seq.skip(k), gap.skip(k)));
+    }
+}
+
 proof fn lemma_rjoin_alt(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
     requires
         seq.len() + 1 == gap.len(),
@@ -5557,6 +6117,84 @@ proof fn lemma_rjoin_alt(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
     assert_seqs_equal!(parts == alt_parts, i => {
         assert(gap.drop_first()[i] == gap[i + 1]);
     });
+}
+
+proof fn lemma_rjoin_alt_for_matches(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
+    requires
+        seq.len() + 1 == gap.len(),
+    ensures
+        rjoin(seq, gap) == gap.last() + seq.map(|i: int, ss: Seq<char>| ss + gap[i]).reverse().flatten_alt(),
+    decreases
+        seq.len(),
+{
+    if seq.len() == 0 {
+        assert(gap.last() == gap.first());
+        assert(seq.map(|i: int, ss: Seq<char>| ss + gap[i]).reverse().len() == 0);
+        reveal_with_fuel(Seq::<_>::flatten_alt, 2);
+    } else {
+        lemma_rjoin_uncons(seq, gap);
+        lemma_rjoin_alt_for_matches(seq.skip(1), gap.skip(1));
+
+        let parts = seq.map(|i: int, ss: Seq<char>| ss + gap[i]);
+        let rest_parts = seq.skip(1).map(|i: int, ss: Seq<char>| ss + gap.skip(1)[i]);
+        assert(parts.len() > 0);
+        assert(parts.first() == seq[0] + gap[0]);
+        assert_seqs_equal!(parts.drop_first() == rest_parts, i => {
+            assert(parts.drop_first()[i] == parts[i + 1]);
+            assert(seq.skip(1)[i] == seq[i + 1]);
+            assert(gap.skip(1)[i] == gap[i + 1]);
+        });
+        assert_seqs_equal!(parts.reverse().drop_last() == rest_parts.reverse());
+        assert(parts.reverse().last() == parts.first());
+        assert(parts.reverse().flatten_alt() == rest_parts.reverse().flatten_alt() + (seq[0] + gap[0]));
+        assert(rjoin(seq.skip(1), gap.skip(1)) == gap.last() + rest_parts.reverse().flatten_alt());
+        lemma_concat_associative(gap.last(), rest_parts.reverse().flatten_alt(), seq[0] + gap[0]);
+        assert(rjoin(seq, gap) == gap.last() + parts.reverse().flatten_alt());
+    }
+}
+
+proof fn lemma_rjoin_split_at(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>, k: int)
+    requires
+        seq.len() + 1 == gap.len(),
+        0 <= k <= seq.len(),
+    ensures
+        rjoin(seq, gap) == rjoin(seq.skip(k), gap.skip(k))
+            + seq.take(k).map(|i: int, ss: Seq<char>| ss + gap[i]).reverse().flatten_alt(),
+    decreases
+        k,
+{
+    if k == 0 {
+        assert_seqs_equal!(seq.skip(k) == seq);
+        assert_seqs_equal!(gap.skip(k) == gap);
+        assert(seq.take(k).map(|i: int, ss: Seq<char>| ss + gap[i]).reverse().len() == 0);
+        reveal_with_fuel(Seq::<_>::flatten_alt, 2);
+    } else {
+        let rest_seq = seq.skip(1);
+        let rest_gap = gap.skip(1);
+        lemma_rjoin_uncons(seq, gap);
+        lemma_rjoin_split_at(rest_seq, rest_gap, k - 1);
+
+        let parts = seq.take(k).map(|i: int, ss: Seq<char>| ss + gap[i]);
+        let rest_parts = rest_seq.take(k - 1).map(|i: int, ss: Seq<char>| ss + rest_gap[i]);
+        assert(parts.len() > 0);
+        assert(parts.first() == seq[0] + gap[0]);
+        assert_seqs_equal!(parts.drop_first() == rest_parts, i => {
+            assert(parts.drop_first()[i] == parts[i + 1]);
+            assert(seq.take(k)[i + 1] == seq[i + 1]);
+            assert(rest_seq.take(k - 1)[i] == rest_seq[i]);
+            assert(rest_seq[i] == seq[i + 1]);
+            assert(rest_gap[i] == gap[i + 1]);
+        });
+        assert_seqs_equal!(parts.reverse().drop_last() == rest_parts.reverse());
+        assert(parts.reverse().last() == parts.first());
+        assert(parts.reverse().flatten_alt() == rest_parts.reverse().flatten_alt() + (seq[0] + gap[0]));
+        assert(rjoin(seq, gap) == rjoin(rest_seq, rest_gap) + seq[0] + gap[0]);
+        assert(rjoin(rest_seq, rest_gap) == rjoin(rest_seq.skip(k - 1), rest_gap.skip(k - 1)) + rest_parts.reverse().flatten_alt());
+        assert_seqs_equal!(rest_seq.skip(k - 1) == seq.skip(k));
+        assert_seqs_equal!(rest_gap.skip(k - 1) == gap.skip(k));
+        lemma_concat_associative(rjoin(seq.skip(k), gap.skip(k)), rest_parts.reverse().flatten_alt(), seq[0] + gap[0]);
+        assert(rjoin(seq, gap) == rjoin(seq.skip(k), gap.skip(k)) + parts.reverse().flatten_alt());
+    }
 }
 
 // proof fn lemma_trim_start_matches_pred_rec(
@@ -5776,7 +6414,7 @@ proof fn lemma_rjoin_alt(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
 //         vstd::seq_lib::lemma_seq_empty_equality(gap[0]);
 //         assert(gap[0] =~= Seq::<char>::empty());
 //         assert(seq[0].len() == 1);
-//         vstd::seq_lib::lemma_concat_associative(rest_s, seq[0], gap[0]);
+//         lemma_concat_associative(rest_s, seq[0], gap[0]);
 //         assert(s == rest_s + seq[0]);
 //         assert(seq[0][0] == s.last());
 //         assert(ret.is_prefix_of(s));
@@ -5839,10 +6477,10 @@ proof fn lemma_str_matches_count(
         });
         reveal_with_fuel(Seq::<_>::flatten, 3);
         assert(rest == gap[1] + rest_parts.flatten());
-        vstd::seq_lib::lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
+        lemma_concat_associative(seq[0], gap[1], rest_parts.flatten());
         assert(parts.flatten() == seq[0] + rest);
         assert(join(seq, gap) == gap[0] + parts.flatten());
-        vstd::seq_lib::lemma_concat_associative(gap[0], seq[0], rest);
+        lemma_concat_associative(gap[0], seq[0], rest);
         assert(join(seq, gap) == gap[0] + seq[0] + rest);
         gap[0].lemma_all_neg_filter_empty(pred);
         assert(seq[0].filter(pred).len() == 1) by {
@@ -5902,9 +6540,9 @@ proof fn lemma_str_rmatches_count(
         assert(parts.reverse().flatten_alt() == rest_parts.reverse().flatten_alt() + (gap[1] + seq[0]));
         assert(rjoin(seq, gap) == parts.reverse().flatten_alt() + gap[0]);
         assert(rest == rest_parts.reverse().flatten_alt() + gap[1]);
-        vstd::seq_lib::lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
+        lemma_concat_associative(rest_parts.reverse().flatten_alt(), gap[1], seq[0]);
         assert(parts.reverse().flatten_alt() == rest + seq[0]);
-        vstd::seq_lib::lemma_concat_associative(rest, seq[0], gap[0]);
+        lemma_concat_associative(rest, seq[0], gap[0]);
         assert(rjoin(seq, gap) == rest + seq[0] + gap[0]);
         gap[0].lemma_all_neg_filter_empty(pred);
         assert(seq[0].filter(pred).len() == 1) by {
