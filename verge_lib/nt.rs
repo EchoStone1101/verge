@@ -40,6 +40,8 @@ broadcast group group_mod_properties_nt {
     lemma_mod_is_zero,
 }
 
+// TODO: now we have Set::<A>::range, this can be replaced
+
 /// This function defines the natural number range [lo, hi).
 /// It is useful in this module as a substitute of `set_lib::set_int_range`, 
 /// with the elements being `nat` instead of `int`.

@@ -2,6 +2,7 @@
 
 use vstd::prelude::*;
 use vstd::seq::*;
+use vstd::arithmetic::mul::*;
 use vstd::{calc, assert_by_contradiction};
 
 use crate::VergeView;
@@ -123,6 +124,56 @@ pub broadcast group group_seq_additional_lemmas {
     lemma_seq_count_while_lower_bound,
     lemma_seq_rcount_while_upper_bound,
     lemma_seq_rcount_while_lower_bound,
+}
+
+pub proof fn lemma_seq_flatten_same_length<A>(s: Seq<Seq<A>>, l: nat)
+    requires
+        forall |i: int| 0 <= i < s.len() ==> #[trigger] s[i].len() == l,
+    ensures
+        s.flatten().len() == s.len() * l,
+        forall |i: int| 0 <= i < s.len()
+            ==> #[trigger] s.flatten().subrange(i * l, (i + 1) * l) == s[i],
+    decreases
+        s.len(),
+{
+    if s.len() == 0 {
+        assert(s.flatten().len() == 0);
+        assert(s.len() * l == 0) by (compute);
+    } else {
+        assert(s.flatten() == s[0] + s.drop_first().flatten());
+        lemma_seq_flatten_same_length(s.drop_first(), l);
+        assert(s.flatten().len() == s.len() * l) by {
+            assert(s[0].len() == l);
+            assert(s.drop_first().flatten().len() == (s.len() - 1) * l);
+            lemma_mul_is_distributive_add_other_way(l as int, s.len() - 1, 1);
+        }
+        assert forall |i: int| 0 <= i < s.len() 
+        implies #[trigger] s.flatten().subrange(i * l, (i + 1) * l) == s[i]
+        by {
+            if i == 0 {
+                calc!{
+                    (==)
+                    s.flatten().subrange(i * l, (i + 1) * l); { broadcast use group_mul_properties; }
+                    s.flatten().subrange(0, l as int); { assert(s[0].len() == l) }
+                    s[0];
+                }
+            } else {
+                calc!{
+                    (==)
+                    s.flatten().subrange(i * l, (i + 1) * l); {
+                        broadcast use group_mul_properties;
+                        assert(s[0].len() == l);
+                        assert(i * l >= l);
+                        assert(s.flatten().skip(l as int) == s.drop_first().flatten());
+                    }
+                    s.drop_first().flatten().subrange(i * l - l, (i + 1) * l - l); { broadcast use group_mul_properties; }
+                    s.drop_first().flatten().subrange((i - 1) * l, (i - 1 + 1) * l); {}
+                    s.drop_first()[i - 1]; {}
+                    s[i];
+                }
+            }
+        }
+    }
 }
 
 /// Proof that if `s1` is an infix of `s`, then any subrange of `s1` is also an infix of `s`.

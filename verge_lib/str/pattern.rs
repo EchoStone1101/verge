@@ -1,25 +1,25 @@
 //! Specifications and lemmas for string pattern related operations.
 //!
 //! ## Specification Methodology
-//! To specify `str::split`, `str::contains`, and other methods that make use of 
+//! To specify `str::split`, `str::contains`, and other methods that make use of
 //! the `std::str::Pattern` trait, Verus adopts the "linking lemma" pattern,
 //! where generic post-conditions are captured via `uninterp spec` functions
-//! (e.g., `str_contains_post`). Then, broadcast lemmas use the general 
-//! specs as triggers to automatically introduce actual specs per pattern type 
-//! (e.g., `lemma_str_contains_str` for `&str` patterns, `lemma_str_contains_char` 
-//! for `char` patterns). This design minimizes both spec redundancy and user burden 
+//! (e.g., `str_contains_post`). Then, broadcast lemmas use the general
+//! specs as triggers to automatically introduce actual specs per pattern type
+//! (e.g., `lemma_str_contains_str` for `&str` patterns, `lemma_str_contains_char`
+//! for `char` patterns). This design minimizes both spec redundancy and user burden
 //! (thanks to automatic broadcasting).
 //!
 //! Additionally, while the lemma post-conditions are meant to be complete (in that they
-//! uniquely define the output), Verge cannot predict all forms of wanted specs, 
-//! which can be particularly a problem for the more intricate APIs (e.g., `str::split` 
-//! with `&str` patterns). In this case, it is helpful to understand that all the 
-//! immediate post-conditions are internally derived from the forward and backward 
+//! uniquely define the output), Verge cannot predict all forms of wanted specs,
+//! which can be particularly a problem for the more intricate APIs (e.g., `str::split`
+//! with `&str` patterns). In this case, it is helpful to understand that all the
+//! immediate post-conditions are internally derived from the forward and backward
 //! pattern matching operations (`spec_matches` and `spec_rmatches`), serving as
-//! a complete and basic spec foundation. 
-//! By default this is hidden by `#[verifier::opaque]`, but could be `reveal`-ed 
-//! to help prove alternative specs in certain contexts (e.g., more intuitive `str::split` 
-//! specs when `pat@.len() == 1`), or show consistency between APIs (e.g., `str::split` and 
+//! a complete and basic spec foundation.
+//! By default this is hidden by `#[verifier::opaque]`, but could be `reveal`-ed
+//! to help prove alternative specs in certain contexts (e.g., more intuitive `str::split`
+//! specs when `pat@.len() == 1`), or show consistency between APIs (e.g., `str::split` and
 //! `str::matches` join into the original string).
 
 use super::*;
@@ -27,6 +27,7 @@ use crate::{is_deterministic, is_total, VergeView};
 use crate::seq::*;
 use crate::iter::*;
 use vstd::{calc, assert_seqs_equal};
+use vstd::arithmetic::mul::*;
 use vstd::seq_lib::{
     lemma_flatten_concat, lemma_concat_associative,
 };
@@ -63,14 +64,14 @@ pub trait ExDoubleEndedSearcher<'a>: ReverseSearcher<'a> {
 #[verifier::inline]
 pub open spec fn char_matches_post(
     s: Seq<char>, c: char, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
-) -> bool 
+) -> bool
 {
     // gaps are never empty
     &&& gap.len() > 0
     // gaps cannot contain the pattern
     &&& forall |i: int| 0 <= i < gap.len() ==> !(#[trigger] gap[i].contains(c))
     // matches have one item less than gaps
-    &&& seq.len() + 1 == gap.len() 
+    &&& seq.len() + 1 == gap.len()
     // matches match the pattern
     &&& forall |i: int| 0 <= i < seq.len() ==> #[trigger] (seq[i] =~= seq![c])
 }
@@ -79,8 +80,8 @@ pub open spec fn char_matches_post(
 #[verifier::inline]
 pub open spec fn closure_matches_post<F>(
     s: Seq<char>, f: F, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
-) -> bool 
-    where 
+) -> bool
+    where
         F: FnMut(char) -> bool,
     recommends
         is_deterministic(f) && is_total(f),
@@ -88,12 +89,12 @@ pub open spec fn closure_matches_post<F>(
     // gaps are never empty
     &&& gap.len() > 0
     // gaps cannot contain the pattern
-    &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() ==> 
+    &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() ==>
         gap[i].all(|c: char| call_ensures(f, (c,), false))
     // matches have one item less than gaps
-    &&& seq.len() + 1 == gap.len() 
+    &&& seq.len() + 1 == gap.len()
     // matches match the pattern
-    &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() ==> 
+    &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() ==>
         seq[i].len() == 1 && call_ensures(f, (seq[i][0],), true)
 }
 
@@ -101,17 +102,17 @@ pub open spec fn closure_matches_post<F>(
 #[verifier::inline]
 pub open spec fn chars_matches_post(
     s: Seq<char>, chars: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
-) -> bool 
+) -> bool
 {
     // gaps are never empty
     &&& gap.len() > 0
     // gaps cannot contain the pattern
-    &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() ==> 
+    &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() ==>
         gap[i].all(|c: char| !chars.contains(c))
     // matches have one item less than gaps
-    &&& seq.len() + 1 == gap.len() 
+    &&& seq.len() + 1 == gap.len()
     // matches match the pattern
-    &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() ==> 
+    &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() ==>
         seq[i].len() == 1 && chars.contains(seq[i][0])
 }
 
@@ -119,15 +120,15 @@ pub open spec fn chars_matches_post(
 #[verifier::inline]
 pub open spec fn empty_string_matches_post(
     s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
-) -> bool 
+) -> bool
 {
     // "ab..z" => gap = ["", "a", "b", ..., "z", ""]
     &&& seq.len() == s.len() + 1
     &&& gap.len() == s.len() + 2
-    &&& forall |i: int| 0 <= i < seq.len() ==> 
+    &&& forall |i: int| 0 <= i < seq.len() ==>
         #[trigger] seq[i].len() == 0
     &&& gap.first().len() == 0 && gap.last().len() == 0
-    &&& forall |i: int| 1 <= i < gap.len() - 1 ==> 
+    &&& forall |i: int| 1 <= i < gap.len() - 1 ==>
         #[trigger] gap[i] == seq![s[i-1]]
 }
 
@@ -135,22 +136,22 @@ pub open spec fn empty_string_matches_post(
 #[verifier::inline]
 pub open spec fn string_matches_post(
     s: Seq<char>, pat: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
-) -> bool 
+) -> bool
 {
-    // corner case: empty string matching 
+    // corner case: empty string matching
     &&& pat.len() == 0 ==> empty_string_matches_post(s, seq, gap)
     // general matching
     &&& pat.len() > 0 ==> {
         // gaps are never empty
         &&& gap.len() > 0
         // `gap + pat` (apart from the last) cannot have `pat` as a prefix or infix
-        &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() - 1 
-            ==> gap[i].len() > 0 
+        &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() - 1
+            ==> gap[i].len() > 0
                 ==> !pat.is_prefix_of(gap[i] + pat) && !pat.is_infix_of(gap[i] + pat)
         // last gap cannot have `pat` as a substring
         &&& !(pat.is_subrange_of(gap.last()))
         // matches have one item less than gaps
-        &&& seq.len() + 1 == gap.len() 
+        &&& seq.len() + 1 == gap.len()
         // matches match the pattern
         &&& forall |i: int| 0 <= i < seq.len() ==> #[trigger] (seq[i] =~= pat)
     }
@@ -160,22 +161,22 @@ pub open spec fn string_matches_post(
 #[verifier::inline]
 pub open spec fn string_rmatches_post(
     s: Seq<char>, pat: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
-) -> bool 
+) -> bool
 {
-    // corner case: empty string matching 
+    // corner case: empty string matching
     &&& pat.len() == 0 ==> empty_string_matches_post(s, seq, gap)
     // general matching
     &&& pat.len() > 0 ==> {
         // gaps are never empty, and there are at most `n` splits
         &&& gap.len() > 0
         // `pat + gap` (apart from the last) cannot have `pat` as a suffix or infix
-        &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() - 1 
-            ==> gap[i].len() > 0 
+        &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() - 1
+            ==> gap[i].len() > 0
                 ==> !pat.is_suffix_of(pat + gap[i]) && !pat.is_infix_of(pat + gap[i])
         // last gap cannot have `pat` as a substring
         &&& !(pat.is_subrange_of(gap.last()))
         // matches have one item less than gaps
-        &&& seq.len() + 1 == gap.len() 
+        &&& seq.len() + 1 == gap.len()
         // matches match the pattern
         &&& forall |i: int| 0 <= i < seq.len() ==> #[trigger] (seq[i] =~= pat)
     }
@@ -235,8 +236,8 @@ pub open spec fn str_starts_with_post<P: Pattern>(s: Seq<char>, pat: P, ret: boo
 
 /// Encodes `str::ends_with` for general patterns.
 #[verifier::opaque]
-pub open spec fn str_ends_with_post<P>(s: Seq<char>, pat: P, ret: bool) -> bool 
-    where 
+pub open spec fn str_ends_with_post<P>(s: Seq<char>, pat: P, ret: bool) -> bool
+    where
         P: Pattern,
         for<'b> <P as Pattern>::Searcher<'b>: ReverseSearcher<'b>,
 {
@@ -254,8 +255,8 @@ pub open spec fn str_find_post<P: Pattern>(s: Seq<char>, pat: P, ret: Option<usi
 
 /// Encodes `str::rfind` for general patterns.
 #[verifier::opaque]
-pub open spec fn str_rfind_post<P>(s: Seq<char>, pat: P, ret: Option<usize>) -> bool 
-    where 
+pub open spec fn str_rfind_post<P>(s: Seq<char>, pat: P, ret: Option<usize>) -> bool
+    where
         P: Pattern,
         for<'a> <P as Pattern>::Searcher<'a>: ReverseSearcher<'a>,
 {
@@ -282,14 +283,14 @@ pub open spec fn str_split_inclusive_iter_post<'a, P: Pattern>(
     &&& forall |i: int| 0 <= i < seq.len() ==>
             #[trigger] iter_seq[i]@ == gap[i] + seq[i]
     &&& gap.last().len() == 0 ==> iter_seq.len() == seq.len()
-    &&& gap.last().len() > 0 ==> 
+    &&& gap.last().len() > 0 ==>
             iter_seq.len() == seq.len() + 1 && iter_seq.last()@ == gap.last()
 }
 
 /// Encodes `str::rsplit_iter` for general patterns.
 #[verifier::opaque]
-pub open spec fn str_rsplit_iter_post<'a, P>(s: Seq<char>, pat: P, iter_seq: Seq<&'a str>) -> bool 
-where 
+pub open spec fn str_rsplit_iter_post<'a, P>(s: Seq<char>, pat: P, iter_seq: Seq<&'a str>) -> bool
+where
     P: Pattern,
     <P as Pattern>::Searcher<'a>: ReverseSearcher<'a>,
 {
@@ -308,16 +309,16 @@ pub open spec fn str_split_terminator_iter_post<'a, P: Pattern>(
     &&& forall |i: int| 0 <= i < seq.len() ==>
             #[trigger] iter_seq[i]@ == gap[i]
     &&& gap.last().len() == 0 ==> iter_seq.len() == seq.len()
-    &&& gap.last().len() > 0 ==> 
+    &&& gap.last().len() > 0 ==>
             iter_seq.len() == seq.len() + 1 && iter_seq.last()@ == gap.last()
 }
 
 /// Encodes `str::rsplit_terminator_iter` for general patterns.
 ///
-/// CAVEAT: compared to `str::rsplit`, `str::rsplit_terminator` skips the 
-/// "last" item if it is empty. While the matching happens in reverse, 
+/// CAVEAT: compared to `str::rsplit`, `str::rsplit_terminator` skips the
+/// "last" item if it is empty. While the matching happens in reverse,
 /// the term "last" still refers to the left-to-right order.
-/// In other words, `str::rsplit_terminator` actually skips the *first* item 
+/// In other words, `str::rsplit_terminator` actually skips the *first* item
 /// that `str::rsplit` would yield if it is empty. For example:
 /// ```ignore
 /// let vec = "aaaaa".rsplit_terminator("aa").collect::<Vec<_>>();
@@ -326,19 +327,19 @@ pub open spec fn str_split_terminator_iter_post<'a, P: Pattern>(
 #[verifier::opaque]
 pub open spec fn str_rsplit_terminator_iter_post<'a, P>(
     s: Seq<char>, pat: P, iter_seq: Seq<&'a str>,
-) -> bool 
+) -> bool
 where
     P: Pattern,
     for<'x> <P as Pattern>::Searcher<'x>: ReverseSearcher<'x>,
 {
     let (seq, gap) = spec_rmatches(s, pat);
-    &&& gap.first().len() == 0 ==> 
+    &&& gap.first().len() == 0 ==>
         iter_seq.len() == gap.len() - 1
-        && forall |i: int| 0 <= i < iter_seq.len() 
+        && forall |i: int| 0 <= i < iter_seq.len()
             ==> #[trigger] iter_seq[i]@ == gap[i+1]
-    &&& gap.first().len() > 0 ==> 
+    &&& gap.first().len() > 0 ==>
         iter_seq.len() == gap.len()
-        && forall |i: int| 0 <= i < iter_seq.len() 
+        && forall |i: int| 0 <= i < iter_seq.len()
             ==> #[trigger] iter_seq[i]@ == gap[i]
 }
 
@@ -361,7 +362,7 @@ pub open spec fn str_splitn_iter_post<'a, P: Pattern>(
 #[verifier::opaque]
 pub open spec fn str_rsplitn_iter_post<'a, P>(
     s: Seq<char>, n: usize, pat: P, iter_seq: Seq<&'a str>,
-) -> bool 
+) -> bool
 where
     P: Pattern,
     for<'x> <P as Pattern>::Searcher<'x>: ReverseSearcher<'x>,
@@ -395,7 +396,7 @@ pub open spec fn str_split_once_post<'a, P: Pattern>(
 #[verifier::opaque]
 pub open spec fn str_rsplit_once_post<'a, P>(
     s: Seq<char>, delimiter: P, ret: Option<(&'a str, &'a str)>,
-) -> bool 
+) -> bool
 where
     P: Pattern,
     for<'x> <P as Pattern>::Searcher<'x>: ReverseSearcher<'x>,
@@ -405,7 +406,7 @@ where
     &&& ret is Some ==> {
         let (head, tail) = ret->0;
         &&& seq.len() > 0
-        &&& head@ == rjoin(seq.skip(1), gap.skip(1)) 
+        &&& head@ == rjoin(seq.skip(1), gap.skip(1))
         &&& tail@ =~= gap.first()
     }
 }
@@ -449,8 +450,8 @@ pub open spec fn str_matches_iter_post<'a, P: Pattern>(
 #[verifier::opaque]
 pub open spec fn str_rmatches_iter_post<'a, P>(
     s: Seq<char>, pat: P, iter_seq: Seq<&'a str>,
-) -> bool 
-where 
+) -> bool
+where
     P: Pattern,
     <P as Pattern>::Searcher<'a>: ReverseSearcher<'a>,
 {
@@ -476,15 +477,15 @@ pub open spec fn str_match_indices_iter_post<'a, P: Pattern>(
 #[verifier::opaque]
 pub open spec fn str_rmatch_indices_iter_post<'a, P>(
     s: Seq<char>, pat: P, iter_seq: Seq<(usize, &'a str)>,
-) -> bool 
-where 
+) -> bool
+where
     P: Pattern,
     <P as Pattern>::Searcher<'a>: ReverseSearcher<'a>,
 {
     let (seq, gap) = spec_rmatches(s, pat);
     &&& iter_seq.len() == seq.len()
     &&& forall |i: int| 0 <= i < iter_seq.len() ==>
-            #[trigger] iter_seq[i].0 == s.as_bytes().len() - join(seq.take(i), gap.take(i + 1)).as_bytes().len()
+            #[trigger] iter_seq[i].0 == rjoin(seq.skip(i+1), gap.skip(i+1)).as_bytes().len()
             && #[trigger] iter_seq[i].1@ == seq[i]
 }
 
@@ -492,8 +493,8 @@ where
 #[verifier::opaque]
 pub open spec fn str_trim_matches_post<'a, P: Pattern>(
     s: Seq<char>, pat: P, ret: Seq<char>,
-) -> bool 
-where 
+) -> bool
+where
     P: Pattern,
     <P as Pattern>::Searcher<'a>: DoubleEndedSearcher<'a>,
 {
@@ -504,7 +505,7 @@ where
         let head = gap.count_while(|ss: Seq<char>| ss.len() == 0);
         let tail = gap.rcount_while(|ss: Seq<char>| ss.len() == 0);
         ret == join(
-            seq.subrange(head as int, seq.len() - tail), 
+            seq.subrange(head as int, seq.len() - tail),
             gap.subrange(head as int, gap.len() - tail),
         )
     }
@@ -531,8 +532,8 @@ pub open spec fn str_trim_start_matches_post<'a, P: Pattern>(
 #[verifier::opaque]
 pub open spec fn str_trim_end_matches_post<'a, P>(
     s: Seq<char>, pat: P, ret: Seq<char>,
-) -> bool 
-where 
+) -> bool
+where
     P: Pattern,
     <P as Pattern>::Searcher<'a>: ReverseSearcher<'a>,
 {
@@ -555,8 +556,8 @@ pub open spec fn str_strip_prefix_post<'a, P: Pattern>(
 ) -> bool {
     let (seq, gap) = spec_matches(s, pat);
     match ret {
-        Some(o) => 
-            seq.len() > 0 
+        Some(o) =>
+            seq.len() > 0
             && gap.first().len() == 0
             && o@ == join(seq.skip(1), gap.skip(1)),
         None => seq.len() == 0 || gap.first().len() > 0,
@@ -567,15 +568,15 @@ pub open spec fn str_strip_prefix_post<'a, P: Pattern>(
 #[verifier::opaque]
 pub open spec fn str_strip_suffix_post<'a, P: Pattern>(
     s: Seq<char>, pat: P, ret: Option<&'a str>,
-) -> bool 
-where 
+) -> bool
+where
     P: Pattern,
     <P as Pattern>::Searcher<'a>: ReverseSearcher<'a>,
 {
     let (seq, gap) = spec_rmatches(s, pat);
     match ret {
-        Some(o) => 
-            seq.len() > 0 
+        Some(o) =>
+            seq.len() > 0
             && gap.first().len() == 0
             && o@ == rjoin(seq.skip(1), gap.skip(1)),
         None => seq.len() == 0 || gap.first().len() > 0,
@@ -598,7 +599,7 @@ pub broadcast axiom fn axiom_char_matches_post(s: Seq<char>, pat: char)
             &&& char_matches_post(s, pat, seq, gap)
             &&& s == join(seq, gap)
         });
-        
+
 /// Axiom that links `spec_rmatches` with concrete specs for the `char` pattern.
 pub broadcast axiom fn axiom_char_rmatches_post(s: Seq<char>, pat: char)
     ensures
@@ -620,7 +621,7 @@ pub broadcast axiom fn axiom_closure_matches_post<F: FnMut(char) -> bool>(s: Seq
             &&& closure_matches_post(s, pat, seq, gap)
             &&& s == join(seq, gap)
         });
-        
+
 /// Axiom that links `spec_rmatches` with concrete specs for the closure pattern.
 pub broadcast axiom fn axiom_closure_rmatches_post<F: FnMut(char) -> bool>(s: Seq<char>, pat: F)
     requires
@@ -722,14 +723,14 @@ pub broadcast proof fn lemma_str_contains_closure<F>(s: Seq<char>, f: F, ret: bo
             reveal_with_fuel(Seq::<_>::flatten, 2);
             assert(gap.first() == s);
             assert(
-                exists |i: int| 0 <= i < gap.first().len() 
+                exists |i: int| 0 <= i < gap.first().len()
                     && #[trigger] call_ensures(f, (gap.first()[i],), true)
             );
-            let k = choose |i: int| 0 <= i < gap.first().len() 
+            let k = choose |i: int| 0 <= i < gap.first().len()
                 && #[trigger] call_ensures(f, (gap.first()[i],), true);
             let pred = |c: char| call_ensures(f, (c,), false);
             assert(
-                forall |i: int| 0 <= i < gap.first().len() 
+                forall |i: int| 0 <= i < gap.first().len()
                     ==> #[trigger] pred(gap.first()[i])
             );
             assert(pred(gap.first()[k]));
@@ -840,7 +841,7 @@ pub broadcast proof fn lemma_str_starts_with_char(s: Seq<char>, ch: char, ret: b
 
 /// Proof that links the full spec to `str::starts_with` with a closure pattern.
 pub broadcast proof fn lemma_str_starts_with_closure<F>(s: Seq<char>, f: F, ret: bool)
-    where 
+    where
         F: FnMut(char) -> bool,
     requires
         #[trigger] str_starts_with_post(s, f, ret),
@@ -1114,7 +1115,7 @@ pub broadcast proof fn lemma_str_find_char(s: Seq<char>, ch: char, ret: Option<u
                     &&& forall |i: int| 0 <= i < k_ch ==> #[trigger] s[i] != ch
                 },
             }
-        }),        
+        }),
 {
     axiom_char_matches_post(s, ch);
     reveal(str_find_post);
@@ -1162,18 +1163,18 @@ pub broadcast proof fn lemma_str_find_closure<F>(s: Seq<char>, f: F, ret: Option
         ({
             match ret {
                 None => {
-                    forall |i: int| 0 <= i < s.len() 
+                    forall |i: int| 0 <= i < s.len()
                         ==> #[trigger] call_ensures(f, (s[i],), false)
                 },
                 Some(k) => {
                     let k_ch = decode_utf8(s.as_bytes().take(k as int)).len() as int;
                     &&& is_char_boundary(s.as_bytes(), k as int) && k_ch < s.len()
                     &&& call_ensures(f, (s[k_ch],), true)
-                    &&& forall |i: int| 0 <= i < k_ch 
+                    &&& forall |i: int| 0 <= i < k_ch
                             ==> #[trigger] call_ensures(f, (s[i],), false)
                 },
             }
-        }),        
+        }),
 {
     axiom_closure_matches_post(s, f);
     reveal(str_find_post);
@@ -1225,7 +1226,7 @@ pub broadcast proof fn lemma_str_find_chars<'b>(s: Seq<char>, chars: &'b [char],
         ({
             match ret {
                 None => {
-                    forall |i: int| 0 <= i < s.len() 
+                    forall |i: int| 0 <= i < s.len()
                         ==> !(#[trigger] chars@.contains(s[i]))
                 },
                 Some(k) => {
@@ -1236,7 +1237,7 @@ pub broadcast proof fn lemma_str_find_chars<'b>(s: Seq<char>, chars: &'b [char],
                             ==> !(#[trigger] chars@.contains(s[i]))
                 },
             }
-        }),   
+        }),
 {
     axiom_chars_matches_post(s, chars);
     reveal(str_find_post);
@@ -1296,7 +1297,7 @@ pub broadcast proof fn lemma_str_find_string<'b>(s: Seq<char>, pat: &'b str, ret
                             ==> pat@ != #[trigger] s.subrange(i, i + pat@.len())
                 },
             }
-        }),   
+        }),
 {
     axiom_string_matches_post(s, pat);
     reveal(str_find_post);
@@ -1365,7 +1366,7 @@ pub broadcast proof fn lemma_str_rfind_char(s: Seq<char>, ch: char, ret: Option<
                     &&& forall |i: int| k_ch < i < s.len() ==> #[trigger] s[i] != ch
                 },
             }
-        }), 
+        }),
 {
     axiom_char_rmatches_post(s, ch);
     reveal(str_rfind_post);
@@ -1433,18 +1434,18 @@ pub broadcast proof fn lemma_str_rfind_closure<F>(s: Seq<char>, f: F, ret: Optio
         ({
             match ret {
                 None => {
-                    forall |i: int| 0 <= i < s.len() 
+                    forall |i: int| 0 <= i < s.len()
                         ==> #[trigger] call_ensures(f, (s[i],), false)
                 },
                 Some(k) => {
                     let k_ch = decode_utf8(s.as_bytes().take(k as int)).len() as int;
                     &&& is_char_boundary(s.as_bytes(), k as int) && k_ch < s.len()
                     &&& call_ensures(f, (s[k_ch],), true)
-                    &&& forall |i: int| k_ch < i < s.len() 
+                    &&& forall |i: int| k_ch < i < s.len()
                             ==> #[trigger] call_ensures(f, (s[i],), false)
                 },
             }
-        }), 
+        }),
 {
     axiom_closure_rmatches_post(s, f);
     reveal(str_rfind_post);
@@ -1514,7 +1515,7 @@ pub broadcast proof fn lemma_str_rfind_chars<'b>(s: Seq<char>, chars: &'b [char]
         ({
             match ret {
                 None => {
-                    forall |i: int| 0 <= i < s.len() 
+                    forall |i: int| 0 <= i < s.len()
                         ==> !(#[trigger] chars@.contains(s[i]))
                 },
                 Some(k) => {
@@ -1525,7 +1526,7 @@ pub broadcast proof fn lemma_str_rfind_chars<'b>(s: Seq<char>, chars: &'b [char]
                             ==> !(#[trigger] chars@.contains(s[i]))
                 },
             }
-        }),   
+        }),
 {
     axiom_chars_rmatches_post(s, chars);
     reveal(str_rfind_post);
@@ -1603,7 +1604,7 @@ pub broadcast proof fn lemma_str_rfind_string<'b>(s: Seq<char>, pat: &'b str, re
                             ==> pat@ != #[trigger] s.subrange(i, i + pat@.len())
                 },
             }
-        }),   
+        }),
 {
     axiom_string_rmatches_post(s, pat);
     reveal(str_rfind_post);
@@ -1702,7 +1703,7 @@ pub broadcast proof fn lemma_str_split_iter_char<'a>(s: Seq<char>, ch: char, ite
         // at least one split exists
         iter_seq.len() > 0,
         // splits cannot contain `ch`
-        forall |i: int| 0 <= i < iter_seq.len() 
+        forall |i: int| 0 <= i < iter_seq.len()
             ==> !(#[trigger] iter_seq[i]@.contains(ch)),
         // delimiters and splits make up the original string
         s == iter_seq.first()@ + iter_seq.drop_first()
@@ -1879,8 +1880,8 @@ pub broadcast proof fn lemma_str_split_iter_string<'a, 'b>(s: Seq<char>, pat: &'
         // at least one split exists
         iter_seq.len() > 0,
         // `split + pat` (apart from the last) cannot have `pat` as a prefix or infix
-        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len() - 1 
-            ==> iter_seq[i]@.len() > 0 
+        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len() - 1
+            ==> iter_seq[i]@.len() > 0
                 ==> !pat@.is_prefix_of(iter_seq[i]@ + pat@) && !pat@.is_infix_of(iter_seq[i]@ + pat@),
         // last split cannot have `pat` as a substring
         !(pat@.is_subrange_of(iter_seq.last()@)),
@@ -1926,8 +1927,8 @@ pub broadcast proof fn lemma_str_split_inclusive_iter_char<'a>(s: Seq<char>, ch:
         #[trigger] str_split_inclusive_iter_post(s, ch, iter_seq),
     ensures
         // splits are not empty and cannot contain `ch` except at the end
-        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len() 
-            ==> iter_seq[i]@.len() > 0 
+        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len()
+            ==> iter_seq[i]@.len() > 0
                 && !iter_seq[i]@.drop_last().contains(ch),
         // splits except the last must end with `ch`
         forall |i: int| 0 <= i < iter_seq.len() - 1
@@ -1940,7 +1941,7 @@ pub broadcast proof fn lemma_str_split_inclusive_iter_char<'a>(s: Seq<char>, ch:
     let (seq, gap) = spec_matches(s, ch);
     // #1
     assert(iter_seq.len() == seq.len() || iter_seq.len() == seq.len() + 1);
-    assert forall |i: int| #![trigger iter_seq[i]@] 0 <= i < seq.len() 
+    assert forall |i: int| #![trigger iter_seq[i]@] 0 <= i < seq.len()
     implies iter_seq[i]@.len() > 0 && !iter_seq[i]@.drop_last().contains(ch)
     by {
         assert(iter_seq[i]@ == gap[i] + seq[i]);
@@ -1960,7 +1961,7 @@ pub broadcast proof fn lemma_str_split_inclusive_iter_char<'a>(s: Seq<char>, ch:
     }
     // #2
     assert forall |i: int| 0 <= i < iter_seq.len() - 1
-    implies #[trigger] iter_seq[i]@.last() == ch 
+    implies #[trigger] iter_seq[i]@.last() == ch
     by {
         assert(iter_seq[i]@ == gap[i] + seq[i]);
         assert(seq[i] =~= seq![ch]);
@@ -1994,7 +1995,7 @@ pub broadcast proof fn lemma_str_split_inclusive_iter_char<'a>(s: Seq<char>, ch:
                     let s1 = iter_seq.drop_last().map_values(|ss: &'a str| ss@);
                     s1.lemma_flatten_and_flatten_alt_are_equivalent();
                     assert(gap.last() == iter_seq.last()@);
-                } 
+                }
                 iter_seq.drop_last().map_values(|ss: &'a str| ss@).flatten_alt() + iter_seq.last()@; {
                     reveal_with_fuel(Seq::<_>::flatten_alt, 2);
                     assert_seqs_equal!(iter_seq.drop_last().map_values(|ss: &'a str| ss@) == iter_seq.map_values(|ss: &'a str| ss@).drop_last());
@@ -2018,8 +2019,8 @@ pub broadcast proof fn lemma_str_split_inclusive_iter_closure<'a, F>(s: Seq<char
         is_deterministic(f) && is_total(f),
     ensures
         // splits are not empty and cannot match `f` except at the end
-        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len() 
-            ==> iter_seq[i]@.len() > 0 
+        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len()
+            ==> iter_seq[i]@.len() > 0
                 && iter_seq[i]@.drop_last().all(|c: char| call_ensures(f, (c,), false)),
         // splits except the last must match `f` at the end
         forall |i: int| 0 <= i < iter_seq.len() - 1
@@ -2107,8 +2108,8 @@ pub broadcast proof fn lemma_str_split_inclusive_iter_chars<'a, 'b>(s: Seq<char>
         #[trigger] str_split_inclusive_iter_post(s, chars, iter_seq),
     ensures
         // splits are not empty and cannot match `chars` except at the end
-        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len() 
-            ==> iter_seq[i]@.len() > 0 
+        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len()
+            ==> iter_seq[i]@.len() > 0
                 && iter_seq[i]@.drop_last().all(|c: char| !chars@.contains(c)),
         // splits except the last must match `chars` at the end
         forall |i: int| 0 <= i < iter_seq.len() - 1
@@ -2201,7 +2202,7 @@ pub broadcast proof fn lemma_str_split_inclusive_iter_string<'a, 'b>(s: Seq<char
         #[trigger] str_split_inclusive_iter_post(s, pat, iter_seq),
     ensures
         // splits are not empty and cannot match `pat` except at the end
-        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len() 
+        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len()
             ==> iter_seq[i]@.len() > 0 && !pat@.is_subrange_of(iter_seq[i]@.drop_last()),
         // splits except the last must match `pat` at the end
         forall |i: int| 0 <= i < iter_seq.len() - 1
@@ -2329,7 +2330,7 @@ pub broadcast proof fn lemma_str_rsplit_iter_char<'a>(s: Seq<char>, ch: char, it
         // at least one split exists
         iter_seq.len() > 0,
         // splits cannot contain `ch`
-        forall |i: int| 0 <= i < iter_seq.len() 
+        forall |i: int| 0 <= i < iter_seq.len()
             ==> !(#[trigger] iter_seq[i]@.contains(ch)),
         // delimiters and splits make up the original string
         s == iter_seq.drop_first().map_values(|ss: &'a str| ss@.push(ch))
@@ -2506,8 +2507,8 @@ pub broadcast proof fn lemma_str_rsplit_iter_string<'a, 'b>(s: Seq<char>, pat: &
         // at least one split exists
         iter_seq.len() > 0,
         // `pat + split` (apart from the last) cannot have `pat` as a suffix or infix
-        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len() - 1 
-            ==> iter_seq[i]@.len() > 0 
+        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len() - 1
+            ==> iter_seq[i]@.len() > 0
                 ==> !pat@.is_suffix_of(pat@ + iter_seq[i]@) && !pat@.is_infix_of(pat@ + iter_seq[i]@),
         // last split cannot have `pat` as a substring
         !(pat@.is_subrange_of(iter_seq.last()@)),
@@ -2556,12 +2557,12 @@ pub broadcast proof fn lemma_str_split_terminator_iter_char<'a>(s: Seq<char>, ch
         // splits are empty iff `s` is empty
         s.len() == 0 <==> iter_seq.len() == 0,
         // splits cannot contain `ch`
-        forall |i: int| 0 <= i < iter_seq.len() 
+        forall |i: int| 0 <= i < iter_seq.len()
             ==> !(#[trigger] iter_seq[i]@.contains(ch)),
         // delimiters and splits make up the original string
-        s.len() > 0 && s.last() == ch 
+        s.len() > 0 && s.last() == ch
             ==> s == iter_seq.map_values(|ss: &'a str| ss@.push(ch)).flatten(),
-        s.len() > 0 && s.last() != ch 
+        s.len() > 0 && s.last() != ch
             ==> s == iter_seq.drop_last().map_values(|ss: &'a str| ss@.push(ch)).flatten() + iter_seq.last()@,
 {
     axiom_char_matches_post(s, ch);
@@ -2656,7 +2657,7 @@ pub broadcast proof fn lemma_str_split_terminator_iter_closure<'a, F>(s: Seq<cha
         // splits are empty iff `s` is empty
         s.len() == 0 <==> iter_seq.len() == 0,
         // splits cannot match `f`
-        forall |i: int| 0 <= i < iter_seq.len() 
+        forall |i: int| 0 <= i < iter_seq.len()
             ==> (#[trigger] iter_seq[i]@).all(|c: char| call_ensures(f, (c,), false)),
         // delimiters and splits make up the original string
         exists |delim: Seq<char>| {
@@ -2664,7 +2665,7 @@ pub broadcast proof fn lemma_str_split_terminator_iter_closure<'a, F>(s: Seq<cha
                     ==> #[trigger] call_ensures(f, (delim[i],), true)
             &&& s.len() > 0 && call_ensures(f, (s.last(),), true)
                     ==> {
-                        &&& delim.len() == iter_seq.len() 
+                        &&& delim.len() == iter_seq.len()
                         &&& s == iter_seq.map(|i: int, ss: &'a str| ss@.push(delim[i])).flatten()
                     }
             &&& s.len() > 0 && call_ensures(f, (s.last(),), false)
@@ -2788,7 +2789,7 @@ pub broadcast proof fn lemma_str_split_terminator_iter_chars<'a, 'b>(s: Seq<char
         // splits are empty iff `s` is empty
         s.len() == 0 <==> iter_seq.len() == 0,
         // splits cannot match `chars`
-        forall |i: int| 0 <= i < iter_seq.len() 
+        forall |i: int| 0 <= i < iter_seq.len()
             ==> (#[trigger] iter_seq[i]@).all(|c: char| !chars@.contains(c)),
         // delimiters and splits make up the original string
         exists |delim: Seq<char>| {
@@ -2796,7 +2797,7 @@ pub broadcast proof fn lemma_str_split_terminator_iter_chars<'a, 'b>(s: Seq<char
                     ==> #[trigger] chars@.contains(delim[i])
             &&& s.len() > 0 && chars@.contains(s.last())
                     ==> {
-                        &&& delim.len() == iter_seq.len() 
+                        &&& delim.len() == iter_seq.len()
                         &&& s == iter_seq.map(|i: int, ss: &'a str| ss@.push(delim[i])).flatten()
                     }
             &&& s.len() > 0 && !chars@.contains(s.last())
@@ -2925,14 +2926,14 @@ pub broadcast proof fn lemma_str_split_terminator_iter_string<'a, 'b>(s: Seq<cha
         // splits are empty iff `s` is empty
         s.len() == 0 <==> iter_seq.len() == 0,
         // `split + pat` (apart from the last) cannot have `pat` as a prefix or infix
-        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len() - 1 
-            ==> iter_seq[i]@.len() > 0 
+        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len() - 1
+            ==> iter_seq[i]@.len() > 0
                 ==> !pat@.is_prefix_of(iter_seq[i]@ + pat@) && !pat@.is_infix_of(iter_seq[i]@ + pat@),
         // last split cannot have `pat` as a substring
         iter_seq.len() > 0 ==> !(pat@.is_subrange_of(iter_seq.last()@)),
         // delimiters and splits make up the original string
         s.len() > 0 ==> {
-            ||| s == iter_seq.map_values(|ss: &'a str| ss@ + pat@).flatten() 
+            ||| s == iter_seq.map_values(|ss: &'a str| ss@ + pat@).flatten()
             ||| iter_seq.last()@.len() > 0 && s == iter_seq.drop_last().map_values(|ss: &'a str| ss@ + pat@).flatten() + iter_seq.last()@
         },
 {
@@ -3049,12 +3050,12 @@ pub broadcast proof fn lemma_str_rsplit_terminator_iter_char<'a>(s: Seq<char>, c
         // splits are empty iff `s` is empty
         s.len() == 0 <==> iter_seq.len() == 0,
         // splits cannot contain `ch`
-        forall |i: int| 0 <= i < iter_seq.len() 
+        forall |i: int| 0 <= i < iter_seq.len()
             ==> !(#[trigger] iter_seq[i]@.contains(ch)),
         // delimiters and splits make up the original string
-        s.len() > 0 && s.last() == ch 
+        s.len() > 0 && s.last() == ch
             ==> s == iter_seq.map_values(|ss: &'a str| ss@.push(ch)).reverse().flatten(),
-        s.len() > 0 && s.last() != ch 
+        s.len() > 0 && s.last() != ch
             ==> s == iter_seq.drop_first().map_values(|ss: &'a str| ss@.push(ch)).reverse().flatten() + iter_seq.first()@,
 {
     axiom_char_rmatches_post(s, ch);
@@ -3175,7 +3176,7 @@ pub broadcast proof fn lemma_str_rsplit_terminator_iter_closure<'a, F>(s: Seq<ch
         // splits are empty iff `s` is empty
         s.len() == 0 <==> iter_seq.len() == 0,
         // splits cannot match `f`
-        forall |i: int| 0 <= i < iter_seq.len() 
+        forall |i: int| 0 <= i < iter_seq.len()
             ==> (#[trigger] iter_seq[i]@).all(|c: char| call_ensures(f, (c,), false)),
         // delimiters and splits make up the original string
         exists |delim: Seq<char>| {
@@ -3325,7 +3326,7 @@ pub broadcast proof fn lemma_str_rsplit_terminator_iter_chars<'a, 'b>(s: Seq<cha
         // splits are empty iff `s` is empty
         s.len() == 0 <==> iter_seq.len() == 0,
         // splits cannot match `chars`
-        forall |i: int| 0 <= i < iter_seq.len() 
+        forall |i: int| 0 <= i < iter_seq.len()
             ==> (#[trigger] iter_seq[i]@).all(|c: char| !chars@.contains(c)),
         // delimiters and splits make up the original string
         exists |delim: Seq<char>| {
@@ -3480,14 +3481,14 @@ pub broadcast proof fn lemma_str_rsplit_terminator_iter_string<'a, 'b>(s: Seq<ch
         // splits are empty iff `s` is empty
         s.len() == 0 <==> iter_seq.len() == 0,
         // `pat + split` (apart from the last) cannot have `pat` as a suffix or infix
-        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len() - 1 
-            ==> iter_seq[i]@.len() > 0 
+        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len() - 1
+            ==> iter_seq[i]@.len() > 0
                 ==> !pat@.is_suffix_of(pat@ + iter_seq[i]@) && !pat@.is_infix_of(pat@ + iter_seq[i]@),
         // last split cannot have `pat` as a substring
         iter_seq.len() > 0 ==> !(pat@.is_subrange_of(iter_seq.last()@)),
         // delimiters and splits make up the original string
         s.len() > 0 ==> {
-            ||| s == iter_seq.map_values(|ss: &'a str| ss@ + pat@).reverse().flatten() 
+            ||| s == iter_seq.map_values(|ss: &'a str| ss@ + pat@).reverse().flatten()
             ||| iter_seq.first()@.len() > 0 && s == iter_seq.drop_first().map_values(|ss: &'a str| ss@ + pat@).reverse().flatten() + iter_seq.first()@
         },
 {
@@ -3599,7 +3600,7 @@ pub broadcast proof fn lemma_str_splitn_iter_char<'a>(s: Seq<char>, n: usize, ch
         // last split (if not the `n`th) cannot contain `ch` as well
         iter_seq.len() < n ==> !iter_seq.last()@.contains(ch),
         // delimiters and splits make up the original string
-        n > 0 ==> 
+        n > 0 ==>
             s == iter_seq.drop_last()
                     .map_values(|ss: &'a str| ss@.push(ch))
                     .flatten() + iter_seq.last()@,
@@ -3843,8 +3844,8 @@ pub broadcast proof fn lemma_str_splitn_iter_string<'a, 'b>(s: Seq<char>, n: usi
         // at most `n` items, at least one item (unless `n == 0`)
         iter_seq.len() <= n && (n > 0 ==> iter_seq.len() > 0),
         // `split + pat` (apart from the last) cannot have `pat` as a prefix or infix
-        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len() - 1 
-            ==> iter_seq[i]@.len() > 0 
+        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len() - 1
+            ==> iter_seq[i]@.len() > 0
                 ==> !pat@.is_prefix_of(iter_seq[i]@ + pat@) && !pat@.is_infix_of(iter_seq[i]@ + pat@),
         // last split (if not the `n`th) cannot match `pat` as well
         iter_seq.len() < n ==> !(pat@.is_subrange_of(iter_seq.last()@)),
@@ -3914,7 +3915,7 @@ pub broadcast proof fn lemma_str_rsplitn_iter_char<'a>(s: Seq<char>, n: usize, c
         // last split (if not the `n`th) cannot contain `ch` as well
         iter_seq.len() < n ==> !iter_seq.last()@.contains(ch),
         // delimiters and splits make up the original string
-        n > 0 ==> 
+        n > 0 ==>
             s == iter_seq.last()@ + iter_seq.drop_last()
                     .map_values(|ss: &'a str| ss@.insert(0, ch))
                     .reverse().flatten(),
@@ -4162,8 +4163,8 @@ pub broadcast proof fn lemma_str_rsplitn_iter_string<'a, 'b>(s: Seq<char>, n: us
         // at most `n` items, at least one item (unless `n == 0`)
         iter_seq.len() <= n && (n > 0 ==> iter_seq.len() > 0),
         // `pat + split` (apart from the last) cannot have `pat` as a suffix or infix
-        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len() - 1 
-            ==> iter_seq[i]@.len() > 0 
+        forall |i: int| #![trigger iter_seq[i]@] 0 <= i < iter_seq.len() - 1
+            ==> iter_seq[i]@.len() > 0
                 ==> !pat@.is_suffix_of(pat@ + iter_seq[i]@) && !pat@.is_infix_of(pat@ + iter_seq[i]@),
         // last split (if not the `n`th) cannot match `pat` as well
         iter_seq.len() < n ==> !(pat@.is_subrange_of(iter_seq.last()@)),
@@ -4429,7 +4430,7 @@ pub broadcast proof fn lemma_str_split_once_string<'a, 'b>(s: Seq<char>, pat: &'
                 (Some((head, tail)), false) => head@.len() == 0 && tail@ == s,
                 (Some((head, tail)), true) => {
                     // `head + pat` does not match `pat` except at the end
-                    &&& head@.len() > 0 ==> 
+                    &&& head@.len() > 0 ==>
                             !pat@.is_prefix_of(head@ + pat@) && !pat@.is_infix_of(head@ + pat@)
                     // `head` and `tail` make up the original string
                     &&& s == head@ + pat@ + tail@
@@ -4453,8 +4454,8 @@ pub broadcast proof fn lemma_str_split_once_string<'a, 'b>(s: Seq<char>, pat: &'
             assert(head@.len() > 0 ==> !pat@.is_prefix_of(head@ + pat@) && !pat@.is_infix_of(head@ + pat@));
             calc!{
                 (==)
-                s; {} 
-                join(seq, gap); { 
+                s; {}
+                join(seq, gap); {
                     lemma_join_uncons(seq, gap);
                     assert(gap[0] == head@);
                     assert(seq[0] =~= pat@);
@@ -4648,7 +4649,7 @@ pub broadcast proof fn lemma_str_rsplit_once_string<'a, 'b>(s: Seq<char>, pat: &
                 (Some((head, tail)), false) => tail@.len() == 0 && head@ == s,
                 (Some((head, tail)), true) => {
                     // `pat + tail` does not match `pat` except at the front
-                    &&& tail@.len() > 0 ==> 
+                    &&& tail@.len() > 0 ==>
                             !pat@.is_suffix_of(pat@ + tail@) && !pat@.is_infix_of(pat@ + tail@)
                     // `head` and `tail` make up the original string
                     &&& s == head@ + pat@ + tail@
@@ -4701,7 +4702,7 @@ pub broadcast proof fn lemma_str_matches_iter_char<'a>(s: Seq<char>, ch: char, i
         #[trigger] str_matches_iter_post(s, ch, iter_seq),
     ensures
         // matches all match `ch`
-        forall |i: int| 0 <= i < iter_seq.len() 
+        forall |i: int| 0 <= i < iter_seq.len()
             ==> #[trigger] iter_seq[i]@ == seq![ch],
         // matches are exhaustive
         iter_seq.len() == s.count(|c: char| c == ch),
@@ -4735,8 +4736,8 @@ pub broadcast proof fn lemma_str_matches_iter_closure<'a, F>(s: Seq<char>, f: F,
         is_deterministic(f) && is_total(f),
     ensures
         // matches all match `f`
-        forall |i: int| 0 <= i < iter_seq.len() 
-            ==> #[trigger] iter_seq[i]@.len() == 1 
+        forall |i: int| 0 <= i < iter_seq.len()
+            ==> #[trigger] iter_seq[i]@.len() == 1
                 && #[trigger] call_ensures(f, (iter_seq[i]@[0],), true),
         // matches are exhaustive
         iter_seq.len() == s.count(|c: char| call_ensures(f, (c,), true)),
@@ -4770,8 +4771,8 @@ pub broadcast proof fn lemma_str_matches_iter_chars<'a, 'b>(s: Seq<char>, chars:
         #[trigger] str_matches_iter_post(s, chars, iter_seq),
     ensures
         // matches all match `chars`
-        forall |i: int| 0 <= i < iter_seq.len() 
-            ==> #[trigger] iter_seq[i]@.len() == 1 
+        forall |i: int| 0 <= i < iter_seq.len()
+            ==> #[trigger] iter_seq[i]@.len() == 1
                 && #[trigger] chars@.contains(iter_seq[i]@[0]),
         // matches are exhaustive
         iter_seq.len() == s.count(|c: char| chars@.contains(c)),
@@ -4806,7 +4807,7 @@ pub broadcast proof fn lemma_str_matches_iter_string<'a, 'b>(s: Seq<char>, pat: 
         #[trigger] str_matches_iter_post(s, pat, iter_seq),
     ensures
         // matches all match `pat`
-        forall |i: int| 0 <= i < iter_seq.len() 
+        forall |i: int| 0 <= i < iter_seq.len()
             ==> #[trigger] iter_seq[i]@ == pat@,
         // matches are empty if none matches `pat`
         iter_seq.len() == 0 <==> !pat@.is_subrange_of(s),
@@ -4814,7 +4815,7 @@ pub broadcast proof fn lemma_str_matches_iter_string<'a, 'b>(s: Seq<char>, pat: 
         exists |gap: Seq<Seq<char>>| {
             &&& #[trigger] gap.len() == iter_seq.len() + 1
             &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() - 1
-                    ==> gap[i].len() > 0 
+                    ==> gap[i].len() > 0
                         ==> (!pat@.is_prefix_of(gap[i] + pat@) && !pat@.is_infix_of(gap[i] + pat@))
             &&& !pat@.is_subrange_of(gap.last())
             &&& s == iter_seq.map(|i: int, ss: &'a str| gap[i] + ss@).flatten() + gap.last()
@@ -4852,7 +4853,7 @@ pub broadcast proof fn lemma_str_rmatches_iter_char<'a>(s: Seq<char>, ch: char, 
         #[trigger] str_rmatches_iter_post(s, ch, iter_seq),
     ensures
         // matches all match `ch`
-        forall |i: int| 0 <= i < iter_seq.len() 
+        forall |i: int| 0 <= i < iter_seq.len()
             ==> #[trigger] iter_seq[i]@ == seq![ch],
         // matches are exhaustive
         iter_seq.len() == s.count(|c: char| c == ch),
@@ -4886,8 +4887,8 @@ pub broadcast proof fn lemma_str_rmatches_iter_closure<'a, F>(s: Seq<char>, f: F
         is_deterministic(f) && is_total(f),
     ensures
         // matches all match `f`
-        forall |i: int| 0 <= i < iter_seq.len() 
-            ==> #[trigger] iter_seq[i]@.len() == 1 
+        forall |i: int| 0 <= i < iter_seq.len()
+            ==> #[trigger] iter_seq[i]@.len() == 1
                 && #[trigger] call_ensures(f, (iter_seq[i]@[0],), true),
         // matches are exhaustive
         iter_seq.len() == s.count(|c: char| call_ensures(f, (c,), true)),
@@ -4921,8 +4922,8 @@ pub broadcast proof fn lemma_str_rmatches_iter_chars<'a, 'b>(s: Seq<char>, chars
         #[trigger] str_rmatches_iter_post(s, chars, iter_seq),
     ensures
         // matches all match `chars`
-        forall |i: int| 0 <= i < iter_seq.len() 
-            ==> #[trigger] iter_seq[i]@.len() == 1 
+        forall |i: int| 0 <= i < iter_seq.len()
+            ==> #[trigger] iter_seq[i]@.len() == 1
                 && #[trigger] chars@.contains(iter_seq[i]@[0]),
         // matches are exhaustive
         iter_seq.len() == s.count(|c: char| chars@.contains(c)),
@@ -4957,7 +4958,7 @@ pub broadcast proof fn lemma_str_rmatches_iter_string<'a, 'b>(s: Seq<char>, pat:
         #[trigger] str_rmatches_iter_post(s, pat, iter_seq),
     ensures
         // matches all match `pat`
-        forall |i: int| 0 <= i < iter_seq.len() 
+        forall |i: int| 0 <= i < iter_seq.len()
             ==> #[trigger] iter_seq[i]@ == pat@,
         // matches are empty if none matches `pat`
         iter_seq.len() == 0 <==> !pat@.is_subrange_of(s),
@@ -4965,7 +4966,7 @@ pub broadcast proof fn lemma_str_rmatches_iter_string<'a, 'b>(s: Seq<char>, pat:
         exists |gap: Seq<Seq<char>>| {
             &&& #[trigger] gap.len() == iter_seq.len() + 1
             &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() - 1
-                    ==> gap[i].len() > 0 
+                    ==> gap[i].len() > 0
                         ==> (!pat@.is_suffix_of(pat@ + gap[i]) && !pat@.is_infix_of(pat@ + gap[i]))
             &&& !pat@.is_subrange_of(gap.last())
             &&& s == gap.last() + iter_seq.map(|i: int, ss: &'a str| ss@ + gap[i]).reverse().flatten()
@@ -5032,7 +5033,7 @@ pub broadcast proof fn lemma_str_match_indices_iter_char<'a>(s: Seq<char>, ch: c
         #[trigger] str_match_indices_iter_post(s, ch, iter_seq),
     ensures
         // matches all match `ch`
-        forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len() 
+        forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len()
             ==> {
                 let (idx, ss) = iter_seq[i];
                 let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
@@ -5046,7 +5047,96 @@ pub broadcast proof fn lemma_str_match_indices_iter_char<'a>(s: Seq<char>, ch: c
         // matches are exhaustive
         iter_seq.len() == s.count(|c: char| c == ch),
 {
-    admit()
+    axiom_char_matches_post(s, ch);
+    reveal(str_match_indices_iter_post);
+    let (seq, gap) = spec_matches(s, ch);
+    assert(iter_seq.len() == seq.len());
+    // #1
+    assert forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len()
+    implies {
+        let (idx, ss) = iter_seq[i];
+        let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
+        &&& ss@ == seq![ch]
+        &&& is_char_boundary(s.as_bytes(), idx as int) && idx < s.as_bytes().len()
+        &&& ss@[0] == s[idx_ch]
+    } by {
+        let (idx, ss) = iter_seq[i];
+        // #1.1
+        assert(ss@ == seq[i]);
+        assert(seq[i] =~= seq![ch]);
+        // #1.2 & 1.3
+        assert(idx == join(seq.take(i), gap.take(i + 1)).as_bytes().len());
+        let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
+        let tail = gap.skip(i).drop_first().map(|k: int, ss: Seq<char>| seq.skip(i)[k] + ss).flatten();
+        calc!{
+            (==)
+            s; {}
+            join(seq, gap); { lemma_join_split_at(seq, gap, i) }
+            seq.take(i).map(|k: int, ss: Seq<char>| gap[k] + ss).flatten()
+                + join(seq.skip(i), gap.skip(i));
+                {
+                    let s1 = seq.take(i).map(|k: int, ss: Seq<char>| gap[k] + ss);
+                    let s2 = seq.take(i).map(|k: int, ss: Seq<char>| gap.take(i+1)[k] + ss);
+                    assert_seqs_equal!(s1 == s2);
+                }
+            seq.take(i).map(|k: int, ss: Seq<char>| gap.take(i+1)[k] + ss).flatten()
+                + gap.skip(i).first() + tail;
+                {
+                    lemma_join_alt(seq.take(i), gap.take(i+1));
+                    assert(gap.take(i+1).last() == gap.skip(i).first());
+                }
+            join(seq.take(i), gap.take(i+1)) + tail;
+        }
+        assert(s.as_bytes() == join(seq.take(i), gap.take(i + 1)).as_bytes() + tail.as_bytes()) by {
+            lemma_str_concat_lower(join(seq.take(i), gap.take(i + 1)), tail);
+        }
+        assert(s.as_bytes().take(idx as int) == join(seq.take(i), gap.take(i + 1)).as_bytes());
+        assert(s.as_bytes().take(idx as int).is_utf8()) by {
+            lemma_str_is_utf8(join(seq.take(i), gap.take(i + 1)));
+        }
+        lemma_str_is_utf8(s);
+        lemma_char_boundary_iff_utf8(s.as_bytes(), idx as int);
+        assert(idx + tail.as_bytes().len() == s.as_bytes().len());
+        assert(idx_ch == join(seq.take(i), gap.take(i + 1)).len()) by {
+            lemma_str_lower_lift(join(seq.take(i), gap.take(i + 1)));
+        }
+        assert(s[idx_ch] == tail[0]);
+        assert(gap.skip(i).drop_first().len() > 0);
+        reveal_with_fuel(Seq::<_>::flatten, 2);
+        assert(seq.skip(i)[0] == seq[i]);
+        assert(tail[0] == seq[i][0]);
+    }
+    // #2
+    assert forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len() - 1
+    implies iter_seq[i].0 < iter_seq[i+1].0
+    by {
+        let idx1 = iter_seq[i].0 as int;
+        let idx2 = iter_seq[i+1].0 as int;
+        let s1 = join(seq.take(i), gap.take(i+1));
+        let s2 = join(seq.take(i+1), gap.take(i+2));
+        lemma_join_runcons(seq.take(i+1), gap.take(i+2));
+        assert(seq.take(i+1).drop_last() == seq.take(i));
+        assert(gap.take(i+2).drop_last() == gap.take(i+1));
+        assert(idx1 == s1.as_bytes().len());
+        assert(idx2 == s2.as_bytes().len());
+        assert(s1.as_bytes() + seq.take(i+1).last().as_bytes() + gap.take(i+2).last().as_bytes() == s2.as_bytes()) by {
+            lemma_str_concat_lower(s1, seq.take(i+1).last());
+            lemma_str_concat_lower(s1 + seq.take(i+1).last(), gap.take(i+2).last());
+        }
+        assert(seq.take(i+1).last() =~= seq![ch]);
+        assert(seq.take(i+1).last().as_bytes().len() > 0);
+    }
+    // #3
+    assert(iter_seq.len() == s.count(|c: char| c == ch)) by {
+        let pred = |c: char| c == ch;
+        assert forall |i: int| #![trigger gap[i]] 0 <= i < gap.len()
+        implies gap[i].all(|c: char| !pred(c))
+        by { assert(!gap[i].contains(ch)); }
+        assert forall |i: int| #![trigger seq[i]] 0 <= i < seq.len()
+        implies seq[i].len() == 1 && pred(seq[i][0])
+        by { assert(seq[i] =~= seq![ch]) }
+        lemma_str_matches_count(seq, gap, pred);
+    }
 }
 
 /// Proof that links the full spec to `str::match_indices` with a closure pattern.
@@ -5058,7 +5148,7 @@ pub broadcast proof fn lemma_str_match_indices_iter_closure<'a, F>(s: Seq<char>,
         is_deterministic(f) && is_total(f),
     ensures
         // matches all match `f`
-        forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len() 
+        forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len()
             ==> {
                 let (idx, ss) = iter_seq[i];
                 let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
@@ -5072,7 +5162,107 @@ pub broadcast proof fn lemma_str_match_indices_iter_closure<'a, F>(s: Seq<char>,
         // matches are exhaustive
         iter_seq.len() == s.count(|c: char| call_ensures(f, (c,), true)),
 {
-    admit()
+    axiom_closure_matches_post(s, f);
+    reveal(str_match_indices_iter_post);
+    let (seq, gap) = spec_matches(s, f);
+    assert(iter_seq.len() == seq.len());
+    // #1
+    assert forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len()
+    implies {
+        let (idx, ss) = iter_seq[i];
+        let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
+        &&& ss@.len() == 1 && call_ensures(f, (ss@[0],), true)
+        &&& is_char_boundary(s.as_bytes(), idx as int) && idx < s.as_bytes().len()
+        &&& ss@[0] == s[idx_ch]
+    } by {
+        let (idx, ss) = iter_seq[i];
+        // #1.1
+        assert(ss@ == seq[i]);
+        assert(seq[i].len() == 1 && call_ensures(f, (seq[i][0],), true));
+        // #1.2 & 1.3
+        assert(idx == join(seq.take(i), gap.take(i + 1)).as_bytes().len());
+        let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
+        let tail = gap.skip(i).drop_first().map(|k: int, ss: Seq<char>| seq.skip(i)[k] + ss).flatten();
+        calc!{
+            (==)
+            s; {}
+            join(seq, gap); { lemma_join_split_at(seq, gap, i) }
+            seq.take(i).map(|k: int, ss: Seq<char>| gap[k] + ss).flatten()
+                + join(seq.skip(i), gap.skip(i));
+                {
+                    let s1 = seq.take(i).map(|k: int, ss: Seq<char>| gap[k] + ss);
+                    let s2 = seq.take(i).map(|k: int, ss: Seq<char>| gap.take(i+1)[k] + ss);
+                    assert_seqs_equal!(s1 == s2);
+                }
+            seq.take(i).map(|k: int, ss: Seq<char>| gap.take(i+1)[k] + ss).flatten()
+                + gap.skip(i).first() + tail;
+                {
+                    lemma_join_alt(seq.take(i), gap.take(i+1));
+                    assert(gap.take(i+1).last() == gap.skip(i).first());
+                }
+            join(seq.take(i), gap.take(i+1)) + tail;
+        }
+        assert(s.as_bytes() == join(seq.take(i), gap.take(i + 1)).as_bytes() + tail.as_bytes()) by {
+            lemma_str_concat_lower(join(seq.take(i), gap.take(i + 1)), tail);
+        }
+        assert(s.as_bytes().take(idx as int) == join(seq.take(i), gap.take(i + 1)).as_bytes());
+        assert(s.as_bytes().take(idx as int).is_utf8()) by {
+            lemma_str_is_utf8(join(seq.take(i), gap.take(i + 1)));
+        }
+        lemma_str_is_utf8(s);
+        lemma_char_boundary_iff_utf8(s.as_bytes(), idx as int);
+        assert(idx + tail.as_bytes().len() == s.as_bytes().len());
+        assert(idx_ch == join(seq.take(i), gap.take(i + 1)).len()) by {
+            lemma_str_lower_lift(join(seq.take(i), gap.take(i + 1)));
+        }
+        assert(s[idx_ch] == tail[0]);
+        assert(gap.skip(i).drop_first().len() > 0);
+        reveal_with_fuel(Seq::<_>::flatten, 2);
+        assert(seq.skip(i)[0] == seq[i]);
+        assert(tail[0] == seq[i][0]);
+    }
+    // #2
+    assert forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len() - 1
+    implies iter_seq[i].0 < iter_seq[i+1].0
+    by {
+        let idx1 = iter_seq[i].0 as int;
+        let idx2 = iter_seq[i+1].0 as int;
+        let s1 = join(seq.take(i), gap.take(i+1));
+        let s2 = join(seq.take(i+1), gap.take(i+2));
+        lemma_join_runcons(seq.take(i+1), gap.take(i+2));
+        assert(seq.take(i+1).drop_last() == seq.take(i));
+        assert(gap.take(i+2).drop_last() == gap.take(i+1));
+        assert(idx1 == s1.as_bytes().len());
+        assert(idx2 == s2.as_bytes().len());
+        assert(s1.as_bytes() + seq.take(i+1).last().as_bytes() + gap.take(i+2).last().as_bytes() == s2.as_bytes()) by {
+            lemma_str_concat_lower(s1, seq.take(i+1).last());
+            lemma_str_concat_lower(s1 + seq.take(i+1).last(), gap.take(i+2).last());
+        }
+        assert(seq.take(i+1).last().len() == 1);
+        assert(seq.take(i+1).last().as_bytes().len() > 0);
+    }
+    // #3
+    assert(iter_seq.len() == s.count(|c: char| call_ensures(f, (c,), true))) by {
+        let pred = |c: char| call_ensures(f, (c,), true);
+        assert forall |i: int| #![trigger gap[i]] 0 <= i < gap.len()
+        implies gap[i].all(|c: char| !pred(c))
+        by {
+            let neg_pred = |c: char| call_ensures(f, (c,), false);
+            assert(gap[i].all(neg_pred));
+            assert forall |j: int| 0 <= j < gap[i].len()
+                implies !pred(gap[i][j]) by {
+                assert(neg_pred(gap[i][j]));
+                if pred(gap[i][j]) {
+                    assert(call_ensures(f, (gap[i][j],), false));
+                    assert(call_ensures(f, (gap[i][j],), true));
+                }
+            }
+        }
+        assert forall |i: int| #![trigger seq[i]] 0 <= i < seq.len()
+        implies seq[i].len() == 1 && pred(seq[i][0])
+        by {}
+        lemma_str_matches_count(seq, gap, pred);
+    }
 }
 
 /// Proof that links the full spec to `str::match_indices` with a `&[char]` pattern.
@@ -5081,7 +5271,7 @@ pub broadcast proof fn lemma_str_match_indices_iter_chars<'a, 'b>(s: Seq<char>, 
         #[trigger] str_match_indices_iter_post(s, chars, iter_seq),
     ensures
         // matches all match `chars`
-        forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len() 
+        forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len()
             ==> {
                 let (idx, ss) = iter_seq[i];
                 let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
@@ -5095,7 +5285,103 @@ pub broadcast proof fn lemma_str_match_indices_iter_chars<'a, 'b>(s: Seq<char>, 
         // matches are exhaustive
         iter_seq.len() == s.count(|c: char| chars@.contains(c)),
 {
-    admit()
+    axiom_chars_matches_post(s, chars);
+    reveal(str_match_indices_iter_post);
+    let (seq, gap) = spec_matches(s, chars);
+    assert(iter_seq.len() == seq.len());
+    // #1
+    assert forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len()
+    implies {
+        let (idx, ss) = iter_seq[i];
+        let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
+        &&& ss@.len() == 1 && chars@.contains(ss@[0])
+        &&& is_char_boundary(s.as_bytes(), idx as int) && idx < s.as_bytes().len()
+        &&& ss@[0] == s[idx_ch]
+    } by {
+        let (idx, ss) = iter_seq[i];
+        // #1.1
+        assert(ss@ == seq[i]);
+        assert(seq[i].len() == 1 && chars@.contains(seq[i][0]));
+        // #1.2 & 1.3
+        assert(idx == join(seq.take(i), gap.take(i + 1)).as_bytes().len());
+        let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
+        let tail = gap.skip(i).drop_first().map(|k: int, ss: Seq<char>| seq.skip(i)[k] + ss).flatten();
+        calc!{
+            (==)
+            s; {}
+            join(seq, gap); { lemma_join_split_at(seq, gap, i) }
+            seq.take(i).map(|k: int, ss: Seq<char>| gap[k] + ss).flatten()
+                + join(seq.skip(i), gap.skip(i));
+                {
+                    let s1 = seq.take(i).map(|k: int, ss: Seq<char>| gap[k] + ss);
+                    let s2 = seq.take(i).map(|k: int, ss: Seq<char>| gap.take(i+1)[k] + ss);
+                    assert_seqs_equal!(s1 == s2);
+                }
+            seq.take(i).map(|k: int, ss: Seq<char>| gap.take(i+1)[k] + ss).flatten()
+                + gap.skip(i).first() + tail;
+                {
+                    lemma_join_alt(seq.take(i), gap.take(i+1));
+                    assert(gap.take(i+1).last() == gap.skip(i).first());
+                }
+            join(seq.take(i), gap.take(i+1)) + tail;
+        }
+        assert(s.as_bytes() == join(seq.take(i), gap.take(i + 1)).as_bytes() + tail.as_bytes()) by {
+            lemma_str_concat_lower(join(seq.take(i), gap.take(i + 1)), tail);
+        }
+        assert(s.as_bytes().take(idx as int) == join(seq.take(i), gap.take(i + 1)).as_bytes());
+        assert(s.as_bytes().take(idx as int).is_utf8()) by {
+            lemma_str_is_utf8(join(seq.take(i), gap.take(i + 1)));
+        }
+        lemma_str_is_utf8(s);
+        lemma_char_boundary_iff_utf8(s.as_bytes(), idx as int);
+        assert(idx + tail.as_bytes().len() == s.as_bytes().len());
+        assert(idx_ch == join(seq.take(i), gap.take(i + 1)).len()) by {
+            lemma_str_lower_lift(join(seq.take(i), gap.take(i + 1)));
+        }
+        assert(s[idx_ch] == tail[0]);
+        assert(gap.skip(i).drop_first().len() > 0);
+        reveal_with_fuel(Seq::<_>::flatten, 2);
+        assert(seq.skip(i)[0] == seq[i]);
+        assert(tail[0] == seq[i][0]);
+    }
+    // #2
+    assert forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len() - 1
+    implies iter_seq[i].0 < iter_seq[i+1].0
+    by {
+        let idx1 = iter_seq[i].0 as int;
+        let idx2 = iter_seq[i+1].0 as int;
+        let s1 = join(seq.take(i), gap.take(i+1));
+        let s2 = join(seq.take(i+1), gap.take(i+2));
+        lemma_join_runcons(seq.take(i+1), gap.take(i+2));
+        assert(seq.take(i+1).drop_last() == seq.take(i));
+        assert(gap.take(i+2).drop_last() == gap.take(i+1));
+        assert(idx1 == s1.as_bytes().len());
+        assert(idx2 == s2.as_bytes().len());
+        assert(s1.as_bytes() + seq.take(i+1).last().as_bytes() + gap.take(i+2).last().as_bytes() == s2.as_bytes()) by {
+            lemma_str_concat_lower(s1, seq.take(i+1).last());
+            lemma_str_concat_lower(s1 + seq.take(i+1).last(), gap.take(i+2).last());
+        }
+        assert(seq.take(i+1).last().len() == 1);
+        assert(seq.take(i+1).last().as_bytes().len() > 0);
+    }
+    // #3
+    assert(iter_seq.len() == s.count(|c: char| chars@.contains(c))) by {
+        let pred = |c: char| chars@.contains(c);
+        assert forall |i: int| #![trigger gap[i]] 0 <= i < gap.len()
+        implies gap[i].all(|c: char| !pred(c))
+        by {
+            let neg_pred = |c: char| !chars@.contains(c);
+            assert(gap[i].all(neg_pred));
+            assert forall |j: int| 0 <= j < gap[i].len()
+                implies !pred(gap[i][j]) by {
+                assert(neg_pred(gap[i][j]));
+            }
+        }
+        assert forall |i: int| #![trigger seq[i]] 0 <= i < seq.len()
+        implies seq[i].len() == 1 && pred(seq[i][0])
+        by {}
+        lemma_str_matches_count(seq, gap, pred);
+    }
 }
 
 /// Proof that links the full spec to `str::match_indices` with a string pattern.
@@ -5109,7 +5395,7 @@ pub broadcast proof fn lemma_str_match_indices_iter_string<'a, 'b>(s: Seq<char>,
         #[trigger] str_match_indices_iter_post(s, pat, iter_seq),
     ensures
         // matches all match `pat`
-        forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len() 
+        forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len()
             ==> {
                 let (idx, ss) = iter_seq[i];
                 &&& ss@ == pat@
@@ -5122,17 +5408,99 @@ pub broadcast proof fn lemma_str_match_indices_iter_string<'a, 'b>(s: Seq<char>,
         exists |gap: Seq<Seq<char>>| {
             &&& #[trigger] gap.len() == iter_seq.len() + 1
             &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() - 1
-                    ==> gap[i].len() > 0 
+                    ==> gap[i].len() > 0
                         ==> (!pat@.is_prefix_of(gap[i] + pat@) && !pat@.is_infix_of(gap[i] + pat@))
             &&& !pat@.is_subrange_of(gap.last())
             &&& s == iter_seq.map(|i: int, item: (usize, &'a str)| gap[i] + item.1@).flatten() + gap.last()
             // ..and defines the indices
             &&& iter_seq.len() > 0 ==> iter_seq.first().0 == gap.first().as_bytes().len()
-            &&& forall |i: int| #![trigger iter_seq[i].0] 1 <= i < iter_seq.len() 
+            &&& forall |i: int| #![trigger iter_seq[i].0] 1 <= i < iter_seq.len()
                 ==> iter_seq[i].0 == iter_seq[i-1].0 + pat@.as_bytes().len() + gap[i].as_bytes().len()
         },
 {
-    admit()
+    axiom_string_matches_post(s, pat);
+    reveal(str_match_indices_iter_post);
+    let (seq, gap) = spec_matches(s, pat);
+    assert(iter_seq.len() == seq.len());
+    // #1
+    assert forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len()
+    implies {
+        let (idx, ss) = iter_seq[i];
+        &&& ss@ == pat@
+        &&& is_char_boundary(s.as_bytes(), idx as int) && idx <= s.as_bytes().len() - pat@.as_bytes().len()
+        &&& s.as_bytes().subrange(idx as int, idx + pat@.as_bytes().len() as int) == pat@.as_bytes()
+    } by {
+        let (idx, ss) = iter_seq[i];
+        assert(ss@ == seq[i]);
+        assert(seq[i] =~= pat@);
+        assert(idx == join(seq.take(i), gap.take(i + 1)).as_bytes().len());
+        let prefix = join(seq.take(i), gap.take(i + 1));
+        let rest = join(seq.skip(i + 1), gap.skip(i + 1));
+        lemma_join_split_match_at(seq, gap, i);
+        assert(s == prefix + seq[i] + rest);
+        assert(s.as_bytes() == prefix.as_bytes() + seq[i].as_bytes() + rest.as_bytes()) by {
+            lemma_str_concat_lower(prefix, seq[i]);
+            lemma_str_concat_lower(prefix + seq[i], rest);
+        }
+        assert(s.as_bytes().take(idx as int) == prefix.as_bytes());
+        assert(s.as_bytes().take(idx as int).is_utf8()) by {
+            lemma_str_is_utf8(prefix);
+        }
+        lemma_str_is_utf8(s);
+        lemma_char_boundary_iff_utf8(s.as_bytes(), idx as int);
+        assert(seq[i].as_bytes() == pat@.as_bytes());
+        assert(pat@.as_bytes().len() > 0);
+        assert(idx + pat@.as_bytes().len() <= s.as_bytes().len());
+        assert(s.as_bytes().subrange(idx as int, idx + pat@.as_bytes().len() as int) == pat@.as_bytes());
+    }
+    // #2
+    assert(iter_seq.len() == 0 <==> !pat@.is_subrange_of(s)) by {
+        assert(iter_seq.len() == seq.len());
+        reveal(str_contains_post);
+        lemma_str_contains_string(s, pat, seq.len() > 0);
+    }
+    // #3
+    assert(gap.len() == iter_seq.len() + 1);
+    assert forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() - 1 && gap[i].len() > 0
+    implies !pat@.is_prefix_of(gap[i] + pat@) && !pat@.is_infix_of(gap[i] + pat@)
+    by {}
+    assert(s == iter_seq.map(|i: int, item: (usize, &'a str)| gap[i] + item.1@).flatten() + gap.last()) by {
+        lemma_join_alt(seq, gap);
+        let s1 = iter_seq.map(|i: int, item: (usize, &'a str)| gap[i] + item.1@);
+        let s2 = seq.map(|i: int, ss: Seq<char>| gap[i] + ss);
+        assert_seqs_equal!(s1 == s2, i => {
+            assert(iter_seq[i].1@ == seq[i]);
+        });
+    }
+    assert(iter_seq.len() > 0 ==> iter_seq.first().0 == gap.first().as_bytes().len()) by {
+        if iter_seq.len() > 0 {
+            assert(iter_seq.first() == iter_seq[0]);
+            assert(iter_seq[0].0 == join(seq.take(0), gap.take(1)).as_bytes().len());
+            assert(join(seq.take(0), gap.take(1)) == gap.first()) by {
+                reveal_with_fuel(Seq::<_>::flatten, 2);
+            }
+        }
+    }
+    assert forall |i: int| #![trigger iter_seq[i].0] 1 <= i < iter_seq.len()
+    implies iter_seq[i].0 == iter_seq[i-1].0 + pat@.as_bytes().len() + gap[i].as_bytes().len()
+    by {
+        let idx1 = iter_seq[i-1].0 as int;
+        let idx2 = iter_seq[i].0 as int;
+        let s1 = join(seq.take(i-1), gap.take(i));
+        let s2 = join(seq.take(i), gap.take(i+1));
+        lemma_join_runcons(seq.take(i), gap.take(i+1));
+        assert(seq.take(i).drop_last() == seq.take(i-1));
+        assert(gap.take(i+1).drop_last() == gap.take(i));
+        assert(seq.take(i).last() == seq[i-1]);
+        assert(gap.take(i+1).last() == gap[i]);
+        assert(idx1 == s1.as_bytes().len());
+        assert(idx2 == s2.as_bytes().len());
+        assert(seq[i-1] == pat@);
+        assert(s1.as_bytes() + seq[i-1].as_bytes() + gap[i].as_bytes() == s2.as_bytes()) by {
+            lemma_str_concat_lower(s1, seq[i-1]);
+            lemma_str_concat_lower(s1 + seq[i-1], gap[i]);
+        }
+    }
 }
 
 /// Proof that links the full spec to `str::rmatch_indices` with a `char` pattern.
@@ -5141,7 +5509,7 @@ pub broadcast proof fn lemma_str_rmatch_indices_iter_char<'a>(s: Seq<char>, ch: 
         #[trigger] str_rmatch_indices_iter_post(s, ch, iter_seq),
     ensures
         // matches all match `ch`
-        forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len() 
+        forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len()
             ==> {
                 let (idx, ss) = iter_seq[i];
                 let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
@@ -5155,7 +5523,82 @@ pub broadcast proof fn lemma_str_rmatch_indices_iter_char<'a>(s: Seq<char>, ch: 
         // matches are exhaustive
         iter_seq.len() == s.count(|c: char| c == ch),
 {
-    admit()
+    axiom_char_rmatches_post(s, ch);
+    reveal(str_rmatch_indices_iter_post);
+    let (seq, gap) = spec_rmatches(s, ch);
+    assert(iter_seq.len() == seq.len());
+    // #1
+    assert forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len()
+    implies {
+        let (idx, ss) = iter_seq[i];
+        let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
+        &&& ss@ == seq![ch]
+        &&& is_char_boundary(s.as_bytes(), idx as int) && idx < s.as_bytes().len()
+        &&& ss@[0] == s[idx_ch]
+    } by {
+        let (idx, ss) = iter_seq[i];
+        assert(ss@ == seq[i]);
+        assert(seq[i] =~= seq![ch]);
+        assert(idx == rjoin(seq.skip(i + 1), gap.skip(i + 1)).as_bytes().len());
+        let prefix = rjoin(seq.skip(i + 1), gap.skip(i + 1));
+        let suffix = rjoin(seq.take(i), gap.take(i + 1));
+        let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
+        calc!{
+            (==)
+            s; {}
+            rjoin(seq, gap); { lemma_rjoin_split_match_at(seq, gap, i) }
+            prefix + seq[i] + suffix;
+        }
+        assert(s.as_bytes() == prefix.as_bytes() + seq[i].as_bytes() + suffix.as_bytes()) by {
+            lemma_str_concat_lower(prefix, seq[i]);
+            lemma_str_concat_lower(prefix + seq[i], suffix);
+        }
+        assert(s.as_bytes().take(idx as int) == prefix.as_bytes());
+        assert(s.as_bytes().take(idx as int).is_utf8()) by {
+            lemma_str_is_utf8(prefix);
+        }
+        lemma_str_is_utf8(s);
+        lemma_char_boundary_iff_utf8(s.as_bytes(), idx as int);
+        assert(idx + seq[i].as_bytes().len() <= s.as_bytes().len());
+        assert(idx_ch == prefix.len()) by {
+            lemma_str_lower_lift(prefix);
+        }
+        assert(s[idx_ch] == seq[i][0]);
+    }
+    // #2
+    assert forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len() - 1
+    implies iter_seq[i].0 > iter_seq[i+1].0
+    by {
+        let idx1 = iter_seq[i].0 as int;
+        let idx2 = iter_seq[i+1].0 as int;
+        let prefix1 = rjoin(seq.skip(i+1), gap.skip(i+1));
+        let prefix2 = rjoin(seq.skip(i+2), gap.skip(i+2));
+        lemma_rjoin_uncons(seq.skip(i+1), gap.skip(i+1));
+        assert(seq.skip(i+1)[0] == seq[i+1]);
+        assert(gap.skip(i+1)[0] == gap[i+1]);
+        assert(seq.skip(i+1).skip(1) == seq.skip(i+2));
+        assert(gap.skip(i+1).skip(1) == gap.skip(i+2));
+        assert(prefix1 == prefix2 + seq[i+1] + gap[i+1]);
+        assert(idx1 == prefix1.as_bytes().len());
+        assert(idx2 == prefix2.as_bytes().len());
+        assert(prefix2.as_bytes() + seq[i+1].as_bytes() + gap[i+1].as_bytes() == prefix1.as_bytes()) by {
+            lemma_str_concat_lower(prefix2, seq[i+1]);
+            lemma_str_concat_lower(prefix2 + seq[i+1], gap[i+1]);
+        }
+        assert(seq[i+1] =~= seq![ch]);
+        assert(seq[i+1].as_bytes().len() > 0);
+    }
+    // #3
+    assert(iter_seq.len() == s.count(|c: char| c == ch)) by {
+        let pred = |c: char| c == ch;
+        assert forall |i: int| #![trigger gap[i]] 0 <= i < gap.len()
+        implies gap[i].all(|c: char| !pred(c))
+        by { assert(!gap[i].contains(ch)); }
+        assert forall |i: int| #![trigger seq[i]] 0 <= i < seq.len()
+        implies seq[i].len() == 1 && pred(seq[i][0])
+        by { assert(seq[i] =~= seq![ch]) }
+        lemma_str_rmatches_count(seq, gap, pred);
+    }
 }
 
 /// Proof that links the full spec to `str::rmatch_indices` with a closure pattern.
@@ -5167,7 +5610,7 @@ pub broadcast proof fn lemma_str_rmatch_indices_iter_closure<'a, F>(s: Seq<char>
         is_deterministic(f) && is_total(f),
     ensures
         // matches all match `f`
-        forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len() 
+        forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len()
             ==> {
                 let (idx, ss) = iter_seq[i];
                 let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
@@ -5181,7 +5624,91 @@ pub broadcast proof fn lemma_str_rmatch_indices_iter_closure<'a, F>(s: Seq<char>
         // matches are exhaustive
         iter_seq.len() == s.count(|c: char| call_ensures(f, (c,), true)),
 {
-    admit()
+    axiom_closure_rmatches_post(s, f);
+    reveal(str_rmatch_indices_iter_post);
+    let (seq, gap) = spec_rmatches(s, f);
+    assert(iter_seq.len() == seq.len());
+    // #1
+    assert forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len()
+    implies {
+        let (idx, ss) = iter_seq[i];
+        let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
+        &&& ss@.len() == 1 && call_ensures(f, (ss@[0],), true)
+        &&& is_char_boundary(s.as_bytes(), idx as int) && idx < s.as_bytes().len()
+        &&& ss@[0] == s[idx_ch]
+    } by {
+        let (idx, ss) = iter_seq[i];
+        assert(ss@ == seq[i]);
+        assert(seq[i].len() == 1 && call_ensures(f, (seq[i][0],), true));
+        assert(idx == rjoin(seq.skip(i + 1), gap.skip(i + 1)).as_bytes().len());
+        let prefix = rjoin(seq.skip(i + 1), gap.skip(i + 1));
+        let suffix = rjoin(seq.take(i), gap.take(i + 1));
+        let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
+        calc!{
+            (==)
+            s; {}
+            rjoin(seq, gap); { lemma_rjoin_split_match_at(seq, gap, i) }
+            prefix + seq[i] + suffix;
+        }
+        assert(s.as_bytes() == prefix.as_bytes() + seq[i].as_bytes() + suffix.as_bytes()) by {
+            lemma_str_concat_lower(prefix, seq[i]);
+            lemma_str_concat_lower(prefix + seq[i], suffix);
+        }
+        assert(s.as_bytes().take(idx as int) == prefix.as_bytes());
+        assert(s.as_bytes().take(idx as int).is_utf8()) by {
+            lemma_str_is_utf8(prefix);
+        }
+        lemma_str_is_utf8(s);
+        lemma_char_boundary_iff_utf8(s.as_bytes(), idx as int);
+        assert(idx + seq[i].as_bytes().len() <= s.as_bytes().len());
+        assert(idx_ch == prefix.len()) by {
+            lemma_str_lower_lift(prefix);
+        }
+        assert(s[idx_ch] == seq[i][0]);
+    }
+    // #2
+    assert forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len() - 1
+    implies iter_seq[i].0 > iter_seq[i+1].0
+    by {
+        let idx1 = iter_seq[i].0 as int;
+        let idx2 = iter_seq[i+1].0 as int;
+        let prefix1 = rjoin(seq.skip(i+1), gap.skip(i+1));
+        let prefix2 = rjoin(seq.skip(i+2), gap.skip(i+2));
+        lemma_rjoin_uncons(seq.skip(i+1), gap.skip(i+1));
+        assert(seq.skip(i+1)[0] == seq[i+1]);
+        assert(gap.skip(i+1)[0] == gap[i+1]);
+        assert(seq.skip(i+1).skip(1) == seq.skip(i+2));
+        assert(gap.skip(i+1).skip(1) == gap.skip(i+2));
+        assert(prefix1 == prefix2 + seq[i+1] + gap[i+1]);
+        assert(idx1 == prefix1.as_bytes().len());
+        assert(idx2 == prefix2.as_bytes().len());
+        assert(prefix2.as_bytes() + seq[i+1].as_bytes() + gap[i+1].as_bytes() == prefix1.as_bytes()) by {
+            lemma_str_concat_lower(prefix2, seq[i+1]);
+            lemma_str_concat_lower(prefix2 + seq[i+1], gap[i+1]);
+        }
+        assert(seq[i+1].len() == 1);
+        assert(seq[i+1].as_bytes().len() > 0);
+    }
+    // #3
+    assert(iter_seq.len() == s.count(|c: char| call_ensures(f, (c,), true))) by {
+        let pred = |c: char| call_ensures(f, (c,), true);
+        assert forall |i: int| #![trigger gap[i]] 0 <= i < gap.len()
+        implies gap[i].all(|c: char| !pred(c)) by {
+            let neg_pred = |c: char| call_ensures(f, (c,), false);
+            assert(gap[i].all(neg_pred));
+            assert forall |j: int| 0 <= j < gap[i].len()
+                implies !pred(gap[i][j]) by {
+                assert(neg_pred(gap[i][j]));
+                if pred(gap[i][j]) {
+                    assert(call_ensures(f, (gap[i][j],), false));
+                    assert(call_ensures(f, (gap[i][j],), true));
+                }
+            }
+        }
+        assert forall |i: int| #![trigger seq[i]] 0 <= i < seq.len()
+        implies seq[i].len() == 1 && pred(seq[i][0]) by {}
+        lemma_str_rmatches_count(seq, gap, pred);
+    }
 }
 
 /// Proof that links the full spec to `str::rmatch_indices` with a `&[char]` pattern.
@@ -5190,7 +5717,7 @@ pub broadcast proof fn lemma_str_rmatch_indices_iter_chars<'a, 'b>(s: Seq<char>,
         #[trigger] str_rmatch_indices_iter_post(s, chars, iter_seq),
     ensures
         // matches all match `chars`
-        forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len() 
+        forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len()
             ==> {
                 let (idx, ss) = iter_seq[i];
                 let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
@@ -5204,7 +5731,87 @@ pub broadcast proof fn lemma_str_rmatch_indices_iter_chars<'a, 'b>(s: Seq<char>,
         // matches are exhaustive
         iter_seq.len() == s.count(|c: char| chars@.contains(c)),
 {
-    admit()
+    axiom_chars_rmatches_post(s, chars);
+    reveal(str_rmatch_indices_iter_post);
+    let (seq, gap) = spec_rmatches(s, chars);
+    assert(iter_seq.len() == seq.len());
+    // #1
+    assert forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len()
+    implies {
+        let (idx, ss) = iter_seq[i];
+        let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
+        &&& ss@.len() == 1 && chars@.contains(ss@[0])
+        &&& is_char_boundary(s.as_bytes(), idx as int) && idx < s.as_bytes().len()
+        &&& ss@[0] == s[idx_ch]
+    } by {
+        let (idx, ss) = iter_seq[i];
+        assert(ss@ == seq[i]);
+        assert(seq[i].len() == 1 && chars@.contains(seq[i][0]));
+        assert(idx == rjoin(seq.skip(i + 1), gap.skip(i + 1)).as_bytes().len());
+        let prefix = rjoin(seq.skip(i + 1), gap.skip(i + 1));
+        let suffix = rjoin(seq.take(i), gap.take(i + 1));
+        let idx_ch = decode_utf8(s.as_bytes().take(idx as int)).len() as int;
+        calc!{
+            (==)
+            s; {}
+            rjoin(seq, gap); { lemma_rjoin_split_match_at(seq, gap, i) }
+            prefix + seq[i] + suffix;
+        }
+        assert(s.as_bytes() == prefix.as_bytes() + seq[i].as_bytes() + suffix.as_bytes()) by {
+            lemma_str_concat_lower(prefix, seq[i]);
+            lemma_str_concat_lower(prefix + seq[i], suffix);
+        }
+        assert(s.as_bytes().take(idx as int) == prefix.as_bytes());
+        assert(s.as_bytes().take(idx as int).is_utf8()) by {
+            lemma_str_is_utf8(prefix);
+        }
+        lemma_str_is_utf8(s);
+        lemma_char_boundary_iff_utf8(s.as_bytes(), idx as int);
+        assert(idx + seq[i].as_bytes().len() <= s.as_bytes().len());
+        assert(idx_ch == prefix.len()) by {
+            lemma_str_lower_lift(prefix);
+        }
+        assert(s[idx_ch] == seq[i][0]);
+    }
+    // #2
+    assert forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len() - 1
+    implies iter_seq[i].0 > iter_seq[i+1].0
+    by {
+        let idx1 = iter_seq[i].0 as int;
+        let idx2 = iter_seq[i+1].0 as int;
+        let prefix1 = rjoin(seq.skip(i+1), gap.skip(i+1));
+        let prefix2 = rjoin(seq.skip(i+2), gap.skip(i+2));
+        lemma_rjoin_uncons(seq.skip(i+1), gap.skip(i+1));
+        assert(seq.skip(i+1)[0] == seq[i+1]);
+        assert(gap.skip(i+1)[0] == gap[i+1]);
+        assert(seq.skip(i+1).skip(1) == seq.skip(i+2));
+        assert(gap.skip(i+1).skip(1) == gap.skip(i+2));
+        assert(prefix1 == prefix2 + seq[i+1] + gap[i+1]);
+        assert(idx1 == prefix1.as_bytes().len());
+        assert(idx2 == prefix2.as_bytes().len());
+        assert(prefix2.as_bytes() + seq[i+1].as_bytes() + gap[i+1].as_bytes() == prefix1.as_bytes()) by {
+            lemma_str_concat_lower(prefix2, seq[i+1]);
+            lemma_str_concat_lower(prefix2 + seq[i+1], gap[i+1]);
+        }
+        assert(seq[i+1].len() == 1);
+        assert(seq[i+1].as_bytes().len() > 0);
+    }
+    // #3
+    assert(iter_seq.len() == s.count(|c: char| chars@.contains(c))) by {
+        let pred = |c: char| chars@.contains(c);
+        assert forall |i: int| #![trigger gap[i]] 0 <= i < gap.len()
+        implies gap[i].all(|c: char| !pred(c)) by {
+            let neg_pred = |c: char| !chars@.contains(c);
+            assert(gap[i].all(neg_pred));
+            assert forall |j: int| 0 <= j < gap[i].len()
+                implies !pred(gap[i][j]) by {
+                assert(neg_pred(gap[i][j]));
+            }
+        }
+        assert forall |i: int| #![trigger seq[i]] 0 <= i < seq.len()
+        implies seq[i].len() == 1 && pred(seq[i][0]) by {}
+        lemma_str_rmatches_count(seq, gap, pred);
+    }
 }
 
 /// Proof that links the full spec to `str::rmatch_indices` with a string pattern.
@@ -5218,7 +5825,7 @@ pub broadcast proof fn lemma_str_rmatch_indices_iter_string<'a, 'b>(s: Seq<char>
         #[trigger] str_rmatch_indices_iter_post(s, pat, iter_seq),
     ensures
         // matches all match `pat`
-        forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len() 
+        forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len()
             ==> {
                 let (idx, ss) = iter_seq[i];
                 &&& ss@ == pat@
@@ -5231,7 +5838,7 @@ pub broadcast proof fn lemma_str_rmatch_indices_iter_string<'a, 'b>(s: Seq<char>
         exists |gap: Seq<Seq<char>>| {
             &&& #[trigger] gap.len() == iter_seq.len() + 1
             &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() - 1
-                    ==> gap[i].len() > 0 
+                    ==> gap[i].len() > 0
                         ==> (!pat@.is_suffix_of(pat@ + gap[i]) && !pat@.is_infix_of(pat@ + gap[i]))
             &&& !pat@.is_subrange_of(gap.last())
             &&& s == gap.last() + iter_seq.map(|i: int, item: (usize, &'a str)| item.1@ + gap[i]).reverse().flatten()
@@ -5241,8 +5848,124 @@ pub broadcast proof fn lemma_str_rmatch_indices_iter_string<'a, 'b>(s: Seq<char>
                 ==> iter_seq[i].0 == iter_seq[i+1].0 + pat@.as_bytes().len() + gap[i+1].as_bytes().len()
         },
 {
-    admit()
+    axiom_string_rmatches_post(s, pat);
+    reveal(str_rmatch_indices_iter_post);
+    let (seq, gap) = spec_rmatches(s, pat);
+    assert(iter_seq.len() == seq.len());
+    // #1: per-match postconditions
+    assert forall |i: int| #![trigger iter_seq[i]] 0 <= i < iter_seq.len()
+    implies {
+        let (idx, ss) = iter_seq[i];
+        &&& ss@ == pat@
+        &&& is_char_boundary(s.as_bytes(), idx as int) && idx <= s.as_bytes().len() - pat@.as_bytes().len()
+        &&& s.as_bytes().subrange(idx as int, idx + pat@.as_bytes().len() as int) == pat@.as_bytes()
+    } by {
+        let (idx, ss) = iter_seq[i];
+        assert(ss@ == seq[i]);
+        assert(seq[i] =~= pat@);
+        assert(idx == rjoin(seq.skip(i + 1), gap.skip(i + 1)).as_bytes().len());
+        let prefix = rjoin(seq.skip(i + 1), gap.skip(i + 1));
+        let suffix = rjoin(seq.take(i), gap.take(i + 1));
+        calc!{
+            (==)
+            s; {}
+            rjoin(seq, gap); { lemma_rjoin_split_match_at(seq, gap, i) }
+            prefix + seq[i] + suffix;
+        }
+        assert(s.as_bytes() == prefix.as_bytes() + seq[i].as_bytes() + suffix.as_bytes()) by {
+            lemma_str_concat_lower(prefix, seq[i]);
+            lemma_str_concat_lower(prefix + seq[i], suffix);
+        }
+        assert(s.as_bytes().take(idx as int) == prefix.as_bytes());
+        assert(s.as_bytes().take(idx as int).is_utf8()) by {
+            lemma_str_is_utf8(prefix);
+        }
+        lemma_str_is_utf8(s);
+        lemma_char_boundary_iff_utf8(s.as_bytes(), idx as int);
+        assert(seq[i].as_bytes() == pat@.as_bytes());
+        assert(pat@.as_bytes().len() > 0);
+        assert(idx + pat@.as_bytes().len() <= s.as_bytes().len());
+        assert(s.as_bytes().subrange(idx as int, idx + pat@.as_bytes().len() as int) == pat@.as_bytes());
+    }
+    // #2: empty iff no subrange
+    assert(iter_seq.len() == 0 <==> !pat@.is_subrange_of(s)) by {
+        assert(iter_seq.len() == seq.len());
+        if iter_seq.len() == 0 {
+            assert(gap.len() == 1);
+            reveal_with_fuel(Seq::<_>::flatten_alt, 2);
+            assert(s == gap.last());
+            assert(!pat@.is_subrange_of(gap.last()));
+        }
+        if !pat@.is_subrange_of(s) {
+            assert_by_contradiction!(iter_seq.len() == 0, {
+                assert(seq.len() > 0);
+                assert(seq[0] == pat@);
+                lemma_rjoin_uncons(seq, gap);
+                let rest = rjoin(seq.skip(1), gap.skip(1));
+                lemma_concat_associative(rest, seq[0], gap[0]);
+                assert(s == rest + (seq[0] + gap[0]));
+                assert(seq[0] =~= s.subrange(rest.len() as int, rest.len() + seq[0].len() as int));
+                assert(seq[0].is_subrange_of(s)) by {
+                    assert(exists |i: int| 0 <= i <= s.len() - seq[0].len()
+                        && seq[0] =~= #[trigger] s.subrange(i, i + seq[0].len()));
+                }
+                assert(pat@.is_subrange_of(s));
+            });
+        }
+    }
+    // #3: gap reconstruction
+    assert(gap.len() == iter_seq.len() + 1);
+    assert forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() - 1 && gap[i].len() > 0
+    implies !pat@.is_suffix_of(pat@ + gap[i]) && !pat@.is_infix_of(pat@ + gap[i])
+    by {}
+    assert(s == gap.last() + iter_seq.map(|i: int, item: (usize, &'a str)| item.1@ + gap[i]).reverse().flatten()) by {
+        lemma_rjoin_alt_for_matches(seq, gap);
+        let s1 = iter_seq.map(|i: int, item: (usize, &'a str)| item.1@ + gap[i]);
+        let s2 = seq.map(|i: int, ss: Seq<char>| ss + gap[i]);
+        assert_seqs_equal!(s1 == s2, i => {
+            assert(iter_seq[i].1@ == seq[i]);
+            assert(seq[i] == pat@);
+        });
+        assert(s1.reverse() == s2.reverse());
+        s1.reverse().lemma_flatten_and_flatten_alt_are_equivalent();
+        assert(s2.reverse().flatten_alt() == s1.reverse().flatten());
+    }
+    // #4: index definitions
+    assert(iter_seq.len() > 0 ==> iter_seq.last().0 == gap.last().as_bytes().len()) by {
+        if iter_seq.len() > 0 {
+            let i = iter_seq.len() - 1;
+            assert(iter_seq.last() == iter_seq[i]);
+            assert(iter_seq[i].0 == rjoin(seq.skip(i + 1), gap.skip(i + 1)).as_bytes().len());
+            assert(seq.skip(i + 1).len() == 0);
+            assert(gap.skip(i + 1).len() == 1);
+            assert(rjoin(seq.skip(i + 1), gap.skip(i + 1)) == gap.last()) by {
+                reveal_with_fuel(Seq::<_>::flatten_alt, 2);
+            }
+        }
+    }
+    assert forall |i: int| #![trigger iter_seq[i].0] 0 <= i < iter_seq.len() - 1
+    implies iter_seq[i].0 == iter_seq[i+1].0 + pat@.as_bytes().len() + gap[i+1].as_bytes().len()
+    by {
+        let idx1 = iter_seq[i].0 as int;
+        let idx2 = iter_seq[i+1].0 as int;
+        let prefix1 = rjoin(seq.skip(i+1), gap.skip(i+1));
+        let prefix2 = rjoin(seq.skip(i+2), gap.skip(i+2));
+        lemma_rjoin_uncons(seq.skip(i+1), gap.skip(i+1));
+        assert(seq.skip(i+1)[0] == seq[i+1]);
+        assert(gap.skip(i+1)[0] == gap[i+1]);
+        assert(seq.skip(i+1).skip(1) == seq.skip(i+2));
+        assert(gap.skip(i+1).skip(1) == gap.skip(i+2));
+        assert(prefix1 == prefix2 + seq[i+1] + gap[i+1]);
+        assert(idx1 == prefix1.as_bytes().len());
+        assert(idx2 == prefix2.as_bytes().len());
+        assert(seq[i+1] == pat@);
+        assert(prefix2.as_bytes() + seq[i+1].as_bytes() + gap[i+1].as_bytes() == prefix1.as_bytes()) by {
+            lemma_str_concat_lower(prefix2, seq[i+1]);
+            lemma_str_concat_lower(prefix2 + seq[i+1], gap[i+1]);
+        }
+    }
 }
+
 
 /// Proof that links the full spec to `str::trim_matches` with a `char` pattern.
 pub broadcast proof fn lemma_str_trim_matches_char(s: Seq<char>, ch: char, ret: Seq<char>)
@@ -5250,11 +5973,137 @@ pub broadcast proof fn lemma_str_trim_matches_char(s: Seq<char>, ch: char, ret: 
         #[trigger] str_trim_matches_post(s, ch, ret),
     ensures
         ret.is_subrange_of(s),
-        ret.len() > 0 ==> 
+        ret.len() > 0 ==>
             ret.first() != ch && ret.last() != ch,
         ret == s.skip_while(|c: char| c == ch).rskip_while(|c: char| c == ch),
 {
-    admit()
+    axiom_char_matches_post(s, ch);
+    reveal(str_trim_matches_post);
+    let (seq, gap) = spec_matches(s, ch);
+    let pred = |c: char| c == ch;
+    if gap.all(|ss: Seq<char>| ss.len() == 0) {
+        lemma_join_empty_gap(seq, gap);
+        assert(s == seq.flatten());
+        assert forall |i: int| 0 <= i < seq.len() 
+        implies #[trigger] seq[i] == seq![ch]
+        by { assert(seq[i] =~= seq![ch]) }
+        lemma_seq_flatten_same_length(seq, 1);
+
+        assert(seq.len() == s.len());
+        assert forall |i: int| 0 <= i < s.len()
+        implies #[trigger] pred(s[i])
+        by {
+            assert(s[i] == s.subrange(i * 1, (i + 1) * 1)[0]);
+            assert(s.subrange(i * 1, (i + 1) * 1) == seq[i]);
+        }
+        assert(s.skip_while(pred).len() == 0) by {
+            lemma_seq_count_while_lower_bound(s, pred, s.len() as int);
+        }
+        assert(s.skip_while(pred).rskip_while(pred).len() == 0) by {
+            lemma_seq_rskip_while_ensures(s.skip_while(pred), pred);
+        }
+        assert(ret.len() == 0);
+        lemma_seq_is_subrange_alt(s, ret);
+    } else {
+        let pred2 = |ss: Seq<char>| ss.len() == 0;
+        let head = gap.count_while(pred2) as int;
+        let tail = gap.rcount_while(pred2) as int;
+        lemma_seq_take_while_ensures(gap, pred2);
+        lemma_seq_rtake_while_ensures(gap, pred2);
+        assert(head + tail < gap.len()) by {
+            let k = choose|i: int| 0 <= i < gap.len() && !(#[trigger] pred2(gap[i]));
+            lemma_seq_count_while_upper_bound(gap, pred2, k);
+            lemma_seq_rcount_while_upper_bound(gap, pred2, k);
+        };
+
+        // TODO: ret == join(...); need to show ret.len() > 0 because it contains at least
+        // one non-empty gap
+
+        // decompose `s`
+        calc!{
+            (==)
+            s; {}
+            join(seq, gap); { lemma_join_split_at(seq, gap, head) }
+            seq.take(head).map(|i: int, ss: Seq<char>| gap[i] + ss).flatten()
+                + join(seq.skip(head), gap.skip(head));
+                {
+                    let s1 = seq.take(head).map(|i: int, ss: Seq<char>| gap[i] + ss);
+                    let s2 = seq![seq![ch]; head as nat];
+                    assert_seqs_equal!(s1 == s2, j => {
+                        assert(pred2(gap.take_while(pred2)[j]));
+                        assert(gap.take_while(pred2)[j] == gap[j]);
+                        assert(seq[j] =~= seq![ch]);
+                    });
+                }
+            seq![seq![ch]; head as nat].flatten()
+                + join(seq.skip(head), gap.skip(head)); 
+                { 
+                    lemma_join_split_at_alt(seq.skip(head), gap.skip(head), seq.len() - head - tail);
+                    assert(seq.skip(head).take(seq.len() - head - tail) == seq.subrange(head, seq.len() - tail));
+                    assert(gap.skip(head).take(seq.len() - head - tail + 1) == gap.subrange(head, gap.len() - tail));
+                    assert(seq.skip(head).skip(seq.len() - head - tail) == seq.skip(seq.len() - tail));
+                    assert(gap.skip(head).skip(seq.len() - head - tail + 1) == gap.skip(gap.len() - tail));
+                }
+            seq![seq![ch]; head as nat].flatten() + ret + seq.skip(seq.len() - tail)
+                .map(|i: int, ss: Seq<char>| ss + gap.skip(gap.len() - tail)[i])
+                .flatten();
+                {
+                    let s1 = seq.skip(seq.len() - tail).map(|i: int, ss: Seq<char>| ss + gap.skip(gap.len() - tail)[i]);
+                    let s2 = seq![seq![ch]; tail as nat];
+                    assert_seqs_equal!(s1 == s2, j => {
+                        assert(pred2(gap.rtake_while(pred2)[j]));
+                        assert(gap.rtake_while(pred2)[j] == gap[gap.len() - tail + j]);
+                        assert(seq[seq.len() - tail + j] =~= seq![ch]);
+                    });
+                }
+            seq![seq![ch]; head as nat].flatten() + ret + seq![seq![ch]; tail as nat].flatten(); {
+                lemma_seq_flatten_same_length(seq![seq![ch]; head as nat], 1);
+                assert_seqs_equal!(seq![seq![ch]; head as nat].flatten() == seq![ch; head as nat], i => {
+                    assert(seq![seq![ch]; head as nat].flatten().subrange(i*1, (i+1)*1)[0] == seq![seq![ch]; head as nat].flatten()[i]);
+                    assert(seq![seq![ch]; head as nat].flatten().subrange(i*1, (i+1)*1)[0] == seq![seq![ch]; head as nat][i][0]);
+                });
+                lemma_seq_flatten_same_length(seq![seq![ch]; tail as nat], 1);
+                assert_seqs_equal!(seq![seq![ch]; tail as nat].flatten() == seq![ch; tail as nat], i => {
+                    assert(seq![seq![ch]; tail as nat].flatten().subrange(i*1, (i+1)*1)[0] == seq![seq![ch]; tail as nat].flatten()[i]);
+                    assert(seq![seq![ch]; tail as nat].flatten().subrange(i*1, (i+1)*1)[0] == seq![seq![ch]; tail as nat][i][0]);
+                });
+            }
+            seq![ch; head as nat] + ret + seq![ch; tail as nat];
+        }
+        // #1
+        assert(ret.is_subrange_of(s)) by {
+            assert(ret == s.subrange(head, s.len() - tail));
+            lemma_seq_is_subrange_alt(s, ret);
+        }
+        // #2
+        if ret.len() > 0 { // TODO
+            assert(!gap[head].contains(ch));
+            assert(!gap[gap.len() - tail - 1].contains(ch));
+            assert(gap.subrange(head as int, gap.len() - tail).first() == gap[head]);
+            lemma_join_alt(seq.subrange(head as int, seq.len() - tail), gap.subrange(head as int, gap.len() - tail));
+            assert(gap.subrange(head as int, gap.len() - tail).last() == gap[gap.len() - tail - 1]);
+            assert(ret.first() != ch) by {
+                assert(ret.first() == gap.subrange(head as int, gap.len() - tail).first()[0]);
+            }
+            assert(ret.last() != ch) by {
+                assert(ret.last() == gap.subrange(head as int, gap.len() - tail).last().last());
+            }
+        }
+        
+        // #3
+        // TODO: this now doesn't work because of rlimit issues
+        // calc!{
+        //     (==)
+        //     s.skip_while(pred).rskip_while(pred); {
+        //         lemma_seq_skip_while_defines(s, pred, ret + seq![ch; tail as nat]);
+        //     }
+        //     (ret + seq![ch; tail as nat]).rskip_while(pred); {
+        //         lemma_seq_take_while_defines(ret + seq![ch; tail as nat], pred, ret);
+        //     }
+        //     ret;
+        // }
+        assume(ret == s.skip_while(pred).rskip_while(pred));
+    }
 }
 
 /// Proof that links the full spec to `str::trim_matches` with a closure pattern.
@@ -5266,8 +6115,8 @@ pub broadcast proof fn lemma_str_trim_matches_closure<F>(s: Seq<char>, f: F, ret
         is_deterministic(f) && is_total(f),
     ensures
         ret.is_subrange_of(s),
-        ret.len() > 0 ==> 
-            call_ensures(f, (ret.first(),), false) 
+        ret.len() > 0 ==>
+            call_ensures(f, (ret.first(),), false)
             && call_ensures(f, (ret.last(),), false),
         ret == s.skip_while(|c: char| call_ensures(f, (c,), true))
                 .rskip_while(|c: char| call_ensures(f, (c,), true)),
@@ -5281,7 +6130,7 @@ pub broadcast proof fn lemma_str_trim_matches_chars<'b>(s: Seq<char>, chars: &'b
         #[trigger] str_trim_matches_post(s, chars, ret),
     ensures
         ret.is_subrange_of(s),
-        ret.len() > 0 ==> 
+        ret.len() > 0 ==>
             !chars@.contains(ret.first()) && !chars@.contains(ret.last()),
         ret == s.skip_while(|c: char| chars@.contains(c))
                 .rskip_while(|c: char| chars@.contains(c)),
@@ -5439,7 +6288,7 @@ pub broadcast proof fn lemma_str_strip_prefix_char<'a>(s: Seq<char>, ch: char, r
                 None => s.len() == 0 || (s.len() > 0 && s.first() != ch),
                 Some(o) => {
                     &&& s.len() > 0
-                    &&& s.first() == ch 
+                    &&& s.first() == ch
                     &&& o@ == s.drop_first()
                 },
             }
@@ -5708,7 +6557,7 @@ pub broadcast proof fn lemma_str_strip_suffix_char<'a>(s: Seq<char>, ch: char, r
                 None => s.len() == 0 || (s.len() > 0 && s.last() != ch),
                 Some(o) => {
                     &&& s.len() > 0
-                    &&& s.last() == ch 
+                    &&& s.last() == ch
                     &&& o@ == s.drop_last()
                 },
             }
@@ -6014,6 +6863,42 @@ proof fn lemma_join_uncons(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
     assert(join(seq, gap) == gap[0] + seq[0] + rest);
 }
 
+proof fn lemma_join_runcons(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
+    requires
+        seq.len() > 0,
+        seq.len() + 1 == gap.len(),
+    ensures
+        join(seq, gap) == join(seq.drop_last(), gap.drop_last()) + seq.last() + gap.last(),
+    decreases
+        seq.len(),
+{
+    reveal_with_fuel(Seq::<_>::flatten, 3);
+    if seq.len() == 1 {
+        calc!{
+            (==)
+            join(seq, gap); {}
+            gap[0] + seq[0] + gap[1]; {}
+            join(seq.drop_last(), gap.drop_last()) + seq.last() + gap.last();
+        }
+    } else {
+        calc!{
+            (==)
+            join(seq, gap); { lemma_join_uncons(seq, gap) }
+            gap[0] + seq[0] + join(seq.skip(1), gap.skip(1)); { lemma_join_runcons(seq.skip(1), gap.skip(1)) }
+            gap[0] + seq[0] + join(seq.skip(1).drop_last(), gap.skip(1).drop_last())
+                + seq.skip(1).last() + gap.skip(1).last();
+                {
+                    lemma_join_uncons(seq.drop_last(), gap.drop_last());
+                    assert(seq.drop_last().skip(1) == seq.skip(1).drop_last());
+                    assert(gap.drop_last().skip(1) == gap.skip(1).drop_last());
+                    assert(seq.skip(1).last() == seq.last());
+                    assert(gap.skip(1).last() == gap.last());
+                }
+            join(seq.drop_last(), gap.drop_last()) + seq.last() + gap.last();
+        }
+    }
+}
+
 proof fn lemma_rjoin_uncons(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
     requires
         seq.len() > 0,
@@ -6035,6 +6920,60 @@ proof fn lemma_rjoin_uncons(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
     assert(rest == rest_parts.reverse().flatten_alt() + gap[1]);
     assert(rjoin(seq, gap) == parts.reverse().flatten_alt() + gap[0]);
     assert(rjoin(seq, gap) == rest + seq[0] + gap[0]);
+}
+
+proof fn lemma_rjoin_runcons(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
+    requires
+        seq.len() > 0,
+        seq.len() + 1 == gap.len(),
+    ensures
+        rjoin(seq, gap) == gap.last() + seq.last() + rjoin(seq.drop_last(), gap.drop_last()),
+    decreases
+        seq.len(),
+{
+    if seq.len() == 1 {
+        reveal_with_fuel(Seq::<_>::flatten_alt, 3);
+        assert(gap.last() == gap[1]);
+        assert(gap.drop_last().last() == gap[0]);
+        assert_seqs_equal!(seq.drop_last() == seq![]);
+        calc!{
+            (==)
+            rjoin(seq, gap); {}
+            gap[1] + seq[0] + gap[0]; {}
+            gap.last() + seq.last() + rjoin(seq.drop_last(), gap.drop_last());
+        }
+    } else {
+        let rest_seq = seq.skip(1);
+        let rest_gap = gap.skip(1);
+        lemma_rjoin_uncons(seq, gap);
+        lemma_rjoin_runcons(rest_seq, rest_gap);
+        lemma_rjoin_uncons(seq.drop_last(), gap.drop_last());
+        assert(rest_seq.drop_last() == seq.skip(1).drop_last());
+        assert(gap.skip(1).drop_last() == gap.drop_last().skip(1));
+        assert(seq.drop_last().skip(1) == seq.skip(1).drop_last());
+        assert(rest_seq.last() == seq.last());
+        assert(rest_gap.last() == gap.last());
+        let middle = rjoin(seq.skip(1).drop_last(), gap.skip(1).drop_last());
+        calc!{
+            (==)
+            rjoin(seq, gap); {}
+            rjoin(rest_seq, rest_gap) + seq[0] + gap[0]; {}
+            (gap.last() + seq.last() + middle) + seq[0] + gap[0];
+                {
+                    assert(rjoin(rest_seq, rest_gap) == gap.last() + seq.last() + middle);
+                }
+            gap.last() + seq.last() + (middle + seq[0] + gap[0]);
+                {
+                    lemma_concat_associative(gap.last(), seq.last(), middle);
+                    lemma_concat_associative(gap.last() + seq.last(), middle, seq[0]);
+                    lemma_concat_associative(gap.last() + seq.last() + middle, seq[0], gap[0]);
+                    lemma_concat_associative(middle, seq[0], gap[0]);
+                    lemma_concat_associative(gap.last(), seq.last(), middle + seq[0] + gap[0]);
+                    assert(rjoin(seq.drop_last(), gap.drop_last()) == middle + seq[0] + gap[0]);
+                }
+            gap.last() + seq.last() + rjoin(seq.drop_last(), gap.drop_last());
+        }
+    }
 }
 
 proof fn lemma_join_alt(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
@@ -6104,6 +7043,69 @@ proof fn lemma_join_split_at(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>, k: int)
         lemma_concat_associative(gap[0] + seq[0], rest_parts.flatten(), join(seq.skip(k), gap.skip(k)));
         assert(join(seq, gap) == parts.flatten() + join(seq.skip(k), gap.skip(k)));
     }
+}
+
+proof fn lemma_join_split_at_alt(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>, k: int)
+    requires
+        seq.len() + 1 == gap.len(),
+        0 <= k <= seq.len(),
+    ensures
+        join(seq, gap) == join(seq.take(k), gap.take(k + 1))
+            + seq.skip(k).map(|i: int, ss: Seq<char>| ss + gap.skip(k + 1)[i]).flatten()
+{
+    if k == seq.len() {
+        assert(seq.skip(k).len() == 0);
+        assert(seq.take(k) == seq);
+        assert(gap.take(k + 1) == gap);
+    } else {
+        lemma_join_split_match_at(seq, gap, k);
+        calc!{
+            (==)
+            seq[k] + join(seq.skip(k + 1), gap.skip(k + 1)); {}
+            seq[k] + gap.skip(k + 1)[0]
+                + gap.skip(k + 1).drop_first().map(|i: int, ss: Seq<char>| seq.skip(k + 1)[i] + ss).flatten();
+                {
+                    let s1 = gap.skip(k + 1).drop_first().map(|i: int, ss: Seq<char>| seq.skip(k + 1)[i] + ss);
+                    let s2 = seq.skip(k).map(|i: int, ss: Seq<char>| ss + gap.skip(k + 1)[i]).drop_first();
+                    assert_seqs_equal!(s1 == s2);
+                    assert(seq[k] + gap.skip(k + 1)[0] == seq.skip(k).map(|i: int, ss: Seq<char>| ss + gap.skip(k + 1)[i]).first());
+                }
+            seq.skip(k).map(|i: int, ss: Seq<char>| ss + gap.skip(k + 1)[i]).flatten();
+        }
+    }
+}
+
+proof fn lemma_join_split_match_at(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>, k: int)
+    requires
+        seq.len() + 1 == gap.len(),
+        0 <= k < seq.len(),
+    ensures
+        join(seq, gap) == join(seq.take(k), gap.take(k + 1))
+            + seq[k] + join(seq.skip(k + 1), gap.skip(k + 1)),
+{
+    lemma_join_split_at(seq, gap, k);
+    lemma_join_uncons(seq.skip(k), gap.skip(k));
+    lemma_join_alt(seq.take(k), gap.take(k + 1));
+    let parts = seq.take(k).map(|i: int, ss: Seq<char>| gap[i] + ss).flatten();
+    let prefix = join(seq.take(k), gap.take(k + 1));
+    let rest = join(seq.skip(k + 1), gap.skip(k + 1));
+    assert(seq.skip(k)[0] == seq[k]);
+    assert(gap.skip(k)[0] == gap[k]);
+    assert(seq.skip(k).skip(1) == seq.skip(k + 1));
+    assert(gap.skip(k).skip(1) == gap.skip(k + 1));
+    assert(join(seq.skip(k), gap.skip(k)) == gap[k] + seq[k] + rest);
+    assert(gap.take(k + 1).last() == gap[k]);
+    lemma_join_alt(seq.take(k), gap.take(k + 1));
+    let prefix_parts = seq.take(k).map(|i: int, ss: Seq<char>| gap.take(k + 1)[i] + ss).flatten();
+    assert_seqs_equal!(seq.take(k).map(|i: int, ss: Seq<char>| gap.take(k + 1)[i] + ss)
+        == seq.take(k).map(|i: int, ss: Seq<char>| gap[i] + ss), i => {
+        assert(gap.take(k + 1)[i] == gap[i]);
+    });
+    assert_seqs_equal!(prefix_parts == parts);
+    assert_seqs_equal!(prefix == parts + gap[k]);
+    lemma_concat_associative(parts, gap[k], seq[k] + rest);
+    lemma_concat_associative(parts + gap[k], seq[k], rest);
+    assert(join(seq, gap) == prefix + seq[k] + rest);
 }
 
 proof fn lemma_rjoin_alt(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
@@ -6197,243 +7199,65 @@ proof fn lemma_rjoin_split_at(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>, k: int)
     }
 }
 
-// proof fn lemma_trim_start_matches_pred_rec(
-//     s: Seq<char>,
-//     seq: Seq<Seq<char>>,
-//     gap: Seq<Seq<char>>,
-//     match_pred: spec_fn(char) -> bool,
-//     gap_pred: spec_fn(char) -> bool,
-//     n: int,
-//     ret: Seq<char>,
-// )
-//     requires
-//         s == join(seq, gap),
-//         gap.len() == seq.len() + 1,
-//         0 <= n <= gap.len(),
-//         n == gap.len() ==> ret.len() == 0,
-//         n < gap.len() ==> ret == join(seq.skip(n), gap.skip(n)),
-//         forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() ==> gap[i].all(gap_pred),
-//         forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() ==> seq[i].len() == 1 && match_pred(seq[i][0]),
-//         forall |c: char| #[trigger] gap_pred(c) ==> !match_pred(c),
-//         forall |i: int| 0 <= i < n ==> #[trigger] gap[i].len() == 0,
-//         n < gap.len() ==> gap[n].len() > 0,
-//     ensures
-//         ret.is_suffix_of(s),
-//         ret.len() > 0 ==> gap_pred(ret.first()),
-//         ret.len() > 0 ==> !match_pred(ret.first()),
-//         forall |i: int| 0 <= i < s.len() - ret.len() ==> match_pred(#[trigger] s[i]),
-//     decreases
-//         n,
-// {
-//     if n == 0 {
-//         assert(n < gap.len());
-//         assert_seqs_equal!(seq.skip(0) == seq);
-//         assert_seqs_equal!(gap.skip(0) == gap);
-//         assert(ret == join(seq, gap));
-//         assert(ret == s);
-//         assert(ret.is_suffix_of(s));
-//         if ret.len() > 0 {
-//             assert(gap[0].len() > 0);
-//             assert(ret.first() == gap[0].first());
-//             assert(gap[0].all(gap_pred));
-//             assert(gap_pred(gap[0].first()));
-//             assert(gap_pred(ret.first()));
-//             assert(!match_pred(ret.first()));
-//         }
-//     } else if seq.len() == 0 {
-//         assert(gap.len() == 1);
-//         assert(n == gap.len());
-//         assert(gap[0].len() == 0);
-//         assert(ret.len() == 0);
-//         assert_seqs_equal!(join(seq, gap) == gap[0]);
-//         vstd::seq_lib::lemma_seq_empty_equality(gap[0]);
-//         vstd::seq_lib::lemma_seq_empty_equality(ret);
-//         assert(s == Seq::<char>::empty());
-//         assert(ret.is_suffix_of(s));
-//     } else {
-//         assert(seq.len() > 0);
-//         assert(gap[0].len() == 0);
-//         let rest_seq = seq.skip(1);
-//         let rest_gap = gap.skip(1);
-//         assert(rest_gap.len() == rest_seq.len() + 1);
-//         assert forall |i: int| #![trigger rest_gap[i]] 0 <= i < rest_gap.len()
-//             implies rest_gap[i].all(gap_pred) by {
-//             assert(rest_gap[i] == gap[i + 1]);
-//         }
-//         assert forall |i: int| #![trigger rest_seq[i]] 0 <= i < rest_seq.len()
-//             implies rest_seq[i].len() == 1 && match_pred(rest_seq[i][0]) by {
-//             assert(rest_seq[i] == seq[i + 1]);
-//         }
-//         assert forall |i: int| 0 <= i < n - 1 implies #[trigger] rest_gap[i].len() == 0 by {
-//             assert(rest_gap[i] == gap[i + 1]);
-//         }
-//         assert(n - 1 < rest_gap.len() ==> rest_gap[n - 1].len() > 0) by {
-//             if n < gap.len() {
-//                 assert(rest_gap[n - 1] == gap[n]);
-//             }
-//         }
-//         let rest_s = join(rest_seq, rest_gap);
-//         if n == gap.len() {
-//             assert(ret.len() == 0);
-//             assert(n - 1 == rest_gap.len());
-//         } else {
-//             assert(n < gap.len());
-//             assert(ret == join(seq.skip(n), gap.skip(n)));
-//             assert_seqs_equal!(seq.skip(n) == rest_seq.skip(n - 1), i => {
-//                 assert(rest_seq.skip(n - 1)[i] == rest_seq[i + n - 1]);
-//                 assert(seq.skip(n)[i] == seq[i + n]);
-//                 assert(rest_seq[i + n - 1] == seq[i + n]);
-//             });
-//             assert_seqs_equal!(gap.skip(n) == rest_gap.skip(n - 1), i => {
-//                 assert(rest_gap.skip(n - 1)[i] == rest_gap[i + n - 1]);
-//                 assert(gap.skip(n)[i] == gap[i + n]);
-//                 assert(rest_gap[i + n - 1] == gap[i + n]);
-//             });
-//             assert(ret == join(rest_seq.skip(n - 1), rest_gap.skip(n - 1)));
-//         }
-//         lemma_trim_start_matches_pred_rec(rest_s, rest_seq, rest_gap, match_pred, gap_pred, n - 1, ret);
-//         lemma_join_uncons(seq, gap);
-//         vstd::seq_lib::lemma_seq_empty_equality(gap[0]);
-//         assert(gap[0] =~= Seq::<char>::empty());
-//         assert(seq[0].len() == 1);
-//         assert(s == seq[0] + rest_s);
-//         assert(seq[0][0] == s[0]);
-//         assert(ret.is_suffix_of(s));
-//         if ret.len() > 0 {
-//             assert(gap_pred(ret.first()));
-//         }
-//         assert forall |i: int| 0 <= i < s.len() - ret.len()
-//             implies match_pred(#[trigger] s[i]) by {
-//             if i == 0 {
-//                 assert(match_pred(seq[0][0]));
-//             } else {
-//                 assert(s[i] == rest_s[i - 1]);
-//                 assert(i - 1 < rest_s.len() - ret.len());
-//                 assert(match_pred(rest_s[i - 1]));
-//             }
-//         }
-//     }
-// }
+proof fn lemma_rjoin_split_match_at(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>, k: int)
+    requires
+        seq.len() + 1 == gap.len(),
+        0 <= k < seq.len(),
+    ensures
+        rjoin(seq, gap) == rjoin(seq.skip(k + 1), gap.skip(k + 1))
+            + seq[k] + rjoin(seq.take(k), gap.take(k + 1)),
+{
+    lemma_rjoin_split_at(seq, gap, k);
+    lemma_rjoin_uncons(seq.skip(k), gap.skip(k));
+    let rest = rjoin(seq.skip(k + 1), gap.skip(k + 1));
+    let suffix = rjoin(seq.take(k), gap.take(k + 1));
+    let parts = seq.take(k).map(|i: int, ss: Seq<char>| ss + gap[i]).reverse().flatten_alt();
+    assert(seq.skip(k)[0] == seq[k]);
+    assert(gap.skip(k)[0] == gap[k]);
+    assert(seq.skip(k).skip(1) == seq.skip(k + 1));
+    assert(gap.skip(k).skip(1) == gap.skip(k + 1));
+    assert(rjoin(seq.skip(k), gap.skip(k)) == rest + seq[k] + gap[k]);
+    assert(gap.take(k + 1).last() == gap[k]);
+    lemma_rjoin_split_at(seq.take(k), gap.take(k + 1), k);
+    assert(seq.take(k).skip(k) == seq![]);
+    assert(gap.take(k + 1).skip(k) == seq![gap[k]]);
+    assert(rjoin(seq.take(k).skip(k), gap.take(k + 1).skip(k)) == gap[k]);
+    assert_seqs_equal!(seq.take(k).take(k).map(|i: int, ss: Seq<char>| ss + gap.take(k + 1)[i])
+        == seq.take(k).map(|i: int, ss: Seq<char>| ss + gap[i]), i => {
+        assert(gap.take(k + 1)[i] == gap[i]);
+    });
+    assert(suffix == gap[k] + parts);
+    lemma_concat_associative(rest, seq[k], gap[k] + parts);
+    lemma_concat_associative(rest + seq[k], gap[k], parts);
+    assert(rjoin(seq, gap) == rest + seq[k] + suffix);
+}
 
-// proof fn lemma_trim_end_matches_pred_rec(
-//     s: Seq<char>,
-//     seq: Seq<Seq<char>>,
-//     gap: Seq<Seq<char>>,
-//     match_pred: spec_fn(char) -> bool,
-//     gap_pred: spec_fn(char) -> bool,
-//     n: int,
-//     ret: Seq<char>,
-// )
-//     requires
-//         s == rjoin(seq, gap),
-//         gap.len() == seq.len() + 1,
-//         0 <= n <= gap.len(),
-//         n == gap.len() ==> ret.len() == 0,
-//         n < gap.len() ==> ret == rjoin(seq.skip(n), gap.skip(n)),
-//         forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() ==> gap[i].all(gap_pred),
-//         forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() ==> seq[i].len() == 1 && match_pred(seq[i][0]),
-//         forall |c: char| #[trigger] gap_pred(c) ==> !match_pred(c),
-//         forall |i: int| 0 <= i < n ==> #[trigger] gap[i].len() == 0,
-//         n < gap.len() ==> gap[n].len() > 0,
-//     ensures
-//         ret.is_prefix_of(s),
-//         ret.len() > 0 ==> gap_pred(ret.last()),
-//         ret.len() > 0 ==> !match_pred(ret.last()),
-//         forall |i: int| ret.len() <= i < s.len() ==> match_pred(#[trigger] s[i]),
-//     decreases
-//         n,
-// {
-//     if n == 0 {
-//         assert(n < gap.len());
-//         assert_seqs_equal!(seq.skip(0) == seq);
-//         assert_seqs_equal!(gap.skip(0) == gap);
-//         assert(ret == rjoin(seq, gap));
-//         assert(ret == s);
-//         assert(ret.is_prefix_of(s));
-//         if ret.len() > 0 {
-//             assert(gap[0].len() > 0);
-//             assert(ret.last() == gap[0].last());
-//             assert(gap[0].all(gap_pred));
-//             assert(gap_pred(gap[0].last()));
-//             assert(gap_pred(ret.last()));
-//             assert(!match_pred(ret.last()));
-//         }
-//     } else if seq.len() == 0 {
-//         assert(gap.len() == 1);
-//         assert(n == gap.len());
-//         assert(gap[0].len() == 0);
-//         assert(ret.len() == 0);
-//         assert_seqs_equal!(rjoin(seq, gap) == gap[0]);
-//         vstd::seq_lib::lemma_seq_empty_equality(gap[0]);
-//         vstd::seq_lib::lemma_seq_empty_equality(ret);
-//         assert(s == Seq::<char>::empty());
-//         assert(ret.is_prefix_of(s));
-//     } else {
-//         assert(seq.len() > 0);
-//         assert(gap[0].len() == 0);
-//         let rest_seq = seq.skip(1);
-//         let rest_gap = gap.skip(1);
-//         assert(rest_gap.len() == rest_seq.len() + 1);
-//         assert forall |i: int| #![trigger rest_gap[i]] 0 <= i < rest_gap.len()
-//             implies rest_gap[i].all(gap_pred) by {
-//             assert(rest_gap[i] == gap[i + 1]);
-//         }
-//         assert forall |i: int| #![trigger rest_seq[i]] 0 <= i < rest_seq.len()
-//             implies rest_seq[i].len() == 1 && match_pred(rest_seq[i][0]) by {
-//             assert(rest_seq[i] == seq[i + 1]);
-//         }
-//         assert forall |i: int| 0 <= i < n - 1 implies #[trigger] rest_gap[i].len() == 0 by {
-//             assert(rest_gap[i] == gap[i + 1]);
-//         }
-//         assert(n - 1 < rest_gap.len() ==> rest_gap[n - 1].len() > 0) by {
-//             if n < gap.len() {
-//                 assert(rest_gap[n - 1] == gap[n]);
-//             }
-//         }
-//         let rest_s = rjoin(rest_seq, rest_gap);
-//         if n == gap.len() {
-//             assert(ret.len() == 0);
-//             assert(n - 1 == rest_gap.len());
-//         } else {
-//             assert(n < gap.len());
-//             assert(ret == rjoin(seq.skip(n), gap.skip(n)));
-//             assert_seqs_equal!(seq.skip(n) == rest_seq.skip(n - 1), i => {
-//                 assert(rest_seq.skip(n - 1)[i] == rest_seq[i + n - 1]);
-//                 assert(seq.skip(n)[i] == seq[i + n]);
-//                 assert(rest_seq[i + n - 1] == seq[i + n]);
-//             });
-//             assert_seqs_equal!(gap.skip(n) == rest_gap.skip(n - 1), i => {
-//                 assert(rest_gap.skip(n - 1)[i] == rest_gap[i + n - 1]);
-//                 assert(gap.skip(n)[i] == gap[i + n]);
-//                 assert(rest_gap[i + n - 1] == gap[i + n]);
-//             });
-//             assert(ret == rjoin(rest_seq.skip(n - 1), rest_gap.skip(n - 1)));
-//         }
-//         lemma_trim_end_matches_pred_rec(rest_s, rest_seq, rest_gap, match_pred, gap_pred, n - 1, ret);
-//         lemma_rjoin_uncons(seq, gap);
-//         vstd::seq_lib::lemma_seq_empty_equality(gap[0]);
-//         assert(gap[0] =~= Seq::<char>::empty());
-//         assert(seq[0].len() == 1);
-//         lemma_concat_associative(rest_s, seq[0], gap[0]);
-//         assert(s == rest_s + seq[0]);
-//         assert(seq[0][0] == s.last());
-//         assert(ret.is_prefix_of(s));
-//         if ret.len() > 0 {
-//             assert(gap_pred(ret.last()));
-//         }
-//         assert forall |i: int| ret.len() <= i < s.len()
-//             implies match_pred(#[trigger] s[i]) by {
-//             if i == s.len() - 1 {
-//                 assert(match_pred(seq[0][0]));
-//             } else {
-//                 assert(s[i] == rest_s[i]);
-//                 assert(i < rest_s.len());
-//                 assert(match_pred(rest_s[i]));
-//             }
-//         }
-//     }
-// }
-
+proof fn lemma_join_empty_gap(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
+    requires
+        seq.len() + 1 == gap.len(),
+        gap.all(|ss: Seq<char>| ss.len() == 0),
+    ensures
+        join(seq, gap) == seq.flatten(),
+    decreases
+        seq.len(),
+{
+    let pred = |ss: Seq<char>| ss.len() == 0;
+    if seq.len() == 0 {
+        assert(join(seq, gap) == gap[0]);
+        assert(pred(gap[0]));
+        assert(join(seq, gap).len() == 0);
+        assert(seq.flatten().len() == 0);
+    } else {
+        calc!{
+            (==)
+            join(seq, gap); { lemma_join_uncons(seq, gap) }
+            gap[0] + seq[0] + join(seq.skip(1), gap.skip(1)); { assert(pred(gap[0])) }
+            seq[0] + join(seq.skip(1), gap.skip(1)); { lemma_join_empty_gap(seq.skip(1), gap.skip(1)) }
+            seq[0] + seq.skip(1).flatten(); {}
+            seq.flatten();
+        }
+    }
+}
 
 proof fn lemma_str_matches_count(
     seq: Seq<Seq<char>>, gap: Seq<Seq<char>>, pred: spec_fn(char) -> bool,
