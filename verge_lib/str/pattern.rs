@@ -28,6 +28,7 @@ use crate::seq::*;
 use crate::iter::*;
 use vstd::{calc, assert_seqs_equal};
 use vstd::arithmetic::mul::*;
+use vstd::arithmetic::div_mod::*;
 use vstd::seq_lib::{
     lemma_flatten_concat, lemma_concat_associative,
 };
@@ -4781,6 +4782,7 @@ pub broadcast proof fn lemma_str_matches_iter_chars<'a, 'b>(s: Seq<char>, chars:
     reveal(str_matches_iter_post);
     let (seq, gap) = spec_matches(s, chars);
     let pred = |c: char| chars@.contains(c);
+    let gap_pred = |c: char| !chars@.contains(c);
     assert forall |i: int| #![trigger gap[i]] 0 <= i < gap.len()
         implies gap[i].all(|c: char| !pred(c)) by {
         let neg_pred = |c: char| !chars@.contains(c);
@@ -6016,93 +6018,92 @@ pub broadcast proof fn lemma_str_trim_matches_char(s: Seq<char>, ch: char, ret: 
             lemma_seq_rcount_while_upper_bound(gap, pred2, k);
         };
 
-        // TODO: ret == join(...); need to show ret.len() > 0 because it contains at least
-        // one non-empty gap
-
-        // decompose `s`
-        calc!{
-            (==)
-            s; {}
-            join(seq, gap); { lemma_join_split_at(seq, gap, head) }
-            seq.take(head).map(|i: int, ss: Seq<char>| gap[i] + ss).flatten()
-                + join(seq.skip(head), gap.skip(head));
-                {
-                    let s1 = seq.take(head).map(|i: int, ss: Seq<char>| gap[i] + ss);
-                    let s2 = seq![seq![ch]; head as nat];
-                    assert_seqs_equal!(s1 == s2, j => {
-                        assert(pred2(gap.take_while(pred2)[j]));
-                        assert(gap.take_while(pred2)[j] == gap[j]);
-                        assert(seq[j] =~= seq![ch]);
-                    });
-                }
-            seq![seq![ch]; head as nat].flatten()
-                + join(seq.skip(head), gap.skip(head)); 
-                { 
-                    lemma_join_split_at_alt(seq.skip(head), gap.skip(head), seq.len() - head - tail);
-                    assert(seq.skip(head).take(seq.len() - head - tail) == seq.subrange(head, seq.len() - tail));
-                    assert(gap.skip(head).take(seq.len() - head - tail + 1) == gap.subrange(head, gap.len() - tail));
-                    assert(seq.skip(head).skip(seq.len() - head - tail) == seq.skip(seq.len() - tail));
-                    assert(gap.skip(head).skip(seq.len() - head - tail + 1) == gap.skip(gap.len() - tail));
-                }
-            seq![seq![ch]; head as nat].flatten() + ret + seq.skip(seq.len() - tail)
-                .map(|i: int, ss: Seq<char>| ss + gap.skip(gap.len() - tail)[i])
-                .flatten();
-                {
-                    let s1 = seq.skip(seq.len() - tail).map(|i: int, ss: Seq<char>| ss + gap.skip(gap.len() - tail)[i]);
-                    let s2 = seq![seq![ch]; tail as nat];
-                    assert_seqs_equal!(s1 == s2, j => {
-                        assert(pred2(gap.rtake_while(pred2)[j]));
-                        assert(gap.rtake_while(pred2)[j] == gap[gap.len() - tail + j]);
-                        assert(seq[seq.len() - tail + j] =~= seq![ch]);
-                    });
-                }
-            seq![seq![ch]; head as nat].flatten() + ret + seq![seq![ch]; tail as nat].flatten(); {
-                lemma_seq_flatten_same_length(seq![seq![ch]; head as nat], 1);
-                assert_seqs_equal!(seq![seq![ch]; head as nat].flatten() == seq![ch; head as nat], i => {
-                    assert(seq![seq![ch]; head as nat].flatten().subrange(i*1, (i+1)*1)[0] == seq![seq![ch]; head as nat].flatten()[i]);
-                    assert(seq![seq![ch]; head as nat].flatten().subrange(i*1, (i+1)*1)[0] == seq![seq![ch]; head as nat][i][0]);
-                });
-                lemma_seq_flatten_same_length(seq![seq![ch]; tail as nat], 1);
-                assert_seqs_equal!(seq![seq![ch]; tail as nat].flatten() == seq![ch; tail as nat], i => {
-                    assert(seq![seq![ch]; tail as nat].flatten().subrange(i*1, (i+1)*1)[0] == seq![seq![ch]; tail as nat].flatten()[i]);
-                    assert(seq![seq![ch]; tail as nat].flatten().subrange(i*1, (i+1)*1)[0] == seq![seq![ch]; tail as nat][i][0]);
-                });
-            }
-            seq![ch; head as nat] + ret + seq![ch; tail as nat];
+        assert forall |i: int| 0 <= i < head
+        implies #[trigger] gap[i].len() == 0 by {
+            assert(gap.take_while(pred2)[i] == gap[i]);
+            assert(pred2(gap.take_while(pred2)[i]));
         }
+        assert forall |i: int| gap.len() - tail <= i < gap.len()
+        implies #[trigger] gap[i].len() == 0 by {
+            assert(gap.rtake_while(pred2)[i - (gap.len() - tail)] == gap[i]);
+            assert(pred2(gap.rtake_while(pred2)[i - (gap.len() - tail)]));
+        }
+        assert(ret == join(seq.subrange(head, seq.len() - tail), gap.subrange(head, gap.len() - tail)));
+        assert(gap[head].len() > 0) by {
+            lemma_seq_count_while_upper_bound(gap, pred2, head);
+        }
+        assert(gap[gap.len() - tail - 1].len() > 0) by {
+            lemma_seq_rcount_while_upper_bound(gap, pred2, gap.len() - tail - 1);
+        }
+        let left = seq.take(head).flatten();
+        let mid_seq = seq.subrange(head, seq.len() - tail);
+        let mid_gap = gap.subrange(head, gap.len() - tail);
+        let right = seq.skip(seq.len() - tail).flatten();
+        assert(s == left + ret + right) by {
+            lemma_join_trim_decomposition(seq, gap, head, tail);
+        }
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i].len() == 1 && pred(seq[i][0])
+        by {
+            assert(seq[i] =~= seq![ch]);
+        }
+        assert forall |i: int| 0 <= i < seq.take(head).len()
+        implies #[trigger] seq.take(head)[i].len() == 1 && pred(seq.take(head)[i][0])
+        by {
+            assert(seq.take(head)[i] == seq[i]);
+            assert(seq[i].len() == 1 && pred(seq[i][0]));
+        }
+        assert forall |i: int| 0 <= i < seq.skip(seq.len() - tail).len()
+        implies #[trigger] seq.skip(seq.len() - tail)[i].len() == 1
+            && pred(seq.skip(seq.len() - tail)[i][0])
+        by {
+            assert(seq.skip(seq.len() - tail)[i] == seq[seq.len() - tail + i]);
+            assert(seq[seq.len() - tail + i].len() == 1 && pred(seq[seq.len() - tail + i][0]));
+        }
+        lemma_flatten_singleton_pred(seq.take(head), pred);
+        lemma_flatten_singleton_pred(seq.skip(seq.len() - tail), pred);
+        assert(left.len() == head);
+        assert(right.len() == tail);
         // #1
         assert(ret.is_subrange_of(s)) by {
+            assert(s == left + ret + right);
+            assert(s.subrange(left.len() as int, s.len() - right.len()) == ret);
+            assert(left.len() == head);
+            assert(right.len() == tail);
             assert(ret == s.subrange(head, s.len() - tail));
             lemma_seq_is_subrange_alt(s, ret);
         }
         // #2
-        if ret.len() > 0 { // TODO
+        if ret.len() > 0 {
             assert(!gap[head].contains(ch));
             assert(!gap[gap.len() - tail - 1].contains(ch));
-            assert(gap.subrange(head as int, gap.len() - tail).first() == gap[head]);
-            lemma_join_alt(seq.subrange(head as int, seq.len() - tail), gap.subrange(head as int, gap.len() - tail));
-            assert(gap.subrange(head as int, gap.len() - tail).last() == gap[gap.len() - tail - 1]);
+            assert(mid_gap.first() == gap[head]);
+            assert(mid_gap.last() == gap[gap.len() - tail - 1]);
+            lemma_join_boundary_gaps(mid_seq, mid_gap);
             assert(ret.first() != ch) by {
-                assert(ret.first() == gap.subrange(head as int, gap.len() - tail).first()[0]);
+                assert(ret.first() == mid_gap.first()[0]);
             }
             assert(ret.last() != ch) by {
-                assert(ret.last() == gap.subrange(head as int, gap.len() - tail).last().last());
+                assert(ret.last() == mid_gap.last().last());
             }
         }
-        
+
         // #3
-        // TODO: this now doesn't work because of rlimit issues
-        // calc!{
-        //     (==)
-        //     s.skip_while(pred).rskip_while(pred); {
-        //         lemma_seq_skip_while_defines(s, pred, ret + seq![ch; tail as nat]);
-        //     }
-        //     (ret + seq![ch; tail as nat]).rskip_while(pred); {
-        //         lemma_seq_take_while_defines(ret + seq![ch; tail as nat], pred, ret);
-        //     }
-        //     ret;
-        // }
-        assume(ret == s.skip_while(pred).rskip_while(pred));
+        if ret.len() > 0 {
+            assert(!pred(ret.first()) && !pred(ret.last()));
+            assert forall |i: int| 0 <= i < left.len()
+            implies #[trigger] pred(left[i]) by {}
+            assert forall |i: int| 0 <= i < right.len()
+            implies #[trigger] pred(right[i]) by {}
+            assert(ret == (left + ret + right).skip_while(pred).rskip_while(pred)) by {
+                lemma_trimmed_concat_skip_rskip(left, ret, right, pred);
+            }
+        } else {
+            assert(false) by {
+                assert(ret == join(mid_seq, mid_gap));
+                lemma_join_boundary_gaps(mid_seq, mid_gap);
+            }
+        }
     }
 }
 
@@ -6121,9 +6122,131 @@ pub broadcast proof fn lemma_str_trim_matches_closure<F>(s: Seq<char>, f: F, ret
         ret == s.skip_while(|c: char| call_ensures(f, (c,), true))
                 .rskip_while(|c: char| call_ensures(f, (c,), true)),
 {
-    admit()
-}
+    axiom_closure_matches_post(s, f);
+    reveal(str_trim_matches_post);
+    let (seq, gap) = spec_matches(s, f);
+    let pred = |c: char| call_ensures(f, (c,), true);
+    let gap_pred = |c: char| call_ensures(f, (c,), false);
+    if gap.all(|ss: Seq<char>| ss.len() == 0) {
+        lemma_join_empty_gap(seq, gap);
+        assert(s == seq.flatten());
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i].len() == 1 && pred(seq[i][0]) by {}
+        lemma_flatten_singleton_pred(seq, pred);
+        assert(seq.len() == s.len());
+        assert forall |i: int| 0 <= i < s.len()
+        implies #[trigger] pred(s[i]) by {
+            assert(s[i] == seq.flatten()[i]);
+            assert(pred(seq.flatten()[i]));
+        }
+        assert(s.skip_while(pred).len() == 0) by {
+            lemma_seq_count_while_lower_bound(s, pred, s.len() as int);
+        }
+        assert(s.skip_while(pred).rskip_while(pred).len() == 0) by {
+            lemma_seq_rskip_while_ensures(s.skip_while(pred), pred);
+        }
+        assert(ret.len() == 0);
+        lemma_seq_is_subrange_alt(s, ret);
+    } else {
+        let pred2 = |ss: Seq<char>| ss.len() == 0;
+        let head = gap.count_while(pred2) as int;
+        let tail = gap.rcount_while(pred2) as int;
+        lemma_seq_take_while_ensures(gap, pred2);
+        lemma_seq_rtake_while_ensures(gap, pred2);
+        assert(head + tail < gap.len()) by {
+            let k = choose|i: int| 0 <= i < gap.len() && !(#[trigger] pred2(gap[i]));
+            lemma_seq_count_while_upper_bound(gap, pred2, k);
+            lemma_seq_rcount_while_upper_bound(gap, pred2, k);
+        };
 
+        assert forall |i: int| 0 <= i < head
+        implies #[trigger] gap[i].len() == 0 by {
+            assert(gap.take_while(pred2)[i] == gap[i]);
+            assert(pred2(gap.take_while(pred2)[i]));
+        }
+        assert forall |i: int| gap.len() - tail <= i < gap.len()
+        implies #[trigger] gap[i].len() == 0 by {
+            assert(gap.rtake_while(pred2)[i - (gap.len() - tail)] == gap[i]);
+            assert(pred2(gap.rtake_while(pred2)[i - (gap.len() - tail)]));
+        }
+        assert(ret == join(seq.subrange(head, seq.len() - tail), gap.subrange(head, gap.len() - tail)));
+        assert(gap[head].len() > 0) by {
+            lemma_seq_count_while_upper_bound(gap, pred2, head);
+        }
+        assert(gap[gap.len() - tail - 1].len() > 0) by {
+            lemma_seq_rcount_while_upper_bound(gap, pred2, gap.len() - tail - 1);
+        }
+        let left = seq.take(head).flatten();
+        let mid_seq = seq.subrange(head, seq.len() - tail);
+        let mid_gap = gap.subrange(head, gap.len() - tail);
+        let right = seq.skip(seq.len() - tail).flatten();
+        assert(s == left + ret + right) by {
+            lemma_join_trim_decomposition(seq, gap, head, tail);
+        }
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i].len() == 1 && pred(seq[i][0]) by {}
+        assert forall |i: int| 0 <= i < seq.take(head).len()
+        implies #[trigger] seq.take(head)[i].len() == 1 && pred(seq.take(head)[i][0])
+        by {
+            assert(seq.take(head)[i] == seq[i]);
+            assert(seq[i].len() == 1 && pred(seq[i][0]));
+        }
+        assert forall |i: int| 0 <= i < seq.skip(seq.len() - tail).len()
+        implies #[trigger] seq.skip(seq.len() - tail)[i].len() == 1
+            && pred(seq.skip(seq.len() - tail)[i][0])
+        by {
+            assert(seq.skip(seq.len() - tail)[i] == seq[seq.len() - tail + i]);
+            assert(seq[seq.len() - tail + i].len() == 1 && pred(seq[seq.len() - tail + i][0]));
+        }
+        lemma_flatten_singleton_pred(seq.take(head), pred);
+        lemma_flatten_singleton_pred(seq.skip(seq.len() - tail), pred);
+        assert(left.len() == head);
+        assert(right.len() == tail);
+        assert(ret.is_subrange_of(s)) by {
+            assert(s == left + ret + right);
+            assert(s.subrange(left.len() as int, s.len() - right.len()) == ret);
+            assert(left.len() == head);
+            assert(right.len() == tail);
+            assert(ret == s.subrange(head, s.len() - tail));
+            lemma_seq_is_subrange_alt(s, ret);
+        }
+        if ret.len() > 0 {
+            assert(mid_gap.first() == gap[head]);
+            assert(mid_gap.last() == gap[gap.len() - tail - 1]);
+            lemma_join_boundary_gaps(mid_seq, mid_gap);
+            assert(gap[head].all(gap_pred));
+            assert(gap[gap.len() - tail - 1].all(gap_pred));
+            assert(call_ensures(f, (ret.first(),), false)) by {
+                assert(ret.first() == mid_gap.first()[0]);
+                assert(gap[head][0] == mid_gap.first()[0]);
+                assert(gap_pred(gap[head][0]));
+            }
+            assert(call_ensures(f, (ret.last(),), false)) by {
+                assert(ret.last() == mid_gap.last().last());
+                assert(gap_pred(gap[gap.len() - tail - 1].last()));
+            }
+        }
+
+        if ret.len() > 0 {
+            assert(!pred(ret.first()) && !pred(ret.last())) by {
+                lemma_call_false_not_true(f, ret.first());
+                lemma_call_false_not_true(f, ret.last());
+            }
+            assert forall |i: int| 0 <= i < left.len()
+            implies #[trigger] pred(left[i]) by {}
+            assert forall |i: int| 0 <= i < right.len()
+            implies #[trigger] pred(right[i]) by {}
+            assert(ret == (left + ret + right).skip_while(pred).rskip_while(pred)) by {
+                lemma_trimmed_concat_skip_rskip(left, ret, right, pred);
+            }
+        } else {
+            assert(false) by {
+                assert(ret == join(mid_seq, mid_gap));
+                lemma_join_boundary_gaps(mid_seq, mid_gap);
+            }
+        }
+    }
+}
 /// Proof that links the full spec to `str::trim_matches` with a `&[char]` pattern.
 pub broadcast proof fn lemma_str_trim_matches_chars<'b>(s: Seq<char>, chars: &'b [char], ret: Seq<char>)
     requires
@@ -6135,9 +6258,130 @@ pub broadcast proof fn lemma_str_trim_matches_chars<'b>(s: Seq<char>, chars: &'b
         ret == s.skip_while(|c: char| chars@.contains(c))
                 .rskip_while(|c: char| chars@.contains(c)),
 {
-    admit()
-}
+    axiom_chars_matches_post(s, chars);
+    reveal(str_trim_matches_post);
+    let (seq, gap) = spec_matches(s, chars);
+    let pred = |c: char| chars@.contains(c);
+    let gap_pred = |c: char| !chars@.contains(c);
+    if gap.all(|ss: Seq<char>| ss.len() == 0) {
+        lemma_join_empty_gap(seq, gap);
+        assert(s == seq.flatten());
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i].len() == 1 && pred(seq[i][0]) by {}
+        lemma_flatten_singleton_pred(seq, pred);
+        assert(seq.len() == s.len());
+        assert forall |i: int| 0 <= i < s.len()
+        implies #[trigger] pred(s[i]) by {
+            assert(s[i] == seq.flatten()[i]);
+            assert(pred(seq.flatten()[i]));
+        }
+        assert(s.skip_while(pred).len() == 0) by {
+            lemma_seq_count_while_lower_bound(s, pred, s.len() as int);
+        }
+        assert(s.skip_while(pred).rskip_while(pred).len() == 0) by {
+            lemma_seq_rskip_while_ensures(s.skip_while(pred), pred);
+        }
+        assert(ret.len() == 0);
+        lemma_seq_is_subrange_alt(s, ret);
+    } else {
+        let pred2 = |ss: Seq<char>| ss.len() == 0;
+        let head = gap.count_while(pred2) as int;
+        let tail = gap.rcount_while(pred2) as int;
+        lemma_seq_take_while_ensures(gap, pred2);
+        lemma_seq_rtake_while_ensures(gap, pred2);
+        assert(head + tail < gap.len()) by {
+            let k = choose|i: int| 0 <= i < gap.len() && !(#[trigger] pred2(gap[i]));
+            lemma_seq_count_while_upper_bound(gap, pred2, k);
+            lemma_seq_rcount_while_upper_bound(gap, pred2, k);
+        };
 
+        assert forall |i: int| 0 <= i < head
+        implies #[trigger] gap[i].len() == 0 by {
+            assert(gap.take_while(pred2)[i] == gap[i]);
+            assert(pred2(gap.take_while(pred2)[i]));
+        }
+        assert forall |i: int| gap.len() - tail <= i < gap.len()
+        implies #[trigger] gap[i].len() == 0 by {
+            assert(gap.rtake_while(pred2)[i - (gap.len() - tail)] == gap[i]);
+            assert(pred2(gap.rtake_while(pred2)[i - (gap.len() - tail)]));
+        }
+        assert(ret == join(seq.subrange(head, seq.len() - tail), gap.subrange(head, gap.len() - tail)));
+        assert(gap[head].len() > 0) by {
+            lemma_seq_count_while_upper_bound(gap, pred2, head);
+        }
+        assert(gap[gap.len() - tail - 1].len() > 0) by {
+            lemma_seq_rcount_while_upper_bound(gap, pred2, gap.len() - tail - 1);
+        }
+        let left = seq.take(head).flatten();
+        let mid_seq = seq.subrange(head, seq.len() - tail);
+        let mid_gap = gap.subrange(head, gap.len() - tail);
+        let right = seq.skip(seq.len() - tail).flatten();
+        assert(s == left + ret + right) by {
+            lemma_join_trim_decomposition(seq, gap, head, tail);
+        }
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i].len() == 1 && pred(seq[i][0]) by {}
+        assert forall |i: int| 0 <= i < seq.take(head).len()
+        implies #[trigger] seq.take(head)[i].len() == 1 && pred(seq.take(head)[i][0])
+        by {
+            assert(seq.take(head)[i] == seq[i]);
+            assert(seq[i].len() == 1 && pred(seq[i][0]));
+        }
+        assert forall |i: int| 0 <= i < seq.skip(seq.len() - tail).len()
+        implies #[trigger] seq.skip(seq.len() - tail)[i].len() == 1
+            && pred(seq.skip(seq.len() - tail)[i][0])
+        by {
+            assert(seq.skip(seq.len() - tail)[i] == seq[seq.len() - tail + i]);
+            assert(seq[seq.len() - tail + i].len() == 1 && pred(seq[seq.len() - tail + i][0]));
+        }
+        lemma_flatten_singleton_pred(seq.take(head), pred);
+        lemma_flatten_singleton_pred(seq.skip(seq.len() - tail), pred);
+        assert(left.len() == head);
+        assert(right.len() == tail);
+        assert(ret.is_subrange_of(s)) by {
+            assert(s == left + ret + right);
+            assert(s.subrange(left.len() as int, s.len() - right.len()) == ret);
+            assert(left.len() == head);
+            assert(right.len() == tail);
+            assert(ret == s.subrange(head, s.len() - tail));
+            lemma_seq_is_subrange_alt(s, ret);
+        }
+        if ret.len() > 0 {
+            assert(mid_gap.first() == gap[head]);
+            assert(mid_gap.last() == gap[gap.len() - tail - 1]);
+            lemma_join_boundary_gaps(mid_seq, mid_gap);
+            assert(!chars@.contains(ret.first())) by {
+                assert(gap[head].all(gap_pred));
+                assert(ret.first() == mid_gap.first()[0]);
+                assert(mid_gap.first()[0] == gap[head][0]);
+                assert(gap_pred(gap[head][0]));
+            }
+            assert(!chars@.contains(ret.last())) by {
+                let last_gap = gap[gap.len() - tail - 1];
+                assert(last_gap.all(gap_pred));
+                assert(ret.last() == mid_gap.last().last());
+                assert(mid_gap.last().last() == last_gap.last());
+                assert(gap_pred(last_gap.last()));
+            }
+        }
+
+        if ret.len() > 0 {
+            assert(!pred(ret.first()) && !pred(ret.last()));
+            assert forall |i: int| 0 <= i < left.len()
+            implies #[trigger] pred(left[i]) by {}
+            assert forall |i: int| 0 <= i < right.len()
+            implies #[trigger] pred(right[i]) by {}
+            assert(ret == (left + ret + right).skip_while(pred).rskip_while(pred)) by {
+                lemma_trimmed_concat_skip_rskip(left, ret, right, pred);
+            }
+        } else {
+            assert(false) by {
+                assert(ret == join(mid_seq, mid_gap));
+                lemma_join_boundary_gaps(mid_seq, mid_gap);
+            }
+        }
+    }
+}
 /// Proof that links the full spec to `str::trim_start_matches` with a `char` pattern.
 pub broadcast proof fn lemma_str_trim_start_matches_char(s: Seq<char>, ch: char, ret: Seq<char>)
     requires
@@ -6151,9 +6395,80 @@ pub broadcast proof fn lemma_str_trim_start_matches_char(s: Seq<char>, ch: char,
     axiom_char_matches_post(s, ch);
     reveal(str_trim_start_matches_post);
     let (seq, gap) = spec_matches(s, ch);
-    admit()
+    let pred = |c: char| c == ch;
+    if gap.all(|ss: Seq<char>| ss.len() == 0) {
+        lemma_join_empty_gap(seq, gap);
+        assert(s == seq.flatten());
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i] == seq![ch] by { assert(seq[i] =~= seq![ch]) }
+        lemma_seq_flatten_same_length(seq, 1);
+        assert(seq.len() == s.len());
+        assert forall |i: int| 0 <= i < s.len()
+        implies #[trigger] s[i] == ch by {
+            assert(s[i] == s.subrange(i * 1, (i + 1) * 1)[0]);
+            assert(s.subrange(i * 1, (i + 1) * 1) == seq[i]);
+        }
+        assert(ret.len() == 0);
+        assert(ret.is_suffix_of(s));
+    } else {
+        let pred2 = |ss: Seq<char>| ss.len() == 0;
+        let head = gap.count_while(pred2) as int;
+        lemma_seq_take_while_ensures(gap, pred2);
+        assert(head < gap.len()) by {
+            let k = choose|i: int| 0 <= i < gap.len() && !(#[trigger] pred2(gap[i]));
+            lemma_seq_count_while_upper_bound(gap, pred2, k);
+        }
+        assert forall |i: int| 0 <= i < head
+        implies #[trigger] gap[i].len() == 0 by {
+            assert(gap.take_while(pred2)[i] == gap[i]);
+            assert(pred2(gap.take_while(pred2)[i]));
+        }
+        assert(ret == join(seq.skip(head), gap.skip(head)));
+        assert(gap[head].len() > 0) by {
+            lemma_seq_count_while_upper_bound(gap, pred2, head);
+        }
+        let left = seq.take(head).flatten();
+        assert(s == left + ret) by {
+            lemma_join_split_at(seq, gap, head);
+            lemma_join_empty_gap_prefix_parts(seq, gap, head);
+        }
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i].len() == 1 && pred(seq[i][0])
+        by { assert(seq[i] =~= seq![ch]); }
+        assert forall |i: int| 0 <= i < seq.take(head).len()
+        implies #[trigger] seq.take(head)[i].len() == 1 && pred(seq.take(head)[i][0])
+        by {
+            assert(seq.take(head)[i] == seq[i]);
+            assert(seq[i].len() == 1 && pred(seq[i][0]));
+        }
+        lemma_flatten_singleton_pred(seq.take(head), pred);
+        assert(left.len() == head);
+        assert(ret.is_suffix_of(s));
+        if ret.len() > 0 {
+            lemma_join_first_gap(seq.skip(head), gap.skip(head));
+            assert(!gap[head].contains(ch));
+            assert(ret.first() == gap[head][0]);
+            assert(ret.first() != ch);
+            assert(!pred(ret.first()));
+            assert(ret == (left + ret).skip_while(pred)) by {
+                assert forall |i: int| 0 <= i < left.len()
+                implies #[trigger] pred(left[i]) by {}
+                lemma_trimmed_concat_skip(left, ret, pred);
+            }
+        } else {
+            assert(false) by {
+                lemma_join_uncons(seq.skip(head), gap.skip(head));
+            }
+        }
+        assert forall |i: int| 0 <= i < s.len() - ret.len()
+        implies #[trigger] s[i] == ch by {
+            assert(s == left + ret);
+            assert(i < left.len());
+            assert(pred(left[i]));
+            assert(s[i] == left[i]);
+        }
+    }
 }
-
 /// Proof that links the full spec to `str::trim_start_matches` with a closure pattern.
 pub broadcast proof fn lemma_str_trim_start_matches_closure<F>(s: Seq<char>, f: F, ret: Seq<char>)
     where
@@ -6170,9 +6485,87 @@ pub broadcast proof fn lemma_str_trim_start_matches_closure<F>(s: Seq<char>, f: 
     axiom_closure_matches_post(s, f);
     reveal(str_trim_start_matches_post);
     let (seq, gap) = spec_matches(s, f);
-    admit()
+    let pred = |c: char| call_ensures(f, (c,), true);
+    let gap_pred = |c: char| call_ensures(f, (c,), false);
+    if gap.all(|ss: Seq<char>| ss.len() == 0) {
+        lemma_join_empty_gap(seq, gap);
+        assert(s == seq.flatten());
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i].len() == 1 && pred(seq[i][0]) by {}
+        lemma_flatten_singleton_pred(seq, pred);
+        assert(seq.len() == s.len());
+        assert forall |i: int| 0 <= i < s.len()
+        implies #[trigger] pred(s[i]) by {
+            assert(s[i] == seq.flatten()[i]);
+            assert(pred(seq.flatten()[i]));
+        }
+        assert(ret.len() == 0);
+        assert(ret.is_suffix_of(s));
+        assert forall |i: int| 0 <= i < s.len() - ret.len()
+        implies #[trigger] call_ensures(f, (s[i],), true) by {
+            assert(pred(s[i]));
+        }
+    } else {
+        let pred2 = |ss: Seq<char>| ss.len() == 0;
+        let head = gap.count_while(pred2) as int;
+        lemma_seq_take_while_ensures(gap, pred2);
+        assert(head < gap.len()) by {
+            let k = choose|i: int| 0 <= i < gap.len() && !(#[trigger] pred2(gap[i]));
+            lemma_seq_count_while_upper_bound(gap, pred2, k);
+        }
+        assert forall |i: int| 0 <= i < head
+        implies #[trigger] gap[i].len() == 0 by {
+            assert(gap.take_while(pred2)[i] == gap[i]);
+            assert(pred2(gap.take_while(pred2)[i]));
+        }
+        assert(ret == join(seq.skip(head), gap.skip(head)));
+        assert(gap[head].len() > 0) by {
+            lemma_seq_count_while_upper_bound(gap, pred2, head);
+        }
+        let left = seq.take(head).flatten();
+        assert(s == left + ret) by {
+            lemma_join_split_at(seq, gap, head);
+            lemma_join_empty_gap_prefix_parts(seq, gap, head);
+        }
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i].len() == 1 && pred(seq[i][0]) by {}
+        assert forall |i: int| 0 <= i < seq.take(head).len()
+        implies #[trigger] seq.take(head)[i].len() == 1 && pred(seq.take(head)[i][0])
+        by {
+            assert(seq.take(head)[i] == seq[i]);
+            assert(seq[i].len() == 1 && pred(seq[i][0]));
+        }
+        lemma_flatten_singleton_pred(seq.take(head), pred);
+        assert(left.len() == head);
+        assert(s.len() == left.len() + ret.len());
+        assert(s.len() - ret.len() == left.len());
+        assert(ret.is_suffix_of(s));
+        if ret.len() > 0 {
+            lemma_join_first_gap(seq.skip(head), gap.skip(head));
+            assert(gap[head].all(gap_pred));
+            assert(ret.first() == gap[head][0]);
+            assert(gap_pred(gap[head][0]));
+            assert(call_ensures(f, (ret.first(),), false));
+            assert(!pred(ret.first())) by { lemma_call_false_not_true(f, ret.first()); }
+            assert(ret == (left + ret).skip_while(pred)) by {
+                assert forall |i: int| 0 <= i < left.len()
+                implies #[trigger] pred(left[i]) by {}
+                lemma_trimmed_concat_skip(left, ret, pred);
+            }
+        } else {
+            assert(false) by {
+                lemma_join_uncons(seq.skip(head), gap.skip(head));
+            }
+        }
+        assert forall |i: int| 0 <= i < s.len() - ret.len()
+        implies #[trigger] call_ensures(f, (s[i],), true) by {
+            assert(s == left + ret);
+            assert(i < left.len());
+            assert(pred(left[i]));
+            assert(s[i] == left[i]);
+        }
+    }
 }
-
 /// Proof that links the full spec to `str::trim_start_matches` with a `&[char]` pattern.
 pub broadcast proof fn lemma_str_trim_start_matches_chars<'b>(s: Seq<char>, chars: &'b [char], ret: Seq<char>)
     requires
@@ -6186,9 +6579,88 @@ pub broadcast proof fn lemma_str_trim_start_matches_chars<'b>(s: Seq<char>, char
     axiom_chars_matches_post(s, chars);
     reveal(str_trim_start_matches_post);
     let (seq, gap) = spec_matches(s, chars);
-    admit()
+    let pred = |c: char| chars@.contains(c);
+    if gap.all(|ss: Seq<char>| ss.len() == 0) {
+        lemma_join_empty_gap(seq, gap);
+        assert(s == seq.flatten());
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i].len() == 1 && pred(seq[i][0]) by {}
+        lemma_flatten_singleton_pred(seq, pred);
+        assert(seq.len() == s.len());
+        assert forall |i: int| 0 <= i < s.len()
+        implies #[trigger] pred(s[i]) by {
+            assert(s[i] == seq.flatten()[i]);
+            assert(pred(seq.flatten()[i]));
+        }
+        assert(ret.len() == 0);
+        assert(ret.is_suffix_of(s));
+        assert forall |i: int| 0 <= i < s.len() - ret.len()
+        implies #[trigger] chars@.contains(s[i]) by {
+            assert(pred(s[i]));
+        }
+    } else {
+        let pred2 = |ss: Seq<char>| ss.len() == 0;
+        let head = gap.count_while(pred2) as int;
+        lemma_seq_take_while_ensures(gap, pred2);
+        assert(head < gap.len()) by {
+            let k = choose|i: int| 0 <= i < gap.len() && !(#[trigger] pred2(gap[i]));
+            lemma_seq_count_while_upper_bound(gap, pred2, k);
+        }
+        assert forall |i: int| 0 <= i < head
+        implies #[trigger] gap[i].len() == 0 by {
+            assert(gap.take_while(pred2)[i] == gap[i]);
+            assert(pred2(gap.take_while(pred2)[i]));
+        }
+        assert(ret == join(seq.skip(head), gap.skip(head)));
+        assert(gap[head].len() > 0) by {
+            lemma_seq_count_while_upper_bound(gap, pred2, head);
+        }
+        let left = seq.take(head).flatten();
+        assert(s == left + ret) by {
+            lemma_join_split_at(seq, gap, head);
+            lemma_join_empty_gap_prefix_parts(seq, gap, head);
+        }
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i].len() == 1 && pred(seq[i][0]) by {}
+        assert forall |i: int| 0 <= i < seq.take(head).len()
+        implies #[trigger] seq.take(head)[i].len() == 1 && pred(seq.take(head)[i][0])
+        by {
+            assert(seq.take(head)[i] == seq[i]);
+            assert(seq[i].len() == 1 && pred(seq[i][0]));
+        }
+        lemma_flatten_singleton_pred(seq.take(head), pred);
+        assert(left.len() == head);
+        assert(s.len() == left.len() + ret.len());
+        assert(s.len() - ret.len() == left.len());
+        assert(ret.is_suffix_of(s));
+        if ret.len() > 0 {
+            lemma_join_first_gap(seq.skip(head), gap.skip(head));
+            assert(ret.first() == gap[head][0]);
+            let gap_pred = |c: char| !chars@.contains(c);
+            assert(gap[head].all(gap_pred));
+            assert(gap_pred(gap[head][0]));
+            assert(!chars@.contains(gap[head][0]));
+            assert(!chars@.contains(ret.first()));
+            assert(!pred(ret.first()));
+            assert(ret == (left + ret).skip_while(pred)) by {
+                assert forall |i: int| 0 <= i < left.len()
+                implies #[trigger] pred(left[i]) by {}
+                lemma_trimmed_concat_skip(left, ret, pred);
+            }
+        } else {
+            assert(false) by {
+                lemma_join_uncons(seq.skip(head), gap.skip(head));
+            }
+        }
+        assert forall |i: int| 0 <= i < s.len() - ret.len()
+        implies #[trigger] chars@.contains(s[i]) by {
+            assert(s == left + ret);
+            assert(i < left.len());
+            assert(pred(left[i]));
+            assert(s[i] == left[i]);
+        }
+    }
 }
-
 /// Proof that links the full spec to `str::trim_start_matches` with a string pattern.
 pub broadcast proof fn lemma_str_trim_start_matches_string<'b>(s: Seq<char>, pat: &'b str, ret: Seq<char>)
     requires
@@ -6205,7 +6677,106 @@ pub broadcast proof fn lemma_str_trim_start_matches_string<'b>(s: Seq<char>, pat
         forall|i: int| 0 <= i < s.len() - ret.len() && i % pat@.len() as int == 0
             ==> #[trigger] s.subrange(i, i + pat@.len()) == pat@,
 {
-    admit()
+    axiom_string_matches_post(s, pat);
+    reveal(str_trim_start_matches_post);
+    let (seq, gap) = spec_matches(s, pat);
+    let plen = pat@.len() as int;
+    if gap.all(|ss: Seq<char>| ss.len() == 0) {
+        lemma_join_empty_gap(seq, gap);
+        assert(s == seq.flatten());
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i] =~= pat@ by {}
+        lemma_flatten_same_seq(seq, pat@);
+        assert(s.len() == seq.len() * pat@.len());
+        assert(ret.len() == 0);
+        assert(ret.is_suffix_of(s));
+        assert((s.len() - ret.len()) % pat@.len() as int == 0) by {
+            lemma_mod_multiples_basic(seq.len() as int, plen);
+        }
+        assert forall|i: int| 0 <= i < s.len() - ret.len() && i % pat@.len() as int == 0
+        implies #[trigger] s.subrange(i, i + pat@.len()) == pat@ by {
+            let block = i / plen;
+            lemma_trim_string_flatten_block(s, seq, pat@, i);
+            lemma_trim_string_block_index(i, seq.len() as int, plen);
+            assert(i == block * plen);
+            assert(0 <= block < seq.len());
+        }
+    } else {
+        let pred2 = |ss: Seq<char>| ss.len() == 0;
+        let head = gap.count_while(pred2) as int;
+        lemma_seq_take_while_ensures(gap, pred2);
+        assert(head < gap.len()) by {
+            let k = choose|i: int| 0 <= i < gap.len() && !(#[trigger] pred2(gap[i]));
+            lemma_seq_count_while_upper_bound(gap, pred2, k);
+        }
+        assert forall |i: int| 0 <= i < head
+        implies #[trigger] gap[i].len() == 0 by {
+            assert(gap.take_while(pred2)[i] == gap[i]);
+            assert(pred2(gap.take_while(pred2)[i]));
+        }
+        assert(ret == join(seq.skip(head), gap.skip(head)));
+        assert(gap[head].len() > 0) by {
+            lemma_seq_count_while_upper_bound(gap, pred2, head);
+        }
+        let left = seq.take(head).flatten();
+        assert(s == left + ret) by {
+            lemma_join_split_at(seq, gap, head);
+            lemma_join_empty_gap_prefix_parts(seq, gap, head);
+        }
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i] =~= pat@ by {}
+        assert forall |i: int| 0 <= i < seq.take(head).len()
+        implies #[trigger] seq.take(head)[i] =~= pat@ by {
+            assert(seq.take(head)[i] == seq[i]);
+        }
+        lemma_flatten_same_seq(seq.take(head), pat@);
+        assert(left.len() == head * pat@.len());
+        assert(ret.is_suffix_of(s));
+        if ret.len() > 0 {
+            lemma_join_first_gap(seq.skip(head), gap.skip(head));
+            assert(ret.first() == gap[head][0]);
+            assert(!pat@.is_prefix_of(ret)) by {
+                assert(gap.skip(head).first() == gap[head]);
+                assert(gap.skip(head).first().len() > 0);
+                assert(ret.first() == gap.skip(head).first().first());
+                if head < seq.len() {
+                    assert(!pat@.is_prefix_of(gap[head] + pat@));
+                    assert(seq.skip(head)[0] == seq[head]);
+                    assert(seq[head] =~= pat@);
+                    lemma_join_uncons(seq.skip(head), gap.skip(head));
+                    lemma_string_join_not_prefix(seq.skip(head), gap.skip(head), pat@);
+                } else {
+                    assert(head == seq.len());
+                    assert(gap[head] == gap.last());
+                    assert(!pat@.is_subrange_of(gap.last()));
+                    lemma_seq_is_subrange_alt(gap[head], pat@);
+                    assert(!pat@.is_prefix_of(gap[head]));
+                    assert(seq.skip(head).len() == 0);
+                    assert(gap.skip(head).len() == 1);
+                    assert(ret == gap[head]);
+                }
+            }
+        } else {
+            assert(false) by {
+                lemma_join_uncons(seq.skip(head), gap.skip(head));
+            }
+        }
+        assert((s.len() - ret.len()) % pat@.len() as int == 0) by {
+            assert(s.len() == left.len() + ret.len());
+            assert(s.len() - ret.len() == left.len());
+            lemma_mod_multiples_basic(head, plen);
+        }
+        assert forall|i: int| 0 <= i < s.len() - ret.len() && i % pat@.len() as int == 0
+        implies #[trigger] s.subrange(i, i + pat@.len()) == pat@ by {
+            let block = i / plen;
+            lemma_trim_string_flatten_block(left, seq.take(head), pat@, i);
+            lemma_trim_string_block_index(i, head, plen);
+            assert(i == block * plen);
+            assert(0 <= block < head);
+            lemma_concat_left_subrange(left, ret, i, i + pat@.len());
+            assert(s.subrange(i, i + pat@.len()) == left.subrange(i, i + pat@.len()));
+        }
+    }
 }
 
 /// Proof that links the full spec to `str::trim_end_matches` with a `char` pattern.
@@ -6221,9 +6792,85 @@ pub broadcast proof fn lemma_str_trim_end_matches_char(s: Seq<char>, ch: char, r
     axiom_char_rmatches_post(s, ch);
     reveal(str_trim_end_matches_post);
     let (seq, gap) = spec_rmatches(s, ch);
-    admit()
+    let pred = |c: char| c == ch;
+    if gap.all(|ss: Seq<char>| ss.len() == 0) {
+        lemma_rjoin_empty_gap(seq, gap);
+        assert(s == seq.reverse().flatten_alt());
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i].len() == 1 && pred(seq[i][0])
+        by { assert(seq[i] =~= seq![ch]); }
+        assert forall |i: int| 0 <= i < seq.reverse().len()
+        implies #[trigger] seq.reverse()[i].len() == 1 && pred(seq.reverse()[i][0]) by {
+            assert(seq.reverse()[i] == seq[seq.len() - 1 - i]);
+        }
+        lemma_flatten_alt_singleton_pred(seq.reverse(), pred);
+        assert(seq.len() == s.len());
+        assert forall |i: int| 0 <= i < s.len()
+        implies #[trigger] s[i] == ch by {
+            assert(s[i] == seq.reverse().flatten_alt()[i]);
+            assert(pred(seq.reverse().flatten_alt()[i]));
+            assert(pred(s[i]));
+        }
+        assert(ret.len() == 0);
+        assert(ret.is_prefix_of(s));
+    } else {
+        let pred2 = |ss: Seq<char>| ss.len() == 0;
+        let head = gap.count_while(pred2) as int;
+        lemma_seq_take_while_ensures(gap, pred2);
+        assert(head < gap.len()) by {
+            let k = choose|i: int| 0 <= i < gap.len() && !(#[trigger] pred2(gap[i]));
+            lemma_seq_count_while_upper_bound(gap, pred2, k);
+        }
+        assert forall |i: int| 0 <= i < head
+        implies #[trigger] gap[i].len() == 0 by {
+            assert(gap.take_while(pred2)[i] == gap[i]);
+            assert(pred2(gap.take_while(pred2)[i]));
+        }
+        assert(ret == rjoin(seq.skip(head), gap.skip(head)));
+        assert(gap[head].len() > 0) by {
+            lemma_seq_count_while_upper_bound(gap, pred2, head);
+        }
+        let right = seq.take(head).map(|i: int, ss: Seq<char>| ss + gap[i]).reverse().flatten_alt();
+        assert(s == ret + right) by {
+            lemma_rjoin_split_at(seq, gap, head);
+            lemma_rjoin_empty_gap_prefix_parts(seq, gap, head);
+        }
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i].len() == 1 && pred(seq[i][0])
+        by { assert(seq[i] =~= seq![ch]); }
+        assert forall |i: int| 0 <= i < seq.take(head).len()
+        implies #[trigger] seq.take(head)[i].len() == 1 && pred(seq.take(head)[i][0]) by {
+            assert(seq.take(head)[i] == seq[i]);
+        }
+        lemma_flatten_alt_singleton_pred(seq.take(head), pred);
+        lemma_rjoin_empty_gap_prefix_parts_pred(seq, gap, head, pred);
+        assert(right.len() == head);
+        assert(ret.is_prefix_of(s));
+        if ret.len() > 0 {
+            lemma_rjoin_last_first_gap(seq.skip(head), gap.skip(head));
+            assert(!gap[head].contains(ch));
+            assert(ret.last() == gap[head].last());
+            assert(ret.last() != ch);
+            assert(!pred(ret.last()));
+            assert(ret == (ret + right).rskip_while(pred)) by {
+                assert forall |i: int| 0 <= i < right.len()
+                implies #[trigger] pred(right[i]) by {}
+                lemma_trimmed_concat_rskip(ret, right, pred);
+            }
+        } else {
+            assert(false) by {
+                lemma_rjoin_uncons(seq.skip(head), gap.skip(head));
+            }
+        }
+        assert forall |i: int| ret.len() <= i < s.len()
+        implies #[trigger] s[i] == ch by {
+            assert(s == ret + right);
+            assert(i - ret.len() < right.len());
+            assert(pred(right[i - ret.len()]));
+            assert(s[i] == right[i - ret.len()]);
+        }
+    }
 }
-
 /// Proof that links the full spec to `str::trim_end_matches` with a closure pattern.
 pub broadcast proof fn lemma_str_trim_end_matches_closure<F>(s: Seq<char>, f: F, ret: Seq<char>)
     where
@@ -6240,9 +6887,86 @@ pub broadcast proof fn lemma_str_trim_end_matches_closure<F>(s: Seq<char>, f: F,
     axiom_closure_rmatches_post(s, f);
     reveal(str_trim_end_matches_post);
     let (seq, gap) = spec_rmatches(s, f);
-    admit()
+    let pred = |c: char| call_ensures(f, (c,), true);
+    let gap_pred = |c: char| call_ensures(f, (c,), false);
+    if gap.all(|ss: Seq<char>| ss.len() == 0) {
+        lemma_rjoin_empty_gap(seq, gap);
+        assert(s == seq.reverse().flatten_alt());
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i].len() == 1 && pred(seq[i][0]) by {}
+        lemma_flatten_alt_singleton_pred(seq.reverse(), pred);
+        assert(seq.len() == s.len());
+        assert forall |i: int| 0 <= i < s.len()
+        implies #[trigger] pred(s[i]) by {
+            assert(s[i] == seq.reverse().flatten_alt()[i]);
+            assert(pred(seq.reverse().flatten_alt()[i]));
+        }
+        assert(ret.len() == 0);
+        assert(ret.is_prefix_of(s));
+        assert forall |i: int| ret.len() <= i < s.len()
+        implies #[trigger] call_ensures(f, (s[i],), true) by {
+            assert(pred(s[i]));
+        }
+    } else {
+        let pred2 = |ss: Seq<char>| ss.len() == 0;
+        let head = gap.count_while(pred2) as int;
+        lemma_seq_take_while_ensures(gap, pred2);
+        assert(head < gap.len()) by {
+            let k = choose|i: int| 0 <= i < gap.len() && !(#[trigger] pred2(gap[i]));
+            lemma_seq_count_while_upper_bound(gap, pred2, k);
+        }
+        assert forall |i: int| 0 <= i < head
+        implies #[trigger] gap[i].len() == 0 by {
+            assert(gap.take_while(pred2)[i] == gap[i]);
+            assert(pred2(gap.take_while(pred2)[i]));
+        }
+        assert(ret == rjoin(seq.skip(head), gap.skip(head)));
+        assert(gap[head].len() > 0) by {
+            lemma_seq_count_while_upper_bound(gap, pred2, head);
+        }
+        let right = seq.take(head).map(|i: int, ss: Seq<char>| ss + gap[i]).reverse().flatten_alt();
+        assert(s == ret + right) by {
+            lemma_rjoin_split_at(seq, gap, head);
+            lemma_rjoin_empty_gap_prefix_parts(seq, gap, head);
+        }
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i].len() == 1 && pred(seq[i][0]) by {}
+        assert forall |i: int| 0 <= i < seq.take(head).len()
+        implies #[trigger] seq.take(head)[i].len() == 1 && pred(seq.take(head)[i][0]) by {
+            assert(seq.take(head)[i] == seq[i]);
+        }
+        lemma_flatten_alt_singleton_pred(seq.take(head), pred);
+        lemma_rjoin_empty_gap_prefix_parts_pred(seq, gap, head, pred);
+        assert(right.len() == head);
+        assert(s.len() == ret.len() + right.len());
+        assert(s.len() - ret.len() == right.len());
+        assert(ret.is_prefix_of(s));
+        if ret.len() > 0 {
+            lemma_rjoin_last_first_gap(seq.skip(head), gap.skip(head));
+            assert(gap[head].all(gap_pred));
+            assert(ret.last() == gap[head].last());
+            assert(gap_pred(gap[head].last()));
+            assert(call_ensures(f, (ret.last(),), false));
+            assert(!pred(ret.last())) by { lemma_call_false_not_true(f, ret.last()); }
+            assert(ret == (ret + right).rskip_while(pred)) by {
+                assert forall |i: int| 0 <= i < right.len()
+                implies #[trigger] pred(right[i]) by {}
+                lemma_trimmed_concat_rskip(ret, right, pred);
+            }
+        } else {
+            assert(false) by {
+                lemma_rjoin_uncons(seq.skip(head), gap.skip(head));
+            }
+        }
+        assert forall |i: int| ret.len() <= i < s.len()
+        implies #[trigger] call_ensures(f, (s[i],), true) by {
+            assert(s == ret + right);
+            assert(i - ret.len() < right.len());
+            assert(pred(right[i - ret.len()]));
+            assert(s[i] == right[i - ret.len()]);
+        }
+    }
 }
-
 /// Proof that links the full spec to `str::trim_end_matches` with a `&[char]` pattern.
 pub broadcast proof fn lemma_str_trim_end_matches_chars<'b>(s: Seq<char>, chars: &'b [char], ret: Seq<char>)
     requires
@@ -6256,9 +6980,91 @@ pub broadcast proof fn lemma_str_trim_end_matches_chars<'b>(s: Seq<char>, chars:
     axiom_chars_rmatches_post(s, chars);
     reveal(str_trim_end_matches_post);
     let (seq, gap) = spec_rmatches(s, chars);
-    admit()
+    let pred = |c: char| chars@.contains(c);
+    if gap.all(|ss: Seq<char>| ss.len() == 0) {
+        lemma_rjoin_empty_gap(seq, gap);
+        assert(s == seq.reverse().flatten_alt());
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i].len() == 1 && pred(seq[i][0]) by {}
+        assert forall |i: int| 0 <= i < seq.reverse().len()
+        implies #[trigger] seq.reverse()[i].len() == 1 && pred(seq.reverse()[i][0]) by {
+            assert(seq.reverse()[i] == seq[seq.len() - 1 - i]);
+        }
+        lemma_flatten_alt_singleton_pred(seq.reverse(), pred);
+        assert(seq.len() == s.len());
+        assert forall |i: int| 0 <= i < s.len()
+        implies #[trigger] pred(s[i]) by {
+            assert(s[i] == seq.reverse().flatten_alt()[i]);
+            assert(pred(seq.reverse().flatten_alt()[i]));
+        }
+        assert(ret.len() == 0);
+        assert(ret.is_prefix_of(s));
+        assert forall |i: int| ret.len() <= i < s.len()
+        implies #[trigger] chars@.contains(s[i]) by {
+            assert(pred(s[i]));
+        }
+    } else {
+        let pred2 = |ss: Seq<char>| ss.len() == 0;
+        let head = gap.count_while(pred2) as int;
+        lemma_seq_take_while_ensures(gap, pred2);
+        assert(head < gap.len()) by {
+            let k = choose|i: int| 0 <= i < gap.len() && !(#[trigger] pred2(gap[i]));
+            lemma_seq_count_while_upper_bound(gap, pred2, k);
+        }
+        assert forall |i: int| 0 <= i < head
+        implies #[trigger] gap[i].len() == 0 by {
+            assert(gap.take_while(pred2)[i] == gap[i]);
+            assert(pred2(gap.take_while(pred2)[i]));
+        }
+        assert(ret == rjoin(seq.skip(head), gap.skip(head)));
+        assert(gap[head].len() > 0) by {
+            lemma_seq_count_while_upper_bound(gap, pred2, head);
+        }
+        let right = seq.take(head).map(|i: int, ss: Seq<char>| ss + gap[i]).reverse().flatten_alt();
+        assert(s == ret + right) by {
+            lemma_rjoin_split_at(seq, gap, head);
+            lemma_rjoin_empty_gap_prefix_parts(seq, gap, head);
+        }
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i].len() == 1 && pred(seq[i][0]) by {}
+        assert forall |i: int| 0 <= i < seq.take(head).len()
+        implies #[trigger] seq.take(head)[i].len() == 1 && pred(seq.take(head)[i][0]) by {
+            assert(seq.take(head)[i] == seq[i]);
+        }
+        lemma_flatten_alt_singleton_pred(seq.take(head), pred);
+        lemma_rjoin_empty_gap_prefix_parts_pred(seq, gap, head, pred);
+        assert(right.len() == head);
+        assert(s.len() == ret.len() + right.len());
+        assert(s.len() - ret.len() == right.len());
+        assert(ret.is_prefix_of(s));
+        if ret.len() > 0 {
+            lemma_rjoin_last_first_gap(seq.skip(head), gap.skip(head));
+            assert(ret.last() == gap[head].last());
+            let gap_pred = |c: char| !chars@.contains(c);
+            assert(gap[head].all(gap_pred));
+            assert(gap_pred(gap[head].last()));
+            assert(!chars@.contains(gap[head].last()));
+            assert(!chars@.contains(ret.last()));
+            assert(!pred(ret.last()));
+            assert(ret == (ret + right).rskip_while(pred)) by {
+                assert forall |i: int| 0 <= i < right.len()
+                implies #[trigger] pred(right[i]) by {}
+                lemma_trimmed_concat_rskip(ret, right, pred);
+            }
+        } else {
+            assert(false) by {
+                lemma_rjoin_uncons(seq.skip(head), gap.skip(head));
+            }
+        }
+        assert forall |i: int| ret.len() <= i < s.len()
+        implies #[trigger] chars@.contains(s[i]) by {
+            assert(s == ret + right);
+            assert(i - ret.len() < right.len());
+            assert(pred(right[i - ret.len()]));
+            assert(s[i] == right[i - ret.len()]);
+        }
+    }
 }
-
 /// Proof that links the full spec to `str::trim_end_matches` with a string pattern.
 pub broadcast proof fn lemma_str_trim_end_matches_string<'b>(s: Seq<char>, pat: &'b str, ret: Seq<char>)
     requires
@@ -6275,7 +7081,109 @@ pub broadcast proof fn lemma_str_trim_end_matches_string<'b>(s: Seq<char>, pat: 
         forall|i: int| 0 <= i < s.len() - ret.len() && i % pat@.len() as int == 0
             ==> #[trigger] s.subrange(ret.len() + i, ret.len() + i + pat@.len()) == pat@,
 {
-    admit()
+    axiom_string_rmatches_post(s, pat);
+    reveal(str_trim_end_matches_post);
+    let (seq, gap) = spec_rmatches(s, pat);
+    let plen = pat@.len() as int;
+    if gap.all(|ss: Seq<char>| ss.len() == 0) {
+        lemma_rjoin_empty_gap(seq, gap);
+        assert(s == seq.reverse().flatten_alt());
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i] =~= pat@ by {}
+        assert forall |i: int| 0 <= i < seq.reverse().len()
+        implies #[trigger] seq.reverse()[i] =~= pat@ by {
+            assert(seq.reverse()[i] == seq[seq.len() - 1 - i]);
+        }
+        lemma_flatten_alt_same_seq(seq.reverse(), pat@);
+        seq.reverse().lemma_flatten_and_flatten_alt_are_equivalent();
+        assert(s.len() == seq.reverse().len() * pat@.len());
+        assert(seq.reverse().len() == seq.len());
+        assert(ret.len() == 0);
+        assert(ret.is_prefix_of(s));
+        assert((s.len() - ret.len()) % pat@.len() as int == 0) by {
+            lemma_mod_multiples_basic(seq.len() as int, plen);
+        }
+        assert forall|i: int| 0 <= i < s.len() - ret.len() && i % pat@.len() as int == 0
+        implies #[trigger] s.subrange(ret.len() + i, ret.len() + i + pat@.len()) == pat@ by {
+            assert(ret.len() == 0);
+            assert(s == seq.reverse().flatten());
+            lemma_trim_string_flatten_block(s, seq.reverse(), pat@, i);
+        }
+    } else {
+        let pred2 = |ss: Seq<char>| ss.len() == 0;
+        let head = gap.count_while(pred2) as int;
+        lemma_seq_take_while_ensures(gap, pred2);
+        assert(head < gap.len()) by {
+            let k = choose|i: int| 0 <= i < gap.len() && !(#[trigger] pred2(gap[i]));
+            lemma_seq_count_while_upper_bound(gap, pred2, k);
+        }
+        assert forall |i: int| 0 <= i < head
+        implies #[trigger] gap[i].len() == 0 by {
+            assert(gap.take_while(pred2)[i] == gap[i]);
+            assert(pred2(gap.take_while(pred2)[i]));
+        }
+        assert(ret == rjoin(seq.skip(head), gap.skip(head)));
+        assert(gap[head].len() > 0) by {
+            lemma_seq_count_while_upper_bound(gap, pred2, head);
+        }
+        let right = seq.take(head).reverse().flatten_alt();
+        assert(s == ret + right) by {
+            lemma_rjoin_split_at(seq, gap, head);
+            lemma_rjoin_empty_gap_prefix_parts(seq, gap, head);
+        }
+        assert forall |i: int| 0 <= i < seq.len()
+        implies #[trigger] seq[i] =~= pat@ by {}
+        assert forall |i: int| 0 <= i < seq.take(head).reverse().len()
+        implies #[trigger] seq.take(head).reverse()[i] =~= pat@ by {
+            assert(seq.take(head).reverse()[i] == seq.take(head)[seq.take(head).len() - 1 - i]);
+            assert(seq.take(head)[seq.take(head).len() - 1 - i] == seq[seq.take(head).len() - 1 - i]);
+        }
+        lemma_flatten_alt_same_seq(seq.take(head).reverse(), pat@);
+        seq.take(head).reverse().lemma_flatten_and_flatten_alt_are_equivalent();
+        assert(right.len() == head * pat@.len());
+        assert(ret.is_prefix_of(s));
+        if ret.len() > 0 {
+            lemma_rjoin_last_first_gap(seq.skip(head), gap.skip(head));
+            assert(ret.last() == gap[head].last());
+            assert(!pat@.is_suffix_of(ret)) by {
+                assert(gap.skip(head).first() == gap[head]);
+                assert(gap.skip(head).first().len() > 0);
+                assert(ret.last() == gap.skip(head).first().last());
+                if head < seq.len() {
+                    assert(!pat@.is_suffix_of(pat@ + gap[head]));
+                    assert(seq.skip(head)[0] == seq[head]);
+                    assert(seq[head] =~= pat@);
+                    lemma_rjoin_uncons(seq.skip(head), gap.skip(head));
+                    lemma_string_rjoin_not_suffix(seq.skip(head), gap.skip(head), pat@);
+                } else {
+                    assert(head == seq.len());
+                    assert(gap[head] == gap.last());
+                    assert(!pat@.is_subrange_of(gap.last()));
+                    lemma_seq_is_subrange_alt(gap[head], pat@);
+                    assert(!pat@.is_suffix_of(gap[head]));
+                    assert(seq.skip(head).len() == 0);
+                    assert(gap.skip(head).len() == 1);
+                    assert(ret == gap[head]);
+                }
+            }
+        } else {
+            assert(false) by {
+                lemma_rjoin_uncons(seq.skip(head), gap.skip(head));
+            }
+        }
+        assert((s.len() - ret.len()) % pat@.len() as int == 0) by {
+            assert(s.len() == ret.len() + right.len());
+            assert(s.len() - ret.len() == right.len());
+            lemma_mod_multiples_basic(head, plen);
+        }
+        assert forall|i: int| 0 <= i < s.len() - ret.len() && i % pat@.len() as int == 0
+        implies #[trigger] s.subrange(ret.len() + i, ret.len() + i + pat@.len()) == pat@ by {
+            assert(right == seq.take(head).reverse().flatten());
+            lemma_trim_string_flatten_block(right, seq.take(head).reverse(), pat@, i);
+            lemma_concat_right_subrange(ret, right, i, i + pat@.len());
+            assert(s.subrange(ret.len() + i, ret.len() + i + pat@.len()) == right.subrange(i, i + pat@.len()));
+        }
+    }
 }
 
 /// Proof that links the full spec to `str::strip_prefix` with a `char` pattern.
@@ -7232,6 +8140,463 @@ proof fn lemma_rjoin_split_match_at(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>, k:
     assert(rjoin(seq, gap) == rest + seq[k] + suffix);
 }
 
+proof fn lemma_flatten_singleton_pred(seq: Seq<Seq<char>>, pred: spec_fn(char) -> bool)
+    requires
+        forall |i: int| 0 <= i < seq.len() ==> #[trigger] seq[i].len() == 1 && pred(seq[i][0]),
+    ensures
+        seq.flatten().len() == seq.len(),
+        forall |i: int| 0 <= i < seq.flatten().len() ==> #[trigger] pred(seq.flatten()[i]),
+{
+    lemma_seq_flatten_same_length(seq, 1);
+    assert(seq.flatten().len() == seq.len()) by {
+        assert(seq.flatten().len() == seq.len() * 1);
+    }
+    assert forall |i: int| 0 <= i < seq.flatten().len()
+    implies #[trigger] pred(seq.flatten()[i]) by {
+        assert(seq.flatten().subrange(i * 1, (i + 1) * 1) == seq[i]);
+        assert(seq.flatten()[i] == seq[i][0]);
+    }
+}
+
+proof fn lemma_flatten_alt_singleton_pred(seq: Seq<Seq<char>>, pred: spec_fn(char) -> bool)
+    requires
+        forall |i: int| 0 <= i < seq.len() ==> #[trigger] seq[i].len() == 1 && pred(seq[i][0]),
+    ensures
+        seq.flatten_alt().len() == seq.len(),
+        forall |i: int| 0 <= i < seq.flatten_alt().len() ==> #[trigger] pred(seq.flatten_alt()[i]),
+{
+    seq.lemma_flatten_and_flatten_alt_are_equivalent();
+    lemma_flatten_singleton_pred(seq, pred);
+}
+
+proof fn lemma_flatten_same_seq(seq: Seq<Seq<char>>, pat: Seq<char>)
+    requires
+        forall |i: int| 0 <= i < seq.len() ==> #[trigger] seq[i] =~= pat,
+    ensures
+        seq.flatten().len() == seq.len() * pat.len(),
+        forall |i: int| 0 <= i < seq.len()
+            ==> #[trigger] seq.flatten().subrange(i * pat.len(), (i + 1) * pat.len()) == pat,
+{
+    assert forall |i: int| 0 <= i < seq.len()
+    implies #[trigger] seq[i].len() == pat.len() by {
+        assert(seq[i] =~= pat);
+    }
+    lemma_seq_flatten_same_length(seq, pat.len() as nat);
+    assert forall |i: int| 0 <= i < seq.len()
+    implies #[trigger] seq.flatten().subrange(i * pat.len(), (i + 1) * pat.len()) == pat by {
+        assert(seq.flatten().subrange(i * pat.len(), (i + 1) * pat.len()) == seq[i]);
+        assert(seq[i] =~= pat);
+    }
+}
+
+proof fn lemma_flatten_alt_same_seq(seq: Seq<Seq<char>>, pat: Seq<char>)
+    requires
+        forall |i: int| 0 <= i < seq.len() ==> #[trigger] seq[i] =~= pat,
+    ensures
+        seq.flatten_alt().len() == seq.len() * pat.len(),
+{
+    seq.lemma_flatten_and_flatten_alt_are_equivalent();
+    lemma_flatten_same_seq(seq, pat);
+}
+
+proof fn lemma_trim_string_block_index(i: int, blocks: int, plen: int)
+    requires
+        plen > 0,
+        0 <= i < blocks * plen,
+        i % plen == 0,
+    ensures
+        0 <= i / plen < blocks,
+        i == (i / plen) * plen,
+{
+    lemma_fundamental_div_mod(i, plen);
+    assert(i == plen * (i / plen));
+    assert(i == (i / plen) * plen) by {
+        broadcast use lemma_mul_is_commutative;
+    }
+    assert(0 <= i / plen) by {
+        lemma_div_pos_is_pos(i, plen);
+    }
+    assert(i / plen < blocks) by {
+        assert(i < blocks * plen);
+        lemma_mul_strict_inequality_converse(i / plen, blocks, plen);
+    }
+}
+
+proof fn lemma_trim_string_flatten_block(
+    flat: Seq<char>, seq: Seq<Seq<char>>, pat: Seq<char>, i: int,
+)
+    requires
+        pat.len() > 0,
+        flat == seq.flatten(),
+        forall |j: int| 0 <= j < seq.len() ==> #[trigger] seq[j] =~= pat,
+        0 <= i < flat.len(),
+        i % pat.len() as int == 0,
+    ensures
+        i + pat.len() <= flat.len(),
+        flat.subrange(i, i + pat.len()) == pat,
+{
+    let plen = pat.len() as int;
+    let block = i / plen;
+    lemma_flatten_same_seq(seq, pat);
+    assert(flat.len() == seq.len() * pat.len());
+    lemma_trim_string_block_index(i, seq.len() as int, plen);
+    assert(i == block * plen);
+    assert(0 <= block < seq.len());
+    assert(block * plen == block * pat.len()) by (nonlinear_arith)
+        requires plen == pat.len() {};
+    assert((block + 1) * plen == (block + 1) * pat.len()) by (nonlinear_arith)
+        requires plen == pat.len() {};
+    assert(i == block * pat.len()) by (nonlinear_arith)
+        requires i == block * plen, plen == pat.len() {};
+    assert(block + 1 <= seq.len());
+    assert(i + pat.len() == (block + 1) * pat.len()) by (nonlinear_arith)
+        requires i == block * pat.len(), pat.len() > 0 {};
+    assert((block + 1) * pat.len() <= seq.len() * pat.len()) by (nonlinear_arith)
+        requires 0 <= block, block + 1 <= seq.len(), pat.len() > 0 {};
+    assert(i + pat.len() <= flat.len());
+    assert(flat.subrange(block * pat.len(), (block + 1) * pat.len()) == pat);
+}
+
+proof fn lemma_concat_left_subrange(left: Seq<char>, right: Seq<char>, start: int, end: int)
+    requires
+        0 <= start <= end <= left.len(),
+    ensures
+        (left + right).subrange(start, end) == left.subrange(start, end),
+{
+    assert_seqs_equal!((left + right).subrange(start, end) == left.subrange(start, end));
+}
+
+proof fn lemma_concat_right_subrange(left: Seq<char>, right: Seq<char>, start: int, end: int)
+    requires
+        0 <= start <= end <= right.len(),
+    ensures
+        (left + right).subrange(left.len() + start, left.len() + end) == right.subrange(start, end),
+{
+    assert_seqs_equal!((left + right).subrange(left.len() + start, left.len() + end)
+        == right.subrange(start, end));
+}
+
+proof fn lemma_string_join_not_prefix(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>, pat: Seq<char>)
+    requires
+        pat.len() > 0,
+        seq.len() > 0,
+        seq.len() + 1 == gap.len(),
+        seq[0] =~= pat,
+        gap[0].len() > 0,
+        !pat.is_prefix_of(gap[0] + pat),
+    ensures
+        !pat.is_prefix_of(join(seq, gap)),
+{
+    let ret = join(seq, gap);
+    lemma_join_uncons(seq, gap);
+    assert(ret == gap[0] + seq[0] + join(seq.skip(1), gap.skip(1)));
+    if pat.is_prefix_of(ret) {
+        assert(pat.len() <= ret.len());
+        assert(ret.subrange(0, pat.len() as int) == pat);
+        assert(seq[0] == pat);
+        let rest = join(seq.skip(1), gap.skip(1));
+        assert(ret == gap[0] + pat + rest);
+        lemma_concat_left_subrange(gap[0] + pat, rest, 0, pat.len() as int);
+        assert((gap[0] + pat).subrange(0, pat.len() as int) == ret.subrange(0, pat.len() as int));
+        assert(pat.is_prefix_of(gap[0] + pat));
+    }
+}
+
+proof fn lemma_string_rjoin_not_suffix(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>, pat: Seq<char>)
+    requires
+        pat.len() > 0,
+        seq.len() > 0,
+        seq.len() + 1 == gap.len(),
+        seq[0] =~= pat,
+        gap[0].len() > 0,
+        !pat.is_suffix_of(pat + gap[0]),
+    ensures
+        !pat.is_suffix_of(rjoin(seq, gap)),
+{
+    let ret = rjoin(seq, gap);
+    lemma_rjoin_uncons(seq, gap);
+    assert(ret == rjoin(seq.skip(1), gap.skip(1)) + seq[0] + gap[0]);
+    if pat.is_suffix_of(ret) {
+        assert(pat.len() <= ret.len());
+        assert(ret.subrange(ret.len() - pat.len(), ret.len() as int) == pat);
+        assert(seq[0] == pat);
+        let rest = rjoin(seq.skip(1), gap.skip(1));
+        assert(ret == rest + pat + gap[0]);
+        lemma_concat_right_subrange(rest, pat + gap[0], (pat + gap[0]).len() - pat.len(), (pat + gap[0]).len() as int);
+        assert((pat + gap[0]).subrange((pat + gap[0]).len() - pat.len(), (pat + gap[0]).len() as int)
+            == ret.subrange(ret.len() - pat.len(), ret.len() as int));
+        assert(pat.is_suffix_of(pat + gap[0]));
+    }
+}
+
+proof fn lemma_join_empty_gap_prefix_parts(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>, k: int)
+    requires
+        0 <= k <= seq.len(),
+        forall |i: int| 0 <= i < k ==> #[trigger] gap[i].len() == 0,
+    ensures
+        seq.take(k).map(|i: int, ss: Seq<char>| gap[i] + ss).flatten()
+            == seq.take(k).flatten(),
+{
+    let parts = seq.take(k).map(|i: int, ss: Seq<char>| gap[i] + ss);
+    assert_seqs_equal!(parts == seq.take(k), i => {
+        assert(gap[i].len() == 0);
+        assert(gap[i] + seq.take(k)[i] == seq.take(k)[i]);
+    });
+}
+
+proof fn lemma_join_empty_gap_suffix_parts(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>, start: int)
+    requires
+        seq.len() + 1 == gap.len(),
+        0 <= start <= seq.len(),
+        forall |i: int| start + 1 <= i < gap.len() ==> #[trigger] gap[i].len() == 0,
+    ensures
+        seq.skip(start).map(|i: int, ss: Seq<char>| ss + gap.skip(start + 1)[i]).flatten()
+            == seq.skip(start).flatten(),
+{
+    let parts = seq.skip(start).map(|i: int, ss: Seq<char>| ss + gap.skip(start + 1)[i]);
+    assert_seqs_equal!(parts == seq.skip(start), i => {
+        assert(gap.skip(start + 1)[i] == gap[start + 1 + i]);
+        assert(gap[start + 1 + i].len() == 0);
+        assert(seq.skip(start)[i] + gap.skip(start + 1)[i] == seq.skip(start)[i]);
+    });
+}
+
+proof fn lemma_rjoin_empty_gap_prefix_parts(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>, k: int)
+    requires
+        seq.len() + 1 == gap.len(),
+        0 <= k <= seq.len(),
+        forall |i: int| 0 <= i < k ==> #[trigger] gap[i].len() == 0,
+    ensures
+        ({
+            let parts = seq.take(k).map(|i: int, ss: Seq<char>| ss + gap[i]);
+            parts.reverse().flatten_alt() == seq.take(k).reverse().flatten_alt()
+        }),
+{
+    let parts = seq.take(k).map(|i: int, ss: Seq<char>| ss + gap[i]);
+    assert_seqs_equal!(parts == seq.take(k), i => {
+        assert(gap[i].len() == 0);
+        assert(seq.take(k)[i] + gap[i] == seq.take(k)[i]);
+    });
+    assert(parts.reverse().flatten_alt() =~= seq.take(k).reverse().flatten_alt());
+}
+
+proof fn lemma_rjoin_empty_gap_prefix_parts_pred(
+    seq: Seq<Seq<char>>, gap: Seq<Seq<char>>, k: int, pred: spec_fn(char) -> bool,
+)
+    requires
+        seq.len() + 1 == gap.len(),
+        0 <= k <= seq.len(),
+        forall |i: int| 0 <= i < k ==> #[trigger] gap[i].len() == 0,
+        forall |i: int| 0 <= i < k ==> #[trigger] seq[i].len() == 1 && pred(seq[i][0]),
+    ensures
+        ({
+            let parts = seq.take(k).map(|i: int, ss: Seq<char>| ss + gap[i]);
+            &&& parts.reverse().flatten_alt().len() == k
+            &&& forall |i: int| 0 <= i < parts.reverse().flatten_alt().len()
+                ==> #[trigger] pred(parts.reverse().flatten_alt()[i])
+        }),
+{
+    let parts = seq.take(k).map(|i: int, ss: Seq<char>| ss + gap[i]);
+    assert_seqs_equal!(parts == seq.take(k), i => {
+        assert(gap[i].len() == 0);
+        assert(seq.take(k)[i] + gap[i] == seq.take(k)[i]);
+    });
+    assert forall |i: int| 0 <= i < seq.take(k).len()
+    implies #[trigger] seq.take(k)[i].len() == 1 && pred(seq.take(k)[i][0]) by {
+        assert(seq.take(k)[i] == seq[i]);
+    }
+    assert forall |i: int| 0 <= i < seq.take(k).reverse().len()
+    implies #[trigger] seq.take(k).reverse()[i].len() == 1 && pred(seq.take(k).reverse()[i][0]) by {
+        assert(seq.take(k).reverse()[i] == seq.take(k)[seq.take(k).len() - 1 - i]);
+    }
+    assert(parts.reverse().flatten_alt() =~= seq.take(k).reverse().flatten_alt());
+    lemma_flatten_alt_singleton_pred(seq.take(k).reverse(), pred);
+    assert(parts.reverse().flatten_alt().len() == k);
+}
+
+proof fn lemma_join_trim_decomposition(
+    seq: Seq<Seq<char>>, gap: Seq<Seq<char>>, head: int, tail: int,
+)
+    requires
+        seq.len() + 1 == gap.len(),
+        0 <= head,
+        0 <= tail,
+        head + tail < gap.len(),
+        forall |i: int| 0 <= i < head ==> #[trigger] gap[i].len() == 0,
+        forall |i: int| gap.len() - tail <= i < gap.len() ==> #[trigger] gap[i].len() == 0,
+    ensures
+        join(seq, gap) == seq.take(head).flatten()
+            + join(seq.subrange(head, seq.len() - tail), gap.subrange(head, gap.len() - tail))
+            + seq.skip(seq.len() - tail).flatten(),
+{
+    let mid_len = seq.len() - head - tail;
+    assert(0 <= mid_len <= seq.len() - head);
+    lemma_join_split_at(seq, gap, head);
+    lemma_join_empty_gap_prefix_parts(seq, gap, head);
+    lemma_join_split_at_alt(seq.skip(head), gap.skip(head), mid_len);
+    assert(seq.skip(head).take(mid_len) == seq.subrange(head, seq.len() - tail));
+    assert(gap.skip(head).take(mid_len + 1) == gap.subrange(head, gap.len() - tail));
+    assert(seq.skip(head).skip(mid_len) == seq.skip(seq.len() - tail));
+    assert(gap.skip(head).skip(mid_len + 1) == gap.skip(gap.len() - tail));
+    assert forall |i: int| seq.len() - tail + 1 <= i < gap.len()
+    implies #[trigger] gap[i].len() == 0 by {
+        assert(seq.len() - tail + 1 == gap.len() - tail);
+    }
+    lemma_join_empty_gap_suffix_parts(seq, gap, seq.len() - tail);
+    let prefix = seq.take(head).flatten();
+    let mid = join(seq.subrange(head, seq.len() - tail), gap.subrange(head, gap.len() - tail));
+    let suffix = seq.skip(seq.len() - tail).flatten();
+    lemma_concat_associative(prefix, mid, suffix);
+}
+
+proof fn lemma_join_boundary_gaps(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
+    requires
+        seq.len() + 1 == gap.len(),
+        gap.first().len() > 0,
+        gap.last().len() > 0,
+    ensures
+        join(seq, gap).len() > 0,
+        join(seq, gap).first() == gap.first().first(),
+        join(seq, gap).last() == gap.last().last(),
+{
+    if seq.len() == 0 {
+        assert(gap.len() == 1);
+        assert(join(seq, gap) == gap.first());
+        assert(gap.first() == gap.last());
+    } else {
+        lemma_join_uncons(seq, gap);
+        assert(join(seq, gap) == gap.first() + seq.first() + join(seq.skip(1), gap.skip(1)));
+        assert(join(seq, gap).first() == gap.first().first());
+        lemma_join_runcons(seq, gap);
+        assert(join(seq, gap) == join(seq.drop_last(), gap.drop_last()) + seq.last() + gap.last());
+        assert(join(seq, gap).last() == gap.last().last());
+    }
+}
+
+proof fn lemma_join_first_gap(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
+    requires
+        seq.len() + 1 == gap.len(),
+        gap.first().len() > 0,
+    ensures
+        join(seq, gap).len() > 0,
+        join(seq, gap).first() == gap.first().first(),
+{
+    if seq.len() == 0 {
+        assert(gap.len() == 1);
+        assert(join(seq, gap) == gap.first());
+    } else {
+        lemma_join_uncons(seq, gap);
+        assert(join(seq, gap) == gap.first() + seq.first() + join(seq.skip(1), gap.skip(1)));
+        assert(join(seq, gap).first() == gap.first().first());
+    }
+}
+
+proof fn lemma_rjoin_last_first_gap(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
+    requires
+        seq.len() + 1 == gap.len(),
+        gap.first().len() > 0,
+    ensures
+        rjoin(seq, gap).len() > 0,
+        rjoin(seq, gap).last() == gap.first().last(),
+{
+    if seq.len() == 0 {
+        assert(gap.len() == 1);
+        assert(rjoin(seq, gap) == gap.first());
+    } else {
+        lemma_rjoin_uncons(seq, gap);
+        assert(rjoin(seq, gap) == rjoin(seq.skip(1), gap.skip(1)) + seq.first() + gap.first());
+        assert(rjoin(seq, gap).last() == gap.first().last());
+    }
+}
+
+proof fn lemma_trimmed_concat_skip_rskip(
+    left: Seq<char>, ret: Seq<char>, right: Seq<char>, pred: spec_fn(char) -> bool,
+)
+    requires
+        ret.len() > 0,
+        !pred(ret.first()),
+        !pred(ret.last()),
+        forall |i: int| 0 <= i < left.len() ==> #[trigger] pred(left[i]),
+        forall |i: int| 0 <= i < right.len() ==> #[trigger] pred(right[i]),
+    ensures
+        ret == (left + ret + right).skip_while(pred).rskip_while(pred),
+{
+    let suffix = ret + right;
+    let whole = left + suffix;
+    assert(whole == left + ret + right) by {
+        lemma_concat_associative(left, ret, right);
+    }
+    assert(suffix.is_suffix_of(whole));
+    assert(suffix.len() > 0);
+    assert(suffix.first() == ret.first());
+    assert forall |i: int| 0 <= i < whole.len() - suffix.len()
+    implies #[trigger] pred(whole[i]) by {
+        assert(whole[i] == left[i]);
+    }
+    lemma_seq_skip_while_defines(whole, pred, suffix);
+    assert(ret.is_prefix_of(suffix));
+    assert forall |i: int| ret.len() <= i < suffix.len()
+    implies #[trigger] pred(suffix[i]) by {
+        assert(suffix[i] == right[i - ret.len()]);
+    }
+    lemma_seq_rskip_while_defines(suffix, pred, ret);
+}
+
+proof fn lemma_trimmed_concat_skip(
+    left: Seq<char>, ret: Seq<char>, pred: spec_fn(char) -> bool,
+)
+    requires
+        ret.len() > 0,
+        !pred(ret.first()),
+        forall |i: int| 0 <= i < left.len() ==> #[trigger] pred(left[i]),
+    ensures
+        ret == (left + ret).skip_while(pred),
+{
+    let whole = left + ret;
+    assert(ret.is_suffix_of(whole));
+    assert forall |i: int| 0 <= i < whole.len() - ret.len()
+    implies #[trigger] pred(whole[i]) by {
+        assert(whole[i] == left[i]);
+    }
+    lemma_seq_skip_while_defines(whole, pred, ret);
+}
+
+proof fn lemma_trimmed_concat_rskip(
+    ret: Seq<char>, right: Seq<char>, pred: spec_fn(char) -> bool,
+)
+    requires
+        ret.len() > 0,
+        !pred(ret.last()),
+        forall |i: int| 0 <= i < right.len() ==> #[trigger] pred(right[i]),
+    ensures
+        ret == (ret + right).rskip_while(pred),
+{
+    let whole = ret + right;
+    assert(ret.is_prefix_of(whole));
+    assert forall |i: int| ret.len() <= i < whole.len()
+    implies #[trigger] pred(whole[i]) by {
+        assert(whole[i] == right[i - ret.len()]);
+    }
+    lemma_seq_rskip_while_defines(whole, pred, ret);
+}
+
+proof fn lemma_call_false_not_true<F>(f: F, c: char)
+    where
+        F: FnMut(char) -> bool,
+    requires
+        is_deterministic(f) && is_total(f),
+        call_ensures(f, (c,), false),
+    ensures
+        !call_ensures(f, (c,), true),
+{
+    assert(call_requires(f, (c,)));
+    if call_ensures(f, (c,), true) {
+        assert(call_ensures(f, (c,), false));
+        assert(false == true);
+    }
+}
+
+
 proof fn lemma_join_empty_gap(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
     requires
         seq.len() + 1 == gap.len(),
@@ -7256,6 +8621,33 @@ proof fn lemma_join_empty_gap(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
             seq[0] + seq.skip(1).flatten(); {}
             seq.flatten();
         }
+    }
+}
+
+proof fn lemma_rjoin_empty_gap(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>)
+    requires
+        seq.len() + 1 == gap.len(),
+        gap.all(|ss: Seq<char>| ss.len() == 0),
+    ensures
+        rjoin(seq, gap) == seq.reverse().flatten_alt(),
+    decreases
+        seq.len(),
+{
+    let pred = |ss: Seq<char>| ss.len() == 0;
+    if seq.len() == 0 {
+        assert(rjoin(seq, gap) == gap[0]);
+        assert(pred(gap[0]));
+        assert(rjoin(seq, gap).len() == 0);
+        assert(seq.reverse().flatten_alt().len() == 0);
+    } else {
+        lemma_rjoin_uncons(seq, gap);
+        lemma_rjoin_empty_gap(seq.skip(1), gap.skip(1));
+        assert(pred(gap[0]));
+        assert(rjoin(seq, gap) == seq.skip(1).reverse().flatten_alt() + seq[0]);
+        reveal_with_fuel(Seq::<_>::flatten_alt, 2);
+        assert(seq.reverse().drop_last() == seq.skip(1).reverse());
+        assert(seq.reverse().last() == seq[0]);
+        assert(seq.reverse().flatten_alt() == seq.skip(1).reverse().flatten_alt() + seq[0]);
     }
 }
 
