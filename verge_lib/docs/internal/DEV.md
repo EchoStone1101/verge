@@ -13,7 +13,7 @@ The workspace has two crates:
 | `str` | String specs: UTF-8, parsing, formatting, iteration |
 | `fs` | File system: `File`, `ReadDir`, `DirEntry`, path, metadata |
 | `io` | I/O traits and impls: `Read`, `Write`, `BufReader`, stdio |
-| `iter` | `Iterator` trait specs and `IteratorView` abstraction |
+| `iter` | `Iterator` trait specs, wrapper iterators, and constructor-method extensions |
 | `env` | `std::env`: `Args`, `Vars`, environment variables |
 | `error` | Error semantics tagging (fs, I/O, UTF-8, parse errors) |
 | `mem` | `forget`, `replace`, `copy_from_slice` |
@@ -44,7 +44,7 @@ See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 
 **Opacity:** `#[verifier::opaque]` + `reveal(...)` is used to control when spec functions unfold.
 
-**Iterator specs:** Use the `impl_iterator_default!` macro; iterators are tracked as `(index: int, sequence: Seq<T>)`.
+**Iterator specs:** Use `impl_iterator!` for concrete iterator wrapper types and `impl_iterator_method!` for generic `Iterator` adapter methods; iterators are tracked as `(index: int, sequence: Seq<T>)`.
 
 **String model:** Strings are viewed as `Seq<char>`; byte-level reasoning uses `Seq<u8>` via `vstd::utf8` conversion.
 

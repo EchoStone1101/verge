@@ -17,6 +17,7 @@
 use crate::cmp::*;
 use crate::{is_deterministic, is_total};
 use vstd::prelude::*;
+use vstd::math::{min, max};
 use vstd::std_specs::iter::*;
 use vstd::relations::sorted_by;
 pub use paste::paste;
@@ -337,70 +338,150 @@ pub fn iter_nth<I: Iterator>(iter: &mut I, n: usize) -> (ret: Option<I::Item>)
             decreases_to!((*old(iter)).decrease()->0 => (*final(iter)).decrease()->0),  
     { iter.nth(n) }
 
-// step_by
-
-#[verifier::external]
-pub struct VergeStepBy<I>(std::iter::StepBy<I>);
-
-#[verifier::external_body]
-#[verifier::external_type_specification]
-#[verifier::accept_recursive_types(I)]
-pub struct ExVergeStepBy<I>(VergeStepBy<I>);
-
-impl<I: Iterator> core::iter::Iterator for VergeStepBy<I> {
-    type Item = I::Item;
-
-    #[verifier::external_body]
-    fn next(&mut self) -> Option<I::Item> 
-        { self.0.next() }
-}
-
-impl<I: Iterator> VergeIteratorSpec for VergeStepBy<I> {
-    type Item = I::Item;
-
-    uninterp spec fn seq(&self) -> Seq<I::Item>;
-    uninterp spec fn idx(&self) -> int;
-    uninterp spec fn ridx(&self) -> int;
-}
-
-impl<I: Iterator> IteratorSpecImpl for VergeStepBy<I> {
-    open spec fn obeys_prophetic_iter_laws(&self) -> bool 
-        { true }
-    open spec fn will_return_none(&self) -> bool 
-        { true }
-    open spec fn remaining(&self) -> Seq<I::Item> 
-        { self.seq().subrange(self.idx(), self.ridx()) }
-    open spec fn decrease(&self) -> Option<nat> 
-        { Some((self.ridx() - self.idx()) as nat) }
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& init.seq() == self.seq()
-        &&& init.idx() == self.idx()
-        &&& init.ridx() == self.ridx()
+/// Specifies the iterator `VergeStepBy` which wraps `StepBy`, 
+/// contructed via `Iterator::step_by()`.
+impl_iterator_method!(
+    #[verifier::accept_recursive_types(I)]
+    [ std::iter::StepBy[I] as VergeStepBy[Self] where I: Iterator + Sized ]
+    [ step_by_iter via step_by ]
+    (self, step: usize) requires(step > 0,) -> |iter| {
+        iter.seq() == Seq::<Self::Item>::new(
+            ((self.remaining().len() + step - 1) as int / (step as int)) as nat,
+            |i: int| self.remaining()[i * step]
+        )
     }
-    open spec fn peek(&self, i: int) -> Option<I::Item> {
-        if 0 <= self.idx() + i < self.ridx() { Some(self.seq()[self.idx() + i]) } else { None }
+);
+
+/// Specifies the iterator `VergeChain` which wraps `Chain`, 
+/// contructed via `Iterator::chain_iter()`.
+impl_iterator_method!(
+    #[verifier::accept_recursive_types(I)]
+    #[verifier::accept_recursive_types(U)]
+    [ std::iter::Chain[I, U] as VergeChain[Self, U] 
+        where 
+            I: Iterator + Sized,
+            U: Iterator<Item = I::Item> + Sized,
+    ] [ chain_iter[U] via chain 
+        where 
+            U: Iterator<Item = Self::Item> + Sized,
+    ] (self, other: U) requires(
+        other.obeys_prophetic_iter_laws(),
+        other.will_return_none(),
+    ) -> |iter| {
+        iter.seq() == self.remaining() + other.remaining()
     }
-}
+);
 
-pub trait IteratorStepByFn: Iterator + IteratorSpec + Sized {
-    fn step_by_iter(self, step: usize) -> (ret: VergeStepBy<Self>)
-        requires
-            step > 0,
-            self.obeys_prophetic_iter_laws() && self.will_return_none(),
-        ensures
-            ret.seq() == Seq::<Self::Item>::new(
-                ((self.remaining().len() + step - 1) as int / (step as int)) as nat,
-                |i: int| self.remaining()[i * step]
-            ),
-            ret.idx() == 0,
-            ret.ridx() == ret.seq().len(),
-    ;
-}
+/// Specifies the iterator `VergeZip` which wraps `Zip`, 
+/// contructed via `Iterator::zip_iter()`.
+impl_iterator_method!(
+    #[verifier::accept_recursive_types(I)]
+    #[verifier::accept_recursive_types(U)]
+    [ std::iter::Zip[I, U] as VergeZip[Self, U] 
+        where 
+            I: Iterator + Sized,
+            U: Iterator + Sized,
+    ] [ zip_iter[U] via zip 
+        where 
+            U: Iterator + Sized,
+    ] (self, other: U) requires(
+        other.obeys_prophetic_iter_laws(),
+        other.will_return_none(),
+    ) -> |iter| {
+        let zip_len = min(self.remaining().len() as int, other.remaining().len() as int);
+        iter.seq() == self.remaining().take(zip_len)
+            .zip_with(other.remaining().take(zip_len))
+    }
+);
 
-impl<I: Iterator + IteratorSpec + Sized> IteratorStepByFn for I {
-    #[verifier::external_body]
-    fn step_by_iter(self, step: usize) -> VergeStepBy<Self> 
-        { VergeStepBy(self.step_by(step)) }
+// TODO: map, filter, filter_map, enumerate, 
+// skip_while, take_while, skip, take, flat_map, flatten, 
+// by_ref, copied, cloned, 
+
+//~doc-macro
+macro_rules! impl_iterator_method {
+    (
+        $(#[$attr:meta])*
+        [ $type:path [$($gen:tt)*] as $vtype:path [$($retgen:tt)*] $(where $($where:tt)*)? ]
+        [ $method:ident $([ $($mgen:tt)* ])? via $std_method:ident $(where $($wherecon:tt)*)? ]
+        ($self_:ident $(, $arg:ident: $aty:ty)*) $(requires($($requires:tt)*))? -> |$ret:ident| $($ensures:tt)+ 
+    ) => {
+        paste!{ verus!{
+        #[verifier::external]
+        pub struct $vtype<$($gen)*>($type<$($gen)*>)
+            $(where $($where)*)?;
+
+        #[verifier::external_body]
+        #[verifier::external_type_specification]
+        $(#[$attr])*
+        pub struct [<Ex $vtype>]<$($gen)*>($vtype<$($gen)*>)
+            $(where $($where)*)?;
+
+        impl<$($gen)*> core::iter::Iterator for $vtype<$($gen)*>
+        where
+            $($($where)*)?
+        {
+            type Item = <$type<$($gen)*> as Iterator>::Item;
+
+            #[verifier::external_body]
+            fn next(&mut self) -> (ret: Option<<$type<$($gen)*> as Iterator>::Item>)
+                { self.0.next() }
+        }
+
+        impl<$($gen)*> VergeIteratorSpec for $vtype<$($gen)*>
+        where
+            $($($where)*)?
+        {
+            type Item = <$type<$($gen)*> as Iterator>::Item;
+
+            uninterp spec fn seq(&self) -> Seq<Self::Item>;
+            uninterp spec fn idx(&self) -> int;
+            uninterp spec fn ridx(&self) -> int;
+        }
+
+        impl<$($gen)*> IteratorSpecImpl for $vtype<$($gen)*>
+        where
+            $($($where)*)?
+        {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool
+                { true }
+            open spec fn will_return_none(&self) -> bool
+                { true }
+            open spec fn remaining(&self) -> Seq<<$type<$($gen)*> as Iterator>::Item>
+                { self.seq().subrange(self.idx(), self.ridx()) }
+            open spec fn decrease(&self) -> Option<nat>
+                { Some((self.ridx() - self.idx()) as nat) }
+            open spec fn initial_value_relation(&self, init: &Self) -> bool {
+                &&& init.seq() == self.seq()
+                &&& init.idx() == self.idx()
+                &&& init.ridx() == self.ridx()
+            }
+            open spec fn peek(&self, i: int) -> Option<<$type<$($gen)*> as Iterator>::Item> {
+                if 0 <= self.idx() + i < self.ridx() { Some(self.seq()[self.idx() + i]) } else { None }
+            }
+        }
+
+        pub trait [<Iterator $vtype Fn>]: Iterator + IteratorSpec + Sized {
+            fn $method$(< $($mgen)* >)?($self_, $($arg: $aty),*) -> ($ret: $vtype<$($retgen)*>)
+                $(where $($wherecon)*)?
+                requires
+                    $self_.obeys_prophetic_iter_laws() && $self_.will_return_none(),
+                    $($($requires)*)?
+                ensures
+                    $ret.idx() == 0,
+                    $ret.ridx() == $ret.seq().len(),
+                    ($($ensures)+),
+            ;
+        }
+
+        impl<I: Iterator + IteratorSpec + Sized> [<Iterator $vtype Fn>] for I {
+            #[verifier::external_body]
+            fn $method$(< $($mgen)* >)?($self_, $($arg: $aty),*) -> ($ret: $vtype<$($retgen)*>)
+                $(where $($wherecon)*)?
+                { $vtype($self_.$std_method($($arg),*)) }
+        }
+        }}
+    };
 }
 
 //~doc-macro
@@ -674,5 +755,6 @@ pub(crate) use impl_iterator;
 pub(crate) use impl_double_ended_iterator;
 pub(crate) use _impl_iterator_next;
 pub(crate) use _impl_double_ended_iterator_next_back;
+use impl_iterator_method;
 
 } // verus!
