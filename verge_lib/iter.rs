@@ -14,9 +14,14 @@
 //! simply make use of the `IteratorSpec` trait.
 
 #[allow(unused_imports)]
+use crate::cmp::*;
+use crate::{is_deterministic, is_total};
 use vstd::prelude::*;
 use vstd::std_specs::iter::*;
+use vstd::relations::sorted_by;
 pub use paste::paste;
+
+use std::cmp::Ordering;
 
 verus! {
 
@@ -39,6 +44,363 @@ pub trait VergeIteratorSpec {
     spec fn seq(&self) -> Seq<Self::Item>;
     spec fn idx(&self) -> int;
     spec fn ridx(&self) -> int;
+}
+
+/// Enables `Iterator::count`, which consumes the iterator.
+#[verifier::external_body]
+pub fn iter_count<I: Iterator>(iter: I) -> (ret: usize) 
+    requires
+        iter.obeys_prophetic_iter_laws() && iter.will_return_none(),
+    ensures
+        ret == iter.remaining().len(),
+    { iter.count() }
+
+/// Enables `Iterator::last`, which consumes the iterator.
+#[verifier::external_body]
+pub fn iter_last<I: Iterator>(iter: I) -> (ret: Option<I::Item>) 
+    requires
+        iter.obeys_prophetic_iter_laws() && iter.will_return_none(),
+    ensures
+        ret is Some ==> (iter.remaining().len() > 0 && ret->0 == iter.remaining().last()),
+        ret is None ==> iter.remaining().len() == 0,
+    { iter.last() }
+
+/// Enables `Iterator::max`, which consumes the iterator.
+#[verifier::external_body]
+pub fn iter_max<I: Iterator>(iter: I) -> (ret: Option<I::Item>) 
+    where 
+        I::Item: OrdVerified,
+    requires
+        iter.obeys_prophetic_iter_laws() && iter.will_return_none(),
+    ensures
+        ret is None ==> iter.remaining().len() == 0,
+        ret is Some ==> {
+            &&& iter.remaining().len() > 0
+            &&& ret->0 == iter.remaining()
+                .max_via(|x: I::Item, y: I::Item| call_ensures(I::Item::le, (&x, &y), true))
+        }
+    { iter.max() }
+
+/// Enables `Iterator::min`, which consumes the iterator.
+#[verifier::external_body]
+pub fn iter_min<I: Iterator>(iter: I) -> (ret: Option<I::Item>) 
+    where 
+        I::Item: OrdVerified,
+    requires
+        iter.obeys_prophetic_iter_laws() && iter.will_return_none(),
+    ensures
+        ret is None ==> iter.remaining().len() == 0,
+        ret is Some ==> {
+            &&& iter.remaining().len() > 0
+            &&& ret->0 == iter.remaining()
+                .min_via(|x: I::Item, y: I::Item| call_ensures(I::Item::le, (&x, &y), true))
+        }
+    { iter.min() }
+
+/// Enables `Iterator::max_by`, which consumes the iterator.
+#[verifier::external_body]
+pub fn iter_max_by<I: Iterator, F>(iter: I, compare: F) -> (ret: Option<I::Item>) 
+    where 
+        F: FnMut(&I::Item, &I::Item) -> Ordering,
+    requires
+        iter.obeys_prophetic_iter_laws() && iter.will_return_none(),
+        is_deterministic(compare) && is_total(compare),
+    ensures
+        ret is None ==> iter.remaining().len() == 0,
+        ret is Some ==> {
+            &&& iter.remaining().len() > 0
+            &&& ret->0 == iter.remaining()
+                .max_via(|x: I::Item, y: I::Item| 
+                    call_ensures(compare, (&x, &y), Ordering::Less)
+                    || call_ensures(compare, (&x, &y), Ordering::Equal)
+                )
+        }
+    { iter.max_by(compare) }
+
+/// Enables `Iterator::min_by`, which consumes the iterator.
+#[verifier::external_body]
+pub fn iter_min_by<I: Iterator, F>(iter: I, compare: F) -> (ret: Option<I::Item>) 
+    where 
+        F: FnMut(&I::Item, &I::Item) -> Ordering,
+    requires
+        iter.obeys_prophetic_iter_laws() && iter.will_return_none(),
+        is_deterministic(compare) && is_total(compare),
+    ensures
+        ret is None ==> iter.remaining().len() == 0,
+        ret is Some ==> {
+            &&& iter.remaining().len() > 0
+            &&& ret->0 == iter.remaining()
+                .min_via(|x: I::Item, y: I::Item| 
+                    call_ensures(compare, (&x, &y), Ordering::Less)
+                    || call_ensures(compare, (&x, &y), Ordering::Equal)
+                )
+        }
+    { iter.min_by(compare) }
+
+// XXX: could have the `cmp` methods, once we have specs for generic lexicographical ordering
+
+/// Enables `Iterator::is_sorted`, which consumes the iterator.
+#[verifier::external_body]
+pub fn iter_is_sorted<I: Iterator>(iter: I) -> (ret: bool) 
+    where 
+        I::Item: PartialOrdVerified,
+    requires
+        iter.obeys_prophetic_iter_laws() && iter.will_return_none(),
+    ensures
+        ret == sorted_by(iter.remaining(), |x: I::Item, y: I::Item| call_ensures(I::Item::le, (&x, &y), true)),
+    { iter.is_sorted() }
+
+/// Enables `Iterator::is_sorted_by`, which consumes the iterator.
+#[verifier::external_body]
+pub fn iter_is_sorted_by<I: Iterator, F>(iter: I, compare: F) -> (ret: bool) 
+    where 
+        F: FnMut(&I::Item, &I::Item) -> bool,
+    requires
+        iter.obeys_prophetic_iter_laws() && iter.will_return_none(),
+        is_deterministic(compare) && is_total(compare),
+    ensures
+        ret == sorted_by(iter.remaining(), |x: I::Item, y: I::Item| call_ensures(compare, (&x, &y), true)),
+    { iter.is_sorted_by(compare) }
+
+/// Enables `Iterator::fold`, which consumes the iterator.
+///
+/// This function requires an explicit `f_spec` argument that specifies 
+/// the `spec`-mode equivalent of `f`, for the sake of more straightforward specs.
+#[verifier::external_body]
+pub fn iter_fold<I: Iterator, B, F>(
+    iter: I, 
+    init: B, 
+    f: F, 
+    f_spec: Ghost<spec_fn(B, I::Item) -> B>,
+) -> (ret: B) 
+    where
+        F: FnMut(B, I::Item) -> B,
+    requires
+        iter.obeys_prophetic_iter_laws() && iter.will_return_none(),
+        is_total(f),
+        forall |acc: B, x: I::Item| #[trigger] call_ensures(f, (acc, x), f_spec(acc, x)),
+    ensures
+        ret == iter.remaining().fold_left(init, f_spec@),
+    { iter.fold(init, f) }  
+
+/// Enables `Iterator::reduce`, which consumes the iterator.
+///
+/// This function requires an explicit `f_spec` argument that specifies 
+/// the `spec`-mode equivalent of `f`, for the sake of more straightforward specs.
+#[verifier::external_body]
+pub fn iter_reduce<I: Iterator, F>(
+    iter: I, 
+    f: F, 
+    f_spec: Ghost<spec_fn(I::Item, I::Item) -> I::Item>,
+) -> (ret: Option<I::Item>) 
+    where
+        F: FnMut(I::Item, I::Item) -> I::Item,
+    requires
+        iter.obeys_prophetic_iter_laws() && iter.will_return_none(),
+        is_total(f),
+        forall |acc: I::Item, x: I::Item| #[trigger] call_ensures(f, (acc, x), f_spec(acc, x)),
+    ensures
+        ret is None ==> iter.remaining().len() == 0,
+        ret is Some ==> {
+            &&& iter.remaining().len() > 0
+            &&& ret->0 == iter.remaining().drop_first()
+                .fold_left(iter.remaining().first(), f_spec@)
+        }
+    { iter.reduce(f) }  
+
+/// Enables `Iterator::find`.
+#[verifier::external_body]
+pub fn iter_find<I: Iterator, P>(iter: &mut I, predicate: P) -> (ret: Option<I::Item>) 
+    where
+        P: FnMut(&I::Item) -> bool,
+    requires
+        iter.obeys_prophetic_iter_laws() && iter.will_return_none(),
+        is_total(predicate) && is_deterministic(predicate),
+    ensures
+        // The iterator consistently obeys, completes, and decreases throughout its lifetime
+        (*final(iter)).will_return_none() == (*old(iter)).will_return_none(),
+        (*old(iter)).decrease() is Some <==> (*final(iter)).decrease() is Some,
+        (*final(iter)).remaining().is_suffix_of((*old(iter)).remaining()),
+        // If find returns None, then the iterator has no remaining
+        // elements, and the predicate was false for all of the original
+        // iterator's elements.
+        ret.is_none() ==> {
+            &&& (*final(iter)).remaining().len() == 0
+            &&& forall |i| 0 <= i < (*old(iter)).remaining().len() ==>
+                predicate.ensures((#[trigger]&(*old(iter)).remaining()[i],), false)
+        },
+        // If find returns Some, then the returned value satisfies the
+        // predicate, and all previous elements did not satisfy the
+        // predicate.
+        ret.is_some() ==> {
+            let idx = (*old(iter)).remaining().len() - (*final(iter)).remaining().len() - 1;
+            {
+                &&& (*final(iter)).remaining().len() < (*old(iter)).remaining().len()
+                &&& predicate.ensures((&ret.unwrap(),), true)
+                &&& (*old(iter)).remaining()[idx] == ret.unwrap()
+                &&& forall |i| 0 <= i < idx ==>
+                    predicate.ensures((#[trigger] &(*old(iter)).remaining()[i],), false)
+            }
+        },
+    { iter.find(predicate) }  
+
+/// Enables `Iterator::all`.
+#[verifier::external_body]
+pub fn iter_all<I: Iterator, P>(iter: &mut I, predicate: P) -> (ret: bool) 
+    where
+        P: FnMut(I::Item) -> bool,
+    requires
+        iter.obeys_prophetic_iter_laws() && iter.will_return_none(),
+        is_total(predicate) && is_deterministic(predicate),
+    ensures
+        // The iterator consistently obeys, completes, and decreases throughout its lifetime
+        (*final(iter)).will_return_none() == (*old(iter)).will_return_none(),
+        (*old(iter)).decrease() is Some <==> (*final(iter)).decrease() is Some,
+        (*final(iter)).remaining().is_suffix_of((*old(iter)).remaining()),
+        // If all returns true, then the iterator has no remaining
+        // elements, and the predicate was true for all of the original
+        // iterator's elements.
+        ret ==> {
+            &&& (*final(iter)).remaining().len() == 0
+            &&& forall |i| 0 <= i < (*old(iter)).remaining().len() ==>
+                predicate.ensures((#[trigger](*old(iter)).remaining()[i],), true)
+        },
+        // If all returns false, then there is some element for which the
+        // predicate was false, and all previous elements satisfied the predicate.
+        !ret ==> {
+            let idx = (*old(iter)).remaining().len() - (*final(iter)).remaining().len() - 1;
+            {
+                &&& (*final(iter)).remaining().len() < (*old(iter)).remaining().len()
+                &&& predicate.ensures(((*old(iter)).remaining()[idx],), false)
+                &&& forall |i| 0 <= i < idx ==>
+                    predicate.ensures((#[trigger] (*old(iter)).remaining()[i],), true)
+            }
+        },
+    { iter.all(predicate) }  
+
+/// Enables `Iterator::any`.
+#[verifier::external_body]
+pub fn iter_any<I: Iterator, P>(iter: &mut I, predicate: P) -> (ret: bool) 
+    where
+        P: FnMut(I::Item) -> bool,
+    requires
+        iter.obeys_prophetic_iter_laws() && iter.will_return_none(),
+        is_total(predicate) && is_deterministic(predicate),
+    ensures
+        // The iterator consistently obeys, completes, and decreases throughout its lifetime
+        (*final(iter)).will_return_none() == (*old(iter)).will_return_none(),
+        (*old(iter)).decrease() is Some <==> (*final(iter)).decrease() is Some,
+        (*final(iter)).remaining().is_suffix_of((*old(iter)).remaining()),
+        // If any returns false, then the iterator has no remaining
+        // elements, and the predicate was false for all of the original
+        // iterator's elements.
+        !ret ==> {
+            &&& (*final(iter)).remaining().len() == 0
+            &&& forall |i| 0 <= i < (*old(iter)).remaining().len() ==>
+                predicate.ensures((#[trigger](*old(iter)).remaining()[i],), false)
+        },
+        // If any returns true, then there is some element for which the
+        // predicate was true, and all previous elements did not satisfy the predicate.
+        ret ==> {
+            let idx = (*old(iter)).remaining().len() - (*final(iter)).remaining().len() - 1;
+            {
+                &&& (*final(iter)).remaining().len() < (*old(iter)).remaining().len()
+                &&& predicate.ensures(((*old(iter)).remaining()[idx],), true)
+                &&& forall |i| 0 <= i < idx ==>
+                    predicate.ensures((#[trigger] (*old(iter)).remaining()[i],), false)
+            }
+        },
+    { iter.any(predicate) } 
+
+/// Enables `Iterator::nth`.
+#[verifier::external_body]
+pub fn iter_nth<I: Iterator>(iter: &mut I, n: usize) -> (ret: Option<I::Item>) 
+    requires
+        iter.obeys_prophetic_iter_laws(),
+    ensures
+        // The iterator consistently obeys, completes, and decreases throughout its lifetime
+        (*final(iter)).obeys_prophetic_iter_laws(),
+        (*final(iter)).will_return_none() == (*old(iter)).will_return_none(),
+        ((*old(iter)).decrease() is Some <==> (*final(iter)).decrease() is Some),
+        // `nth` pops the head section of the prophesized remaining(), or returns None
+        ({
+            if (*old(iter)).remaining().len() > n {
+                &&& (*final(iter)).remaining() == (*old(iter)).remaining().skip(n + 1)
+                &&& ret == Some((*old(iter)).remaining()[n as int])
+            } else {
+                &&& (*final(iter)).remaining().len() == 0
+                && ret == None && (*final(iter)).will_return_none()
+            }
+        }),
+        // If the iterator isn't done yet, then it successfully decreases its metric (if any)
+        (*old(iter)).remaining().len() > 0 && (*final(iter)).decrease() is Some ==>
+            decreases_to!((*old(iter)).decrease()->0 => (*final(iter)).decrease()->0),  
+    { iter.nth(n) }
+
+// step_by
+
+#[verifier::external]
+pub struct VergeStepBy<I>(std::iter::StepBy<I>);
+
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::accept_recursive_types(I)]
+pub struct ExVergeStepBy<I>(VergeStepBy<I>);
+
+impl<I: Iterator> core::iter::Iterator for VergeStepBy<I> {
+    type Item = I::Item;
+
+    #[verifier::external_body]
+    fn next(&mut self) -> Option<I::Item> 
+        { self.0.next() }
+}
+
+impl<I: Iterator> VergeIteratorSpec for VergeStepBy<I> {
+    type Item = I::Item;
+
+    uninterp spec fn seq(&self) -> Seq<I::Item>;
+    uninterp spec fn idx(&self) -> int;
+    uninterp spec fn ridx(&self) -> int;
+}
+
+impl<I: Iterator> IteratorSpecImpl for VergeStepBy<I> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool 
+        { true }
+    open spec fn will_return_none(&self) -> bool 
+        { true }
+    open spec fn remaining(&self) -> Seq<I::Item> 
+        { self.seq().subrange(self.idx(), self.ridx()) }
+    open spec fn decrease(&self) -> Option<nat> 
+        { Some((self.ridx() - self.idx()) as nat) }
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        &&& init.seq() == self.seq()
+        &&& init.idx() == self.idx()
+        &&& init.ridx() == self.ridx()
+    }
+    open spec fn peek(&self, i: int) -> Option<I::Item> {
+        if 0 <= self.idx() + i < self.ridx() { Some(self.seq()[self.idx() + i]) } else { None }
+    }
+}
+
+pub trait IteratorStepByFn: Iterator + IteratorSpec + Sized {
+    fn step_by_iter(self, step: usize) -> (ret: VergeStepBy<Self>)
+        requires
+            step > 0,
+            self.obeys_prophetic_iter_laws() && self.will_return_none(),
+        ensures
+            ret.seq() == Seq::<Self::Item>::new(
+                ((self.remaining().len() + step - 1) as int / (step as int)) as nat,
+                |i: int| self.remaining()[i * step]
+            ),
+            ret.idx() == 0,
+            ret.ridx() == ret.seq().len(),
+    ;
+}
+
+impl<I: Iterator + IteratorSpec + Sized> IteratorStepByFn for I {
+    #[verifier::external_body]
+    fn step_by_iter(self, step: usize) -> VergeStepBy<Self> 
+        { VergeStepBy(self.step_by(step)) }
 }
 
 //~doc-macro

@@ -16,6 +16,13 @@ pub use vstd::string::to_string_from_display_ensures;
 
 verus! {
 
+// TODO: need a way to add custom Display impls (in the form of ToString impl), and
+// specify their specs. Debug should be limited to derive only.
+// To do this, 
+// (1) Have ToStringSpec
+// (2) to_string_ensures() can be linked with to_string_from_display_ensures() via lemmas for primitive types
+// (3) for custom types, specify proper to_string_ensures()
+
 /// Further specifies `to_string_from_display_ensures` for `T`.
 #[macro_export]
 macro_rules! define_spec_to_string {
@@ -184,7 +191,7 @@ pub axiom fn lemma_rc_to_string<T: Display + ?Sized>(t: &Rc<T>, s: String)
 ;
 
 
-/// Enables printing the value `t` as `Debug`.
+/// Enables formatting the value `t` as `Debug`.
 #[verifier::external_body]
 pub fn debug_format<T: Debug + ?Sized>(t: &T) -> (s: String) 
     ensures
@@ -193,7 +200,7 @@ pub fn debug_format<T: Debug + ?Sized>(t: &T) -> (s: String)
     format!("{:?}", t)
 }
 
-/// This function defines the result of printing `T` as `Debug`. It is always uninterpreted.
+/// This function defines the result of formatting `T` as `Debug`. It is always uninterpreted.
 pub uninterp spec fn debug_format_ensures<T: Debug + ?Sized>(
     t: &T,
     s: String,

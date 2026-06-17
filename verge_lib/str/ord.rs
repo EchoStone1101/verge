@@ -15,6 +15,7 @@ use core::cmp::{PartialOrd, Ord, Ordering};
 
 verus! {
 
+// XXX: consider make this generic?
 /// This function encodes lexicographical string ordering by byte values 
 /// (which also happens to be the unicode code point ordering).
 pub open spec fn lexicographical_ordering(a: Seq<u8>, b: Seq<u8>) -> Ordering 
