@@ -16,12 +16,13 @@ pub use vstd::string::to_string_from_display_ensures;
 
 verus! {
 
-// TODO: need a way to add custom Display impls (in the form of ToString impl), and
-// specify their specs. Debug should be limited to derive only.
+// TODO: need a way to add custom Display impls (in the form of ToString impl), and specify their specs. 
 // To do this, 
-// (1) Have ToStringSpec
-// (2) to_string_ensures() can be linked with to_string_from_display_ensures() via lemmas for primitive types
-// (3) for custom types, specify proper to_string_ensures()
+// (1) Bring in the ToString trait, and have ToStringSpec with the "via" pattern, which has a to_string_ensures() 
+// and uses that to specify to_string()
+// (2) for primitive types, define those specs as to_string_from_display_ensures()
+// (3) for custom types, verify that one can indeed implement ToString with the 
+// proper specs and *proof obligations* applied
 
 /// Further specifies `to_string_from_display_ensures` for `T`.
 #[macro_export]

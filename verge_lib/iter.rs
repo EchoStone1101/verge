@@ -15,8 +15,11 @@
 
 #[allow(unused_imports)]
 use crate::cmp::*;
+use crate::clone::*;
+use crate::seq::*;
 use crate::{is_deterministic, is_total};
 use vstd::prelude::*;
+use vstd::pervasive::cloned;
 use vstd::math::{min, max};
 use vstd::std_specs::iter::*;
 use vstd::relations::sorted_by;
@@ -394,17 +397,369 @@ impl_iterator_method!(
     }
 );
 
-// TODO: map, filter, filter_map, enumerate, 
-// skip_while, take_while, skip, take, flat_map, flatten, 
-// by_ref, copied, cloned, 
+/// Specifies the iterator `VergeMap` which wraps `Map`,
+/// constructed via `Iterator::map_iter()`.
+impl_iterator_method!(
+    #[verifier::accept_recursive_types(I)]
+    #[verifier::accept_recursive_types(F)]
+    #[verifier::accept_recursive_types(B)]
+    [ std::iter::Map[I, F] as VergeMap[Self, F, B] :: Item [B] = B
+        where
+            I: Iterator + Sized,
+            F: FnMut(I::Item) -> B,
+    ] [ map_iter[F, B] via map
+        where
+            F: FnMut(Self::Item) -> B,
+    ] (self, f: F) requires(
+        is_deterministic(f),
+        is_total(f),
+    ) -> |iter| {
+        iter.seq() == Seq::new(
+            self.remaining().len(), 
+            |i: int| choose|ret: B| call_ensures(f, (self.remaining()[i],), ret)
+        )
+    }
+);
+
+/// Specifies the iterator `VergeFilter` which wraps `Filter`,
+/// constructed via `Iterator::filter_iter()`.
+impl_iterator_method!(
+    #[verifier::accept_recursive_types(I)]
+    #[verifier::accept_recursive_types(P)]
+    [ std::iter::Filter[I, P] as VergeFilter[Self, P]
+        where
+            I: Iterator + Sized,
+            P: FnMut(&I::Item) -> bool,
+    ] [ filter_iter[P] via filter
+        where
+            P: FnMut(&Self::Item) -> bool,
+    ] (self, predicate: P) requires(
+        is_deterministic(predicate),
+        is_total(predicate),
+    ) -> |iter| {
+        iter.seq() == self.remaining().filter(|item: Self::Item| call_ensures(predicate, (&item,), true))
+    }
+);
+
+/// Specifies the iterator `VergeEnumerate` which wraps `Enumerate`,
+/// constructed via `Iterator::enumerate_iter()`.
+impl_iterator_method!(
+    #[verifier::accept_recursive_types(I)]
+    [ std::iter::Enumerate[I] as VergeEnumerate[Self] where I: Iterator + Sized ]
+    [ enumerate_iter via enumerate ]
+    (self) -> |iter| {
+        iter.seq() == self.remaining().map(|i: int, item: Self::Item| (i as usize, item))
+    }
+);
+
+/// Specifies the iterator `VergeSkipWhile` which wraps `SkipWhile`,
+/// constructed via `Iterator::skip_while_iter()`.
+impl_iterator_method!(
+    #[verifier::accept_recursive_types(I)]
+    #[verifier::accept_recursive_types(P)]
+    [ std::iter::SkipWhile[I, P] as VergeSkipWhile[Self, P]
+        where
+            I: Iterator + Sized,
+            P: FnMut(&I::Item) -> bool,
+    ] [ skip_while_iter[P] via skip_while
+        where
+            P: FnMut(&Self::Item) -> bool,
+    ] (self, predicate: P) requires(
+        is_deterministic(predicate),
+        is_total(predicate),
+    ) -> |iter| {
+        iter.seq() == self.remaining()
+            .skip_while(|item: Self::Item| call_ensures(predicate, (&item,), true))
+    }
+);
+
+/// Specifies the iterator `VergeTakeWhile` which wraps `TakeWhile`,
+/// constructed via `Iterator::take_while_iter()`.
+impl_iterator_method!(
+    #[verifier::accept_recursive_types(I)]
+    #[verifier::accept_recursive_types(P)]
+    [ std::iter::TakeWhile[I, P] as VergeTakeWhile[Self, P]
+        where
+            I: Iterator + Sized,
+            P: FnMut(&I::Item) -> bool,
+    ] [ take_while_iter[P] via take_while
+        where
+            P: FnMut(&Self::Item) -> bool,
+    ] (self, predicate: P) requires(
+        is_deterministic(predicate),
+        is_total(predicate),
+    ) -> |iter| {
+        iter.seq() == self.remaining()
+            .take_while(|item: Self::Item| call_ensures(predicate, (&item,), true))
+    }
+);
+
+/// Specifies the iterator `VergeSkip` which wraps `Skip`,
+/// constructed via `Iterator::skip_iter()`.
+impl_iterator_method!(
+    #[verifier::accept_recursive_types(I)]
+    [ std::iter::Skip[I] as VergeSkip[Self] where I: Iterator + Sized ]
+    [ skip_iter via skip ]
+    (self, n: usize) -> |iter| {
+        iter.seq() == self.remaining()
+            .skip(min(n as int, self.remaining().len() as int))
+    }
+);
+
+/// Specifies the iterator `VergeTake` which wraps `Take`,
+/// constructed via `Iterator::take_iter()`.
+impl_iterator_method!(
+    #[verifier::accept_recursive_types(I)]
+    [ std::iter::Take[I] as VergeTake[Self] where I: Iterator + Sized ]
+    [ take_iter via take ]
+    (self, n: usize) -> |iter| {
+        iter.seq() == self.remaining()
+            .take(min(n as int, self.remaining().len() as int))
+    }
+);
+
+/// Specifies the iterator `VergeCopied` which wraps `Copied`,
+/// constructed via `Iterator::copied_iter()`.
+impl_iterator_method!(
+    #[verifier::accept_recursive_types(I)]
+    #[verifier::accept_recursive_types(T)]
+    [ std::iter::Copied[I] as VergeCopied[Self, T] :: Item ['a; T] = T
+        where
+            I: Iterator<Item = &'a T> + Sized,
+            T: CopyVerified + 'a,
+    ] [ copied_iter['a, T] via copied
+        where
+            Self: Iterator<Item = &'a T>,
+            T: CopyVerified + 'a,
+    ] (self) -> |iter| {
+        iter.seq() == self.remaining().map(|i: int, item: &'a T| *item)
+    }
+);
+
+/// Specifies the iterator `VergeCloned` which wraps `Cloned`,
+/// constructed via `Iterator::cloned_iter()`.
+impl_iterator_method!(
+    #[verifier::accept_recursive_types(I)]
+    #[verifier::accept_recursive_types(T)]
+    [ std::iter::Cloned[I] as VergeCloned[Self, T] :: Item ['a; T] = T
+        where
+            I: Iterator<Item = &'a T> + Sized,
+            T: Clone + 'a,
+    ] [ cloned_iter['a, T] via cloned
+        where
+            Self: Iterator<Item = &'a T>,
+            T: Clone + 'a,
+    ] (self) -> |iter| {
+        &&& iter.seq().len() == self.remaining().len()
+        &&& forall|i: int| #![trigger iter.seq()[i]]
+            0 <= i < iter.seq().len() ==> cloned::<T>(*self.remaining()[i], iter.seq()[i])
+    }
+);
 
 //~doc-macro
 macro_rules! impl_iterator_method {
+    // Explicit item type with extra impl-only lifetimes and generics for the wrapper impls.
+    (
+        $(#[$attr:meta])*
+        [ $type:path [$($gen:tt)*] as $vtype:path [$($retgen:tt)*] :: Item [$($ilt:lifetime),*; $($igen:tt)*] = $ity:ty $(where $($where:tt)*)? ]
+        [ $method:ident [$($mgen:tt)*] via $std_method:ident $(where $($wherecon:tt)*)? ]
+        ($self_:ident $(, $arg:ident: $aty:ty)*) $(requires($($requires:tt)*))? -> |$ret:ident| $($ensures:tt)+
+    ) => {
+        paste!{ verus!{
+        #[verifier::external]
+        pub struct $vtype<$($gen)*, $($igen)*>($type<$($gen)*>, core::marker::PhantomData<($($igen,)*)>)
+            ;
+
+        #[verifier::external_body]
+        #[verifier::external_type_specification]
+        $(#[$attr])*
+        pub struct [<Ex $vtype>]<$($gen)*, $($igen)*>($vtype<$($gen)*, $($igen)*>)
+            ;
+
+        impl<$($ilt,)* $($gen)*, $($igen)*> core::iter::Iterator for $vtype<$($gen)*, $($igen)*>
+        where
+            $($($where)*)?
+        {
+            type Item = $ity;
+
+            #[verifier::external_body]
+            fn next(&mut self) -> (ret: Option<$ity>)
+                { self.0.next() }
+        }
+
+        impl<$($ilt,)* $($gen)*, $($igen)*> VergeIteratorSpec for $vtype<$($gen)*, $($igen)*>
+        where
+            $($($where)*)?
+        {
+            type Item = $ity;
+
+            uninterp spec fn seq(&self) -> Seq<Self::Item>;
+            uninterp spec fn idx(&self) -> int;
+            uninterp spec fn ridx(&self) -> int;
+        }
+
+        impl<$($ilt,)* $($gen)*, $($igen)*> IteratorSpecImpl for $vtype<$($gen)*, $($igen)*>
+        where
+            $($($where)*)?
+        {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool
+                { true }
+            open spec fn will_return_none(&self) -> bool
+                { true }
+            open spec fn remaining(&self) -> Seq<$ity>
+                { self.seq().subrange(self.idx(), self.ridx()) }
+            open spec fn decrease(&self) -> Option<nat>
+                { Some((self.ridx() - self.idx()) as nat) }
+            open spec fn initial_value_relation(&self, init: &Self) -> bool {
+                &&& init.seq() == self.seq()
+                &&& init.idx() == self.idx()
+                &&& init.ridx() == self.ridx()
+            }
+            open spec fn peek(&self, i: int) -> Option<$ity> {
+                if 0 <= self.idx() + i < self.ridx() { Some(self.seq()[self.idx() + i]) } else { None }
+            }
+        }
+
+        pub trait [<Iterator $vtype Fn>]: Iterator + IteratorSpec + Sized {
+            fn $method<$($mgen)*>($self_, $($arg: $aty),*) -> ($ret: $vtype<$($retgen)*>)
+                $(where $($wherecon)*)?
+                requires
+                    $self_.obeys_prophetic_iter_laws() && $self_.will_return_none(),
+                    $($($requires)*)?
+                ensures
+                    $ret.idx() == 0,
+                    $ret.ridx() == $ret.seq().len(),
+                    ($($ensures)+),
+            ;
+        }
+
+        impl<I: Iterator + IteratorSpec + Sized> [<Iterator $vtype Fn>] for I {
+            #[verifier::external_body]
+            fn $method<$($mgen)*>($self_, $($arg: $aty),*) -> ($ret: $vtype<$($retgen)*>)
+                $(where $($wherecon)*)?
+                { $vtype($self_.$std_method($($arg),*), core::marker::PhantomData::<($($igen,)*)>) }
+        }
+        }}
+    };
+
+    // Explicit item type with extra impl-only generics for the wrapper impls.
+    (
+        $(#[$attr:meta])*
+        [ $type:path [$($gen:tt)*] as $vtype:path [$($retgen:tt)*] :: Item [$($igen:tt)*] = $ity:ty $(where $($where:tt)*)? ]
+        [ $method:ident [$($mgen:tt)*] via $std_method:ident $(where $($wherecon:tt)*)? ]
+        ($self_:ident $(, $arg:ident: $aty:ty)*) $(requires($($requires:tt)*))? -> |$ret:ident| $($ensures:tt)+
+    ) => {
+        paste!{ verus!{
+        #[verifier::external]
+        pub struct $vtype<$($gen)*, $($igen)*>($type<$($gen)*>, core::marker::PhantomData<($($igen,)*)>)
+            ;
+
+        #[verifier::external_body]
+        #[verifier::external_type_specification]
+        $(#[$attr])*
+        pub struct [<Ex $vtype>]<$($gen)*, $($igen)*>($vtype<$($gen)*, $($igen)*>)
+            ;
+
+        impl<$($gen)*, $($igen)*> core::iter::Iterator for $vtype<$($gen)*, $($igen)*>
+        where
+            $($($where)*)?
+        {
+            type Item = $ity;
+
+            #[verifier::external_body]
+            fn next(&mut self) -> (ret: Option<$ity>)
+                { self.0.next() }
+        }
+
+        impl<$($gen)*, $($igen)*> VergeIteratorSpec for $vtype<$($gen)*, $($igen)*>
+        where
+            $($($where)*)?
+        {
+            type Item = $ity;
+
+            uninterp spec fn seq(&self) -> Seq<Self::Item>;
+            uninterp spec fn idx(&self) -> int;
+            uninterp spec fn ridx(&self) -> int;
+        }
+
+        impl<$($gen)*, $($igen)*> IteratorSpecImpl for $vtype<$($gen)*, $($igen)*>
+        where
+            $($($where)*)?
+        {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool
+                { true }
+            open spec fn will_return_none(&self) -> bool
+                { true }
+            open spec fn remaining(&self) -> Seq<$ity>
+                { self.seq().subrange(self.idx(), self.ridx()) }
+            open spec fn decrease(&self) -> Option<nat>
+                { Some((self.ridx() - self.idx()) as nat) }
+            open spec fn initial_value_relation(&self, init: &Self) -> bool {
+                &&& init.seq() == self.seq()
+                &&& init.idx() == self.idx()
+                &&& init.ridx() == self.ridx()
+            }
+            open spec fn peek(&self, i: int) -> Option<$ity> {
+                if 0 <= self.idx() + i < self.ridx() { Some(self.seq()[self.idx() + i]) } else { None }
+            }
+        }
+
+        pub trait [<Iterator $vtype Fn>]: Iterator + IteratorSpec + Sized {
+            fn $method<$($mgen)*>($self_, $($arg: $aty),*) -> ($ret: $vtype<$($retgen)*>)
+                $(where $($wherecon)*)?
+                requires
+                    $self_.obeys_prophetic_iter_laws() && $self_.will_return_none(),
+                    $($($requires)*)?
+                ensures
+                    $ret.idx() == 0,
+                    $ret.ridx() == $ret.seq().len(),
+                    ($($ensures)+),
+            ;
+        }
+
+        impl<I: Iterator + IteratorSpec + Sized> [<Iterator $vtype Fn>] for I {
+            #[verifier::external_body]
+            fn $method<$($mgen)*>($self_, $($arg: $aty),*) -> ($ret: $vtype<$($retgen)*>)
+                $(where $($wherecon)*)?
+                { $vtype($self_.$std_method($($arg),*), core::marker::PhantomData::<($($igen,)*)>) }
+        }
+        }}
+    };
+
+    // Explicit item type without impl-only generics.
+    (
+        $(#[$attr:meta])*
+        [ $type:path [$($gen:tt)*] as $vtype:path [$($retgen:tt)*] :: Item = $ity:ty $(where $($where:tt)*)? ]
+        [ $method:ident [$($mgen:tt)*] via $std_method:ident $(where $($wherecon:tt)*)? ]
+        ($self_:ident $(, $arg:ident: $aty:ty)*) $(requires($($requires:tt)*))? -> |$ret:ident| $($ensures:tt)+
+    ) => {
+        impl_iterator_method!(
+            $(#[$attr])*
+            [ $type [$($gen)*] as $vtype [$($retgen)*] :: Item [] = $ity $(where $($where)*)? ]
+            [ $method [$($mgen)*] via $std_method $(where $($wherecon)*)? ]
+            ($self_ $(, $arg: $aty)*) $(requires($($requires)*))? -> |$ret| $($ensures)+
+        );
+    };
+    (
+        $(#[$attr:meta])*
+        [ $type:path [$($gen:tt)*] as $vtype:path [$($retgen:tt)*] :: Item = $ity:ty $(where $($where:tt)*)? ]
+        [ $method:ident via $std_method:ident $(where $($wherecon:tt)*)? ]
+        ($self_:ident $(, $arg:ident: $aty:ty)*) $(requires($($requires:tt)*))? -> |$ret:ident| $($ensures:tt)+
+    ) => {
+        impl_iterator_method!(
+            $(#[$attr])*
+            [ $type [$($gen)*] as $vtype [$($retgen)*] :: Item [] = $ity $(where $($where)*)? ]
+            [ $method [] via $std_method $(where $($wherecon)*)? ]
+            ($self_ $(, $arg: $aty)*) $(requires($($requires)*))? -> |$ret| $($ensures)+
+        );
+    };
+
+    // Default item type from the wrapped std iterator.
     (
         $(#[$attr:meta])*
         [ $type:path [$($gen:tt)*] as $vtype:path [$($retgen:tt)*] $(where $($where:tt)*)? ]
-        [ $method:ident $([ $($mgen:tt)* ])? via $std_method:ident $(where $($wherecon:tt)*)? ]
-        ($self_:ident $(, $arg:ident: $aty:ty)*) $(requires($($requires:tt)*))? -> |$ret:ident| $($ensures:tt)+ 
+        [ $method:ident [$($mgen:tt)*] via $std_method:ident $(where $($wherecon:tt)*)? ]
+        ($self_:ident $(, $arg:ident: $aty:ty)*) $(requires($($requires:tt)*))? -> |$ret:ident| $($ensures:tt)+
     ) => {
         paste!{ verus!{
         #[verifier::external]
@@ -462,7 +817,7 @@ macro_rules! impl_iterator_method {
         }
 
         pub trait [<Iterator $vtype Fn>]: Iterator + IteratorSpec + Sized {
-            fn $method$(< $($mgen)* >)?($self_, $($arg: $aty),*) -> ($ret: $vtype<$($retgen)*>)
+            fn $method<$($mgen)*>($self_, $($arg: $aty),*) -> ($ret: $vtype<$($retgen)*>)
                 $(where $($wherecon)*)?
                 requires
                     $self_.obeys_prophetic_iter_laws() && $self_.will_return_none(),
@@ -476,11 +831,24 @@ macro_rules! impl_iterator_method {
 
         impl<I: Iterator + IteratorSpec + Sized> [<Iterator $vtype Fn>] for I {
             #[verifier::external_body]
-            fn $method$(< $($mgen)* >)?($self_, $($arg: $aty),*) -> ($ret: $vtype<$($retgen)*>)
+            fn $method<$($mgen)*>($self_, $($arg: $aty),*) -> ($ret: $vtype<$($retgen)*>)
                 $(where $($wherecon)*)?
                 { $vtype($self_.$std_method($($arg),*)) }
         }
         }}
+    };
+    (
+        $(#[$attr:meta])*
+        [ $type:path [$($gen:tt)*] as $vtype:path [$($retgen:tt)*] $(where $($where:tt)*)? ]
+        [ $method:ident via $std_method:ident $(where $($wherecon:tt)*)? ]
+        ($self_:ident $(, $arg:ident: $aty:ty)*) $(requires($($requires:tt)*))? -> |$ret:ident| $($ensures:tt)+
+    ) => {
+        impl_iterator_method!(
+            $(#[$attr])*
+            [ $type [$($gen)*] as $vtype [$($retgen)*] $(where $($where)*)? ]
+            [ $method [] via $std_method $(where $($wherecon)*)? ]
+            ($self_ $(, $arg: $aty)*) $(requires($($requires)*))? -> |$ret| $($ensures)+
+        );
     };
 }
 
