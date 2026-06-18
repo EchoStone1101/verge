@@ -114,7 +114,6 @@ pub broadcast group group_str_axioms {
 }
 
 /// Lightweight lemmas for string views.
-/// TODO: potential trigger loop here?
 /// 
 /// Note that by default, `as_bytes()` and `as_str()` are fully specified for ASCII strings only 
 /// (in which case the specs are verification-friendly). For non-ASCII UTF-8 strings, `vstd::utf8` 

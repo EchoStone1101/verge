@@ -586,11 +586,6 @@ where
 
 // --- Linking lemmas ---
 
-// TODO: split_inclusive, split_terminator, rsplit_terminator,
-// splitn, rsplitn, matches_iter_string,
-// rmatches_iter_string, match_indices, rmatch_indices,
-// trim_matches, trim_start_matches, trim_end_matches,
-
 /// Axiom that links `spec_matches` with concrete specs for the `char` pattern.
 pub broadcast axiom fn axiom_char_matches_post(s: Seq<char>, pat: char)
     ensures

@@ -89,7 +89,9 @@ pub trait ExAsMut<T: std::marker::PointeeSized>: std::marker::PointeeSized {
     type ExternalTraitSpecificationFor: std::convert::AsMut<T>;
 }
 
-// TODO: a function.rs for these, and perhaps lemmas
+// TODO: move to function.rs
+
+// TODO: range.rs
 
 /// This function encodes whether an `exec`-mode function `f` is deterministic.
 pub open spec fn is_deterministic<F, Args: Tuple>(f: F) -> bool 

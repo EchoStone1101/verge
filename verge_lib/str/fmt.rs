@@ -6,6 +6,7 @@
 //! because of its volatile nature.
 use super::*;
 use std::fmt::{Display, Debug};
+use std::string::ToString;
 use std::rc::Rc;
 
 /// This function defines the result of displaying `T` as a string.
@@ -16,13 +17,30 @@ pub use vstd::string::to_string_from_display_ensures;
 
 verus! {
 
-// TODO: need a way to add custom Display impls (in the form of ToString impl), and specify their specs. 
-// To do this, 
-// (1) Bring in the ToString trait, and have ToStringSpec with the "via" pattern, which has a to_string_ensures() 
-// and uses that to specify to_string()
-// (2) for primitive types, define those specs as to_string_from_display_ensures()
-// (3) for custom types, verify that one can indeed implement ToString with the 
-// proper specs and *proof obligations* applied
+/// Specification extension for `ToString` implementations.
+///
+/// Implement `ToStringSpecImpl` for custom `ToString` types to define the
+/// postcondition of `to_string()`. This complements vstd's blanket
+/// `Display`-based spec and supports manual `ToString` impls that do not go
+/// through `Display`.
+#[verifier::external_trait_specification]
+#[verifier::external_trait_extension(ToStringSpec via ToStringSpecImpl)]
+pub trait ExToString {
+    type ExternalTraitSpecificationFor: ToString;
+
+    spec fn to_string_ensures(&self, s: String) -> bool;
+
+    fn to_string(&self) -> (s: String)
+        ensures
+            self.to_string_ensures(s),
+    ;
+}
+
+impl<T: Display + ?Sized> ToStringSpecImpl for T {
+    open spec fn to_string_ensures(&self, s: String) -> bool {
+        to_string_from_display_ensures::<T>(self, s)
+    }
+}
 
 /// Further specifies `to_string_from_display_ensures` for `T`.
 #[macro_export]
@@ -191,7 +209,6 @@ pub axiom fn lemma_rc_to_string<T: Display + ?Sized>(t: &Rc<T>, s: String)
         to_string_from_display_ensures::<Rc<T>>(t, s) == to_string_from_display_ensures::<T>(&*t, s)
 ;
 
-
 /// Enables formatting the value `t` as `Debug`.
 #[verifier::external_body]
 pub fn debug_format<T: Debug + ?Sized>(t: &T) -> (s: String) 
@@ -207,6 +224,45 @@ pub uninterp spec fn debug_format_ensures<T: Debug + ?Sized>(
     s: String,
 ) -> bool;
 
+mod tests {
+    use super::*;
+
+    struct CustomToken {
+    }
+
+    impl ToStringSpecImpl for CustomToken {
+        open spec fn to_string_ensures(&self, s: String) -> bool {
+            s@ == seq!['o', 'k']
+        }
+    }
+
+    impl ToString for CustomToken {
+        fn to_string(&self) -> (s: String)
+            ensures
+                s@ == seq!['o', 'k'],
+        {
+            proof { reveal_strlit("ok"); }
+            String::from_str("ok")
+        }
+    }
+
+    fn test_custom_to_string() {
+        let token = CustomToken { };
+        let s = token.to_string();
+        assert(s@ == seq!['o', 'k']);
+    }
+
+    fn test_display_backed_to_string_specs() {
+        let b = true;
+        let bool_s = b.to_string();
+        proof { lemma_bool_to_string(&b, bool_s); }
+        assert(bool_s@ == seq!['t', 'r', 'u', 'e']);
+
+        let c = 'z';
+        let char_s = c.to_string();
+        proof { lemma_char_to_string(&c, char_s); }
+        assert(char_s@ == seq!['z']);
+    }
+}
+
 } // verus!
-
-

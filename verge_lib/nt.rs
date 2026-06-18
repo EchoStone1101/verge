@@ -25,6 +25,8 @@ pub use gcd::{
 
 pub use totient::{totient, totients};
 
+// TODO: this module will need major updates for the new ISet/IMap changes
+
 verus! {
 
 // TODO: deprecate this to improve proof efficiency
@@ -39,8 +41,6 @@ broadcast group group_mod_properties_nt {
     lemma_mod_multiples_basic,
     lemma_mod_is_zero,
 }
-
-// TODO: now we have Set::<A>::range, this can be replaced
 
 /// This function defines the natural number range [lo, hi).
 /// It is useful in this module as a substitute of `set_lib::set_int_range`, 

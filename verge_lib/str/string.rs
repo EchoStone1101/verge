@@ -136,8 +136,6 @@ pub assume_specification [ String::remove ] (s: &mut String, idx: usize) -> (ret
             old(s)@.as_bytes().take(idx as int) + pop_first_scalar(old(s)@.as_bytes().skip(idx as int)),
 ;
 
-// TODO: replace_range requires RangeBounds specs
-
 /// Enable `String::retain`. 
 pub assume_specification<F> [ String::retain ] (s: &mut String, f: F)
     where
