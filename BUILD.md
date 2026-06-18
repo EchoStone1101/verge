@@ -25,6 +25,9 @@ verus-release/cargo-verus focus -p verge -- --verify-module nt --expand-errors
 
 # Verify and compile
 verus-release/cargo-verus build -p verge -- --expand-errors
+
+# Verify external API tests
+verus-release/cargo-verus focus -p verge_tests -- --expand-errors
 ```
 
 Using `verus` directly (legacy):

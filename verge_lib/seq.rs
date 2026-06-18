@@ -3,7 +3,7 @@
 use vstd::prelude::*;
 use vstd::seq::*;
 use vstd::arithmetic::mul::*;
-use vstd::{calc, assert_by_contradiction};
+use vstd::{calc, assert_by_contradiction, assert_seqs_equal};
 
 use crate::VergeView;
 
@@ -132,13 +132,13 @@ pub proof fn lemma_seq_flatten_same_length<A>(s: Seq<Seq<A>>, l: nat)
     ensures
         s.flatten().len() == s.len() * l,
         forall |i: int| 0 <= i < s.len()
-            ==> #[trigger] s.flatten().subrange(i * l, (i + 1) * l) == s[i],
+            ==> s.flatten().subrange(i * l, (i + 1) * l) == #[trigger] s[i],
     decreases
         s.len(),
 {
     if s.len() == 0 {
         assert(s.flatten().len() == 0);
-        assert(s.len() * l == 0) by (compute);
+        assert(s.len() * l == 0) by { lemma_mul_basics_1(l as int) }
     } else {
         assert(s.flatten() == s[0] + s.drop_first().flatten());
         lemma_seq_flatten_same_length(s.drop_first(), l);
@@ -148,12 +148,12 @@ pub proof fn lemma_seq_flatten_same_length<A>(s: Seq<Seq<A>>, l: nat)
             lemma_mul_is_distributive_add_other_way(l as int, s.len() - 1, 1);
         }
         assert forall |i: int| 0 <= i < s.len() 
-        implies #[trigger] s.flatten().subrange(i * l, (i + 1) * l) == s[i]
+        implies s.flatten().subrange(i * l, (i + 1) * l) == #[trigger] s[i]
         by {
             if i == 0 {
                 calc!{
                     (==)
-                    s.flatten().subrange(i * l, (i + 1) * l); { broadcast use group_mul_properties; }
+                    s.flatten().subrange(i * l, (i + 1) * l); {}
                     s.flatten().subrange(0, l as int); { assert(s[0].len() == l) }
                     s[0];
                 }
@@ -161,13 +161,32 @@ pub proof fn lemma_seq_flatten_same_length<A>(s: Seq<Seq<A>>, l: nat)
                 calc!{
                     (==)
                     s.flatten().subrange(i * l, (i + 1) * l); {
-                        broadcast use group_mul_properties;
                         assert(s[0].len() == l);
-                        assert(i * l >= l);
+                        assert(i * l >= l) by { lemma_mul_inequality(1, i, l as int) }
                         assert(s.flatten().skip(l as int) == s.drop_first().flatten());
+                        calc!{
+                            (==)
+                            s.drop_first().flatten().subrange(i * l - l, (i + 1) * l - l); {}
+                            s.flatten().skip(l as int).subrange(i * l - l, (i + 1) * l - l); {
+                                let s1 = s.flatten().skip(l as int).subrange(i * l - l, (i + 1) * l - l);
+                                let s2 = s.flatten().subrange(i * l, (i + 1) * l);
+                                assert(i * l >= 0);
+                                assert(i * l <= (i + 1) * l) by {
+                                    lemma_mul_inequality(i, i + 1, l as int);
+                                }
+                                assert((i + 1) * l <= s.flatten().len()) by {
+                                    lemma_mul_inequality(i + 1, s.len() as int, l as int);
+                                }
+                                assert_seqs_equal!(s1 == s2);
+                            }
+                            s.flatten().subrange(i * l, (i + 1) * l);
+                        }
                     }
-                    s.drop_first().flatten().subrange(i * l - l, (i + 1) * l - l); { broadcast use group_mul_properties; }
-                    s.drop_first().flatten().subrange((i - 1) * l, (i - 1 + 1) * l); {}
+                    s.drop_first().flatten().subrange(i * l - l, (i + 1) * l - l); { 
+                        lemma_mul_is_distributive_sub_other_way(l as int, i, 1);
+                        lemma_mul_is_distributive_sub_other_way(l as int, i + 1, 1);
+                    }
+                    s.drop_first().flatten().subrange((i - 1) * l, (i + 1 - 1) * l); {}
                     s.drop_first()[i - 1]; {}
                     s[i];
                 }

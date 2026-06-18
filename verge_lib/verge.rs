@@ -11,9 +11,10 @@
 //! Verge adds only *specification*, not *implementation*. 
 //! 
 //! # Tests as Examples
-//! Verge specifications come with unit tests (`mod tests`), in the form of private `exec fn`s
-//! that use the Verge specs to specify and prove properties (automatically checked by Verus).
-//! These tests also double as examples, showing how the Verge APIs can be used.
+//! Verge specifications come with integration tests in the `verge_tests` crate, in the form of
+//! private `exec fn`s that use the public Verge APIs to specify and prove properties
+//! (automatically checked by Verus). These tests also double as examples, showing how the Verge
+//! APIs can be used from a downstream crate.
 
 #![allow(incomplete_features)]
 #![allow(unused_parens)]
@@ -88,10 +89,6 @@ pub trait ExAsRef<T: std::marker::PointeeSized>: std::marker::PointeeSized {
 pub trait ExAsMut<T: std::marker::PointeeSized>: std::marker::PointeeSized {
     type ExternalTraitSpecificationFor: std::convert::AsMut<T>;
 }
-
-// TODO: move to function.rs
-
-// TODO: range.rs
 
 /// This function encodes whether an `exec`-mode function `f` is deterministic.
 pub open spec fn is_deterministic<F, Args: Tuple>(f: F) -> bool 

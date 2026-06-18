@@ -3,4 +3,5 @@ resolver = "2"
 members = [
   "verge_macros",
   "verge_lib",
+  "verge_tests",
 ]

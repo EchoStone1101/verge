@@ -1,0 +1,14 @@
+[package]
+name = "verge_tests"
+version = "0.0.1"
+edition = "2024"
+
+[dependencies]
+vstd = "0.0.0-2026-05-31-0205"
+verus_builtin = "0.0.0-2026-05-17-0151"
+verus_builtin_macros = "0.0.0-2026-05-31-0205"
+verge = { path = "../verge_lib" }
+verge_macros = { path = "../verge_macros" }
+
+[package.metadata.verus]
+verify = true

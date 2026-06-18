@@ -174,23 +174,4 @@ pub broadcast axiom fn lemma_string_lexico_cmp_spec(a: &String, b: &String)
             lexicographical_ordering(a@.as_bytes(), b@.as_bytes()),
 ;
 
-fn test_partial_ord() {
-    proof {
-        broadcast use group_str_axioms;
-        reveal_strlit("ab");
-        reveal_strlit("ac");
-        reveal_with_fuel(lexicographical_ordering, 3);
-    }
-
-    let a: &str = "ab";
-    let b: &&str = &"ac"; // this works because `vstd` has spec on &A and &B ordering
-    assert(a@ < b@);
-    let r = (a < b);
-    assert(r);
-}
-
-// `Ord`
-
-
-
 } // verus!

@@ -635,7 +635,6 @@ pub proof fn lemma_lexico_trichotomy(s: Seq<Option<Ordering>>)
 }
 
 // Helper: given any non-Equal position, there exists a first one with all-Equal prefix.
-#[doc(hidden)]
 proof fn lemma_lexico_first_non_equal(s: Seq<Option<Ordering>>, witness: int)
     requires
         0 <= witness < s.len(),

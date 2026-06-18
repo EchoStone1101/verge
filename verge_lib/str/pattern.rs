@@ -6794,16 +6794,17 @@ pub broadcast proof fn lemma_str_trim_end_matches_char(s: Seq<char>, ch: char, r
         assert forall |i: int| 0 <= i < seq.len()
         implies #[trigger] seq[i].len() == 1 && pred(seq[i][0])
         by { assert(seq[i] =~= seq![ch]); }
-        assert forall |i: int| 0 <= i < seq.reverse().len()
-        implies #[trigger] seq.reverse()[i].len() == 1 && pred(seq.reverse()[i][0]) by {
-            assert(seq.reverse()[i] == seq[seq.len() - 1 - i]);
+        let rseq = seq.reverse();
+        assert forall |i: int| 0 <= i < rseq.len()
+        implies #[trigger] rseq[i].len() == 1 && pred(rseq[i][0]) by {
+            assert(rseq[i] == seq[seq.len() - 1 - i]);
         }
-        lemma_flatten_alt_singleton_pred(seq.reverse(), pred);
+        lemma_flatten_alt_singleton_pred(rseq, pred);
         assert(seq.len() == s.len());
         assert forall |i: int| 0 <= i < s.len()
         implies #[trigger] s[i] == ch by {
-            assert(s[i] == seq.reverse().flatten_alt()[i]);
-            assert(pred(seq.reverse().flatten_alt()[i]));
+            assert(s[i] == rseq.flatten_alt()[i]);
+            assert(pred(rseq.flatten_alt()[i]));
             assert(pred(s[i]));
         }
         assert(ret.len() == 0);
@@ -6889,12 +6890,17 @@ pub broadcast proof fn lemma_str_trim_end_matches_closure<F>(s: Seq<char>, f: F,
         assert(s == seq.reverse().flatten_alt());
         assert forall |i: int| 0 <= i < seq.len()
         implies #[trigger] seq[i].len() == 1 && pred(seq[i][0]) by {}
-        lemma_flatten_alt_singleton_pred(seq.reverse(), pred);
+        let rseq = seq.reverse();
+        assert forall |i: int| 0 <= i < rseq.len()
+        implies #[trigger] rseq[i].len() == 1 && pred(rseq[i][0]) by {
+            assert(rseq[i] == seq[seq.len() - 1 - i]);
+        }
+        lemma_flatten_alt_singleton_pred(rseq, pred);
         assert(seq.len() == s.len());
         assert forall |i: int| 0 <= i < s.len()
         implies #[trigger] pred(s[i]) by {
-            assert(s[i] == seq.reverse().flatten_alt()[i]);
-            assert(pred(seq.reverse().flatten_alt()[i]));
+            assert(s[i] == rseq.flatten_alt()[i]);
+            assert(pred(rseq.flatten_alt()[i]));
         }
         assert(ret.len() == 0);
         assert(ret.is_prefix_of(s));
@@ -6981,16 +6987,17 @@ pub broadcast proof fn lemma_str_trim_end_matches_chars<'b>(s: Seq<char>, chars:
         assert(s == seq.reverse().flatten_alt());
         assert forall |i: int| 0 <= i < seq.len()
         implies #[trigger] seq[i].len() == 1 && pred(seq[i][0]) by {}
-        assert forall |i: int| 0 <= i < seq.reverse().len()
-        implies #[trigger] seq.reverse()[i].len() == 1 && pred(seq.reverse()[i][0]) by {
-            assert(seq.reverse()[i] == seq[seq.len() - 1 - i]);
+        let rseq = seq.reverse();
+        assert forall |i: int| 0 <= i < rseq.len()
+        implies #[trigger] rseq[i].len() == 1 && pred(rseq[i][0]) by {
+            assert(rseq[i] == seq[seq.len() - 1 - i]);
         }
-        lemma_flatten_alt_singleton_pred(seq.reverse(), pred);
+        lemma_flatten_alt_singleton_pred(rseq, pred);
         assert(seq.len() == s.len());
         assert forall |i: int| 0 <= i < s.len()
         implies #[trigger] pred(s[i]) by {
-            assert(s[i] == seq.reverse().flatten_alt()[i]);
-            assert(pred(seq.reverse().flatten_alt()[i]));
+            assert(s[i] == rseq.flatten_alt()[i]);
+            assert(pred(rseq.flatten_alt()[i]));
         }
         assert(ret.len() == 0);
         assert(ret.is_prefix_of(s));

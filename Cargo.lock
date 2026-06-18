@@ -98,6 +98,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "verge_tests"
+version = "0.0.1"
+dependencies = [
+ "verge",
+ "verge_macros",
+ "verus_builtin",
+ "verus_builtin_macros",
+ "vstd",
+]
+
+[[package]]
 name = "verus_builtin"
 version = "0.0.0-2026-05-17-0151"
 source = "registry+https://github.com/rust-lang/crates.io-index"

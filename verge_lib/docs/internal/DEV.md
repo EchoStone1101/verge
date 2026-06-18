@@ -2,9 +2,10 @@
 
 **Verge** is a verified Rust library that extends `vstd` (the Verus standard library) with specifications for more of Rust's standard library API. It adds only *specification*, not *implementation* — wrapping existing `std` functions with Verus-checkable pre/postconditions. It is Unix-only by design.
 
-The workspace has two crates:
+The workspace has three crates:
 - **`verge_lib/`** — the main library (`verge_lib/verge.rs` is the root)
 - **`verge_macros/`** — procedural macros (currently: `hash_key` attribute for `obeys_key_model`)
+- **`verge_tests/`** — external Verus integration tests that import `verge` like a downstream crate
 
 ## Modules
 
@@ -51,3 +52,7 @@ See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 **Formatting specs:** `str::fmt::ToStringSpec` extends `ToString`; custom `ToString` impls provide `ToStringSpecImpl::to_string_ensures`, while `Display`-backed impls delegate to vstd's `to_string_from_display_ensures`.
 
 **File system model:** Uses epochs to model external interference — specs are parameterized by an `Fs` struct tracking epoch, operation history, and read_dir count.
+
+## Tests
+
+Verge API tests live in the separate `verge_tests/` crate. Test functions are private `exec fn`s organized by module; verifying that crate exercises public visibility, downstream imports, and `broadcast_use_by_default_when_this_crate_is_imported` behavior instead of relying on `verge_lib` internals.
