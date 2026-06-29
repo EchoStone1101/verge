@@ -23,12 +23,14 @@ The workspace has three crates:
 
 ## Defensive Spec Design
 
-Much like Rust's `unsafe` code cannot blindly trust safe code, the Verge library, due to its nature as a trusted expansion of `vstd`, **must not** leave its soundness dependent on how it is used. 
-On the contrary, Verge's spec design must be fully defensive against any unintended usage, such that unsound assertions remain impossible to prove. 
+Much like Rust's `unsafe` code cannot blindly trust safe code, the Verge library, due to its nature as a trusted expansion of `vstd`, **must not** leave its soundness dependent on how it is used.
+As a result, Verge's spec design must be fully defensive against any unintended usage, such that unsound assertions remain impossible to prove.
 
-This principle is to be followed even at the cost of completeness and expressiveness. For example, Verge's current epoch-based FS spec design, while hopefully sound, is very much not helpful to prove anything. Compared to letting a user accidently (and falsely) prove that a file's content does not change, it is better to not letting them prove anything concrete about the file content. 
+This principle is to be followed even at the cost of completeness and expressiveness. For example, Verge's current epoch-based FS spec design, while hopefully sound, is very much not helpful to prove anything. Compared to letting a user accidently (and falsely) prove that a file's content does not change, it is better to not letting them prove anything concrete about the file content.
 
 ## Key Specification Patterns
+
+<!-- TODO: this needs updating -->
 
 See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 
@@ -55,4 +57,4 @@ See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 
 ## Tests
 
-Verge API tests live in the separate `verge_tests/` crate. Test functions are private `exec fn`s organized by module; verifying that crate exercises public visibility, downstream imports, and `broadcast_use_by_default_when_this_crate_is_imported` behavior instead of relying on `verge_lib` internals.
+See `docs/internal/TESTS.md` for the testing scheme. In short, Verge API tests live in the separate `verge_tests/` crate as private `exec fn`s organized to mirror the `verge_lib` module layout; verifying that crate exercises public visibility, downstream imports, and `broadcast_use_by_default_when_this_crate_is_imported` behavior instead of relying on `verge_lib` internals.

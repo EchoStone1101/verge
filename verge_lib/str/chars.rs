@@ -1,4 +1,12 @@
 //! Character-related string specifications.
+//!
+//! ## Non-ASCII characters in `spec`-mode
+//! For now, non-ASCII characters are only categorized in Verge specs. 
+//! For example, you can directly `assert(!'①'.is_ascii())` (because it is 
+//! obvious from the `char` value range), but not `assert('①'.is_numeric())`.
+//! The `exec`-mode `'①'.is_numeric()` will still evaluate to true, giving
+//! `'①'.is_non_ascii_numeric()` - which is `uninterp` and cannot be established 
+//! in `spec`-mode otherwise.
 
 use super::*;
 
@@ -102,7 +110,7 @@ assume_specification_for_char!(
     requires 
         (2 <= radix <= 36),
     returns (
-        if 0 <= num < radix {
+        if 0 <= num < min(radix as int, 10) {
             Some((CHAR_ZERO + num) as u32 as char)
         } else if 10 <= num < radix {
             Some((CHAR_LOWER_A + num - 10) as u32 as char)
@@ -119,11 +127,13 @@ assume_specification_for_char!(
     requires 
         (2 <= radix <= 36),
     returns (
-        ||| CHAR_ZERO <= (this as u32) < CHAR_ZERO + radix
-        ||| radix > 10 && (
-            CHAR_LOWER_A <= (this as u32) < CHAR_LOWER_A + radix - 10
-            || CHAR_UPPER_A <= (this as u32) < CHAR_UPPER_A + radix - 10
-        )
+        if radix <= 10 {
+            CHAR_ZERO <= (this as u32) < CHAR_ZERO + radix
+        } else {
+            ||| CHAR_ZERO <= (this as u32) <= CHAR_NINE
+            ||| CHAR_LOWER_A <= (this as u32) < CHAR_LOWER_A + radix - 10
+            ||| CHAR_UPPER_A <= (this as u32) < CHAR_UPPER_A + radix - 10
+        }
     ),
     no_unwind
 );
@@ -160,61 +170,106 @@ pub uninterp spec fn is_non_ascii_lowercase(this: char) -> bool;
 pub uninterp spec fn is_non_ascii_uppercase(this: char) -> bool;
 pub uninterp spec fn is_non_ascii_whitespace(this: char) -> bool;
 pub uninterp spec fn is_non_ascii_control(this: char) -> bool;
-pub uninterp spec fn is_non_ascii_numberic(this: char) -> bool;
+pub uninterp spec fn is_non_ascii_numeric(this: char) -> bool;
+
+/// Axiom that asserts the implications and exclusivity between the non-ASCII predicates. 
+///
+/// Note that the exclusivity stated here is complete - for example, it is possible that  
+/// `c.is_alphabetic() && c.is_numeric()` and `c.is_whitespace() && c.is_control()`.
+#[verifier::external_body]
+pub axiom fn axiom_non_ascii_categories(c: char)
+    ensures
+        // implications
+        is_non_ascii_lowercase(c) ==> is_non_ascii_alphabetic(c),
+        is_non_ascii_uppercase(c) ==> is_non_ascii_alphabetic(c),
+        // mutual exclusivity
+        is_non_ascii_alphabetic(c) ==> {
+            &&& !is_non_ascii_whitespace(c)
+            &&& !is_non_ascii_control(c)
+            &&& !is_non_ascii_numeric(c)
+        },
+        is_non_ascii_lowercase(c) ==> {
+            &&& !is_non_ascii_uppercase(c)
+            &&& !is_non_ascii_whitespace(c)
+            &&& !is_non_ascii_control(c)
+            &&& !is_non_ascii_numeric(c)
+        },
+        is_non_ascii_uppercase(c) ==> {
+            &&& !is_non_ascii_whitespace(c)
+            &&& !is_non_ascii_control(c)
+            &&& !is_non_ascii_numeric(c)
+        },
+        is_non_ascii_whitespace(c) ==> !is_non_ascii_numeric(c),
+        is_non_ascii_control(c) ==> !is_non_ascii_numeric(c),
+;   
 
 /// Enables `char::is_alphabetic`.
 assume_specification_for_char!(
     [is_alphabetic via char_is_alphabetic](this: char) -> (ret: bool)
-    returns
-        (this.is_ascii_alphabetic() || is_non_ascii_alphabetic(this)),
+    returns (
+        ||| this.is_ascii_alphabetic()
+        ||| !this.is_ascii() && is_non_ascii_alphabetic(this)
+    ),
     no_unwind
 );
 
 /// Enables `char::is_lowercase`.
 assume_specification_for_char!(
     [is_lowercase via char_is_lowercase](this: char) -> (ret: bool)
-    returns
-        (this.is_ascii_lowercase() || is_non_ascii_lowercase(this)),
+    returns (
+        ||| this.is_ascii_lowercase() 
+        ||| !this.is_ascii() && is_non_ascii_lowercase(this)
+    ),
     no_unwind
 );
 
 /// Enables `char::is_uppercase`.
 assume_specification_for_char!(
     [is_uppercase via char_is_uppercase](this: char) -> (ret: bool)
-    returns
-        (this.is_ascii_uppercase() || is_non_ascii_uppercase(this)),
+    returns (
+        ||| this.is_ascii_uppercase() 
+        ||| !this.is_ascii() && is_non_ascii_uppercase(this)
+    ),
     no_unwind
 );
 
 /// Enables `char::is_whitespace`.
 assume_specification_for_char!(
     [is_whitespace via char_is_whitespace](this: char) -> (ret: bool)
-    returns
-        (this.is_ascii_whitespace() || is_non_ascii_whitespace(this)),
+    returns (
+        ||| this.is_ascii_whitespace() 
+        ||| !this.is_ascii() && is_non_ascii_whitespace(this)
+    ),
     no_unwind
 );
 
 /// Enables `char::is_alphanumeric`.
 assume_specification_for_char!(
     [is_alphanumeric via char_is_alphanumeric](this: char) -> (ret: bool)
-    returns
-        (this.is_ascii_alphanumeric() || is_non_ascii_alphabetic(this) || is_non_ascii_numberic(this)),
+    returns (
+        ||| this.is_ascii_alphanumeric() 
+        ||| !this.is_ascii() && (is_non_ascii_alphabetic(this) || is_non_ascii_numeric(this))
+    ),
     no_unwind
 );
 
 /// Enables `char::is_control`.
 assume_specification_for_char!(
     [is_control via char_is_control](this: char) -> (ret: bool)
-    returns
-        (this.is_ascii_control() || is_non_ascii_control(this)),
+    returns (
+        ||| this.is_ascii_control() 
+        ||| !this.is_ascii() && is_non_ascii_control(this)
+    ),
     no_unwind
 );
 
 /// Enables `char::is_numeric`.
 assume_specification_for_char!(
     [is_numeric via char_is_numeric](this: char) -> (ret: bool)
-    returns
-        (this.is_ascii_digit() || is_non_ascii_numberic(this)),
+    returns (
+        ||| this.is_ascii_digit() 
+        ||| !this.is_ascii() && is_non_ascii_numeric(this)
+    ),
     no_unwind
 );
 
@@ -247,8 +302,7 @@ assume_specification_for_u8_and_char!(
 /// Enables `u8|char::is_ascii_control`.
 assume_specification_for_u8_and_char!(
     [is_ascii_control; u8_is_ascii_control, char_is_ascii_control](this) -> (ret: bool)
-    returns
-        (*this == CHAR_NUL || *this == CHAR_SEP || *this == CHAR_DEL),
+    returns ((CHAR_NUL <= *this <= CHAR_SEP) || *this == CHAR_DEL),
     no_unwind
 );
 

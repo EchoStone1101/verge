@@ -214,4 +214,128 @@ fn test_char_to_ascii_uppercase() {
     assert(non_lowercase.to_ascii_uppercase() == non_lowercase);
 }
 
+fn test_char_from_u32_ascii_scalar() {
+    let letter = char::from_u32(65u32);
+    let nul = char::from_u32(0u32);
+
+    assert(letter == Some('A'));
+    assert(nul == Some('\0'));
+}
+
+fn test_char_from_u32_invalid_scalar_values() {
+    let surrogate = char::from_u32(0xD800u32);
+    let non_scalar = char::from_u32(0x110000u32);
+
+    assert(surrogate == None);
+    assert(non_scalar == None);
+}
+
+fn test_char_from_digit_decimal_success_and_none() {
+    let digit = char::from_digit(7u32, 10u32);
+    let out_of_range = char::from_digit(10u32, 10u32);
+
+    assert(digit == Some('7'));
+    assert(out_of_range == None);
+}
+
+fn test_char_from_digit_hex_alphabetic_success() {
+    let lower = char::from_digit(10u32, 16u32);
+    let upper_bound = char::from_digit(15u32, 16u32);
+
+    assert(lower == Some('a'));
+    assert(upper_bound == Some('f'));
+}
+
+fn test_char_is_digit_radix_10() {
+    assert('0'.is_digit(10u32));
+    assert('9'.is_digit(10u32));
+    assert(!'a'.is_digit(10u32));
+}
+
+fn test_char_is_digit_radix_16() {
+    assert('9'.is_digit(16u32));
+    assert('a'.is_digit(16u32));
+    assert('F'.is_digit(16u32));
+    assert(!'g'.is_digit(16u32));
+}
+
+fn test_char_to_digit_radix_10() {
+    assert('0'.to_digit(10u32) == Some(0u32));
+    assert('8'.to_digit(10u32) == Some(8u32));
+    assert('a'.to_digit(10u32) == None);
+}
+
+fn test_char_to_digit_radix_16() {
+    assert('9'.to_digit(16u32) == Some(9u32));
+    assert('a'.to_digit(16u32) == Some(10u32));
+    assert('F'.to_digit(16u32) == Some(15u32));
+    assert('g'.to_digit(16u32) == None);
+}
+
+fn test_char_len_utf8_ascii_and_non_ascii() {
+    assert('A'.len_utf8() == 1usize);
+    assert('é'.len_utf8() == 2usize);
+    assert('世'.len_utf8() == 3usize);
+}
+
+fn test_char_unicode_predicates_ascii_positive() {
+    assert('A'.is_alphabetic());
+    assert('a'.is_lowercase());
+    assert('Z'.is_uppercase());
+    assert(' '.is_whitespace());
+    assert('7'.is_alphanumeric());
+    assert('\u{007f}'.is_control());
+    assert('3'.is_numeric());
+}
+
+fn test_char_unicode_predicates_ascii_negative() {
+    assert(!'0'.is_alphabetic());
+    assert(!'A'.is_lowercase());
+    assert(!'z'.is_uppercase());
+    assert(!'A'.is_whitespace());
+    assert(!'-'.is_alphanumeric());
+    assert(!'A'.is_control());
+    assert(!'A'.is_numeric());
+}
+
+fn test_ascii_control_covers_full_control_range() {
+    assert(0u8.is_ascii_control());
+    assert(0x1Fu8.is_ascii_control());
+    assert(0x7Fu8.is_ascii_control());
+    assert(!0x20u8.is_ascii_control());
+
+    assert('\0'.is_ascii_control());
+    assert('\n'.is_ascii_control());
+    assert('\u{007f}'.is_ascii_control());
+    assert(!' '.is_ascii_control());
+}
+
+fn test_char_ascii_case_conversion_composes_with_predicates() {
+    let lower = 'Q'.to_ascii_lowercase();
+    let upper = 'q'.to_ascii_uppercase();
+
+    assert(lower == 'q');
+    assert(upper == 'Q');
+    assert(lower.is_ascii_lowercase());
+    assert(!lower.is_ascii_uppercase());
+    assert(upper.is_ascii_uppercase());
+    assert(!upper.is_ascii_lowercase());
+    assert(lower.to_ascii_uppercase() == upper);
+    assert(upper.to_ascii_lowercase() == lower);
+}
+
+fn test_u8_ascii_case_conversion_composes_with_predicates() {
+    let lower = 90u8.to_ascii_lowercase();
+    let upper = 122u8.to_ascii_uppercase();
+
+    assert(lower == 122u8);
+    assert(upper == 90u8);
+    assert(lower.is_ascii_lowercase());
+    assert(!lower.is_ascii_uppercase());
+    assert(upper.is_ascii_uppercase());
+    assert(!upper.is_ascii_lowercase());
+    assert(lower.to_ascii_uppercase() == upper);
+    assert(upper.to_ascii_lowercase() == lower);
+}
+
 } // verus!

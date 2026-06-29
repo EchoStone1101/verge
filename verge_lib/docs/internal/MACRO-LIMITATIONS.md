@@ -40,10 +40,6 @@ An `#[ignored]` field is still cloned in exec (`self.field.clone()`), but the sp
 
 Both attributes on the same field is rejected in all macros that check for it.
 
-## Tuple Support
-
-Rust's orphan rules prevent Verge from implementing vstd's `PartialEqSpecImpl` for tuples (both the trait and the type are foreign). Bare tuples cannot be used in contexts requiring verified comparison specs. Workaround: define a tuple struct instead.
-
 ## Copy Semantics Gap
 
 `derive_copy`'s `strictly_cloned` spec uses `*a == *b` (ghost-mode equality), which is not strictly bitwise equality. For immutable references (`&T`), spec `==` compares pointed-to values rather than pointer addresses.

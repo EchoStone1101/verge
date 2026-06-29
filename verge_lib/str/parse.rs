@@ -16,10 +16,10 @@ use std::fmt::Debug;
 
 verus! {
 
+// TODO: ExFromStr; clean up specs in this module
+
 /// This function defines the result of parsing a `T` from the string `s`, with the potential 
 /// error type `E`.
-/// It is left uninterpreted by default; implementations can add further specifications 
-/// as is appropriate, by introducing axioms with `define_spec_from_str!`.
 pub uninterp spec fn spec_from_str<T, E>(s: Seq<char>) -> Result<T, E>;
 
 /// Further specifies `spec_from_str` for `T` and `E`.
