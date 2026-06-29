@@ -11,7 +11,7 @@ The workspace has three crates:
 
 | Module | Covers |
 |--------|--------|
-| `str` | String specs: UTF-8, parsing, formatting, iteration |
+| `str` | String specs: UTF-8, parsing, formatting, iteration, pattern matching |
 | `fs` | File system: `File`, `ReadDir`, `DirEntry`, path, metadata |
 | `io` | I/O traits and impls: `Read`, `Write`, `BufReader`, stdio |
 | `iter` | `Iterator` trait specs, wrapper iterators, and constructor-method extensions |
@@ -50,6 +50,8 @@ See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 **Iterator specs:** Use `impl_iterator!` for concrete iterator wrapper types and `impl_iterator_method!` for generic `Iterator` adapter methods; iterators are tracked as `(index: int, sequence: Seq<T>)`.
 
 **String model:** Strings are viewed as `Seq<char>`; byte-level reasoning uses `Seq<u8>` via `vstd::utf8` conversion.
+
+**String pattern proofs:** Large `str::pattern` broadcast lemmas live in internal submodules organized by API (for example, `str::pattern::split` and `str::pattern::rmatch_indices`) and are re-exported from `str::pattern` to preserve the public API while reducing per-module proof burden; shared private helper lemmas live in `str::pattern::internal`.
 
 **Formatting specs:** `str::fmt::ToStringSpec` extends `ToString`; custom `ToString` impls provide `ToStringSpecImpl::to_string_ensures`, while `Display`-backed impls delegate to vstd's `to_string_from_display_ensures`.
 
