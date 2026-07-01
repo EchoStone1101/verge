@@ -94,7 +94,16 @@ pub axiom fn lemma_string_to_string(this: &String, s: String)
 #[verifier::external_body]
 pub axiom fn lemma_ref_to_string<T: Display + ?Sized>(t: &&T, s: String) 
     ensures
-        to_string_from_display_ensures::<&T>(t, s) == to_string_from_display_ensures::<T>(*t, s)
+        to_string_from_display_ensures::<&T>(t, s) == to_string_from_display_ensures::<T>(&**t, s)
+;
+
+/// This lemma fully interprets `<&mut T as ToString>::to_string`, where `T: Display + ?Sized` 
+/// (blanket impl from `std`).
+#[verifier::external_body]
+pub axiom fn lemma_mut_ref_to_string<T: Display + ?Sized>(t: &&mut T, s: String) 
+    ensures
+        &*final(*t) == &*old(*t),
+        to_string_from_display_ensures::<&mut T>(t, s) == to_string_from_display_ensures::<T>(&*final(*t), s)
 ;
 
 /// This lemma fully interprets `<Box<T> as ToString>::to_string`, where `T: Display + ?Sized` 

@@ -1,6 +1,7 @@
 //! Tests for string ordering APIs.
 
 use vstd::prelude::*;
+use verge::cmp::lexico_cmp;
 use verge::prelude::*;
 use verge::str::*;
 
@@ -11,7 +12,7 @@ fn test_partial_ord() {
         broadcast use group_str_axioms;
         reveal_strlit("ab");
         reveal_strlit("ac");
-        reveal_with_fuel(lexicographical_ordering, 3);
+        reveal_with_fuel(lexico_cmp, 3);
     }
 
     let a: &str = "ab";

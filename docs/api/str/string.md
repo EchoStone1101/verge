@@ -16,32 +16,22 @@ pub struct ExFromUtf8Error(FromUtf8Error);
 ## Traits
 
 
-### `StringExecFromUtf8Fns`
+### `StringAdditionalFns`
+
+Additional methods on `String`.
 
 ```rust
-pub trait StringExecFromUtf8Fns
-```
-
-
-#### `from_utf8_checked`
-
-```rust
-fn from_utf8_checked(vec: Vec<u8>) -> (res: Result<String, FromUtf8Error>)
-    ensures
-        vec@.is_utf8() <==> res.is_ok(),
-    no_unwind
-        ;
+pub trait StringAdditionalFns: Sized
 ```
 
 
 #### `from_utf8_verified`
 
 ```rust
-fn from_utf8_verified(vec: Vec<u8>) -> String
+fn from_utf8_verified(vec: Vec<u8>) -> Self
     requires
         vec@.is_utf8(),
-    no_unwind
-        ;
+    no_unwind;
 ```
 
 
@@ -74,6 +64,19 @@ pub assume_specification [ String::len ] (s: &String) -> (ret: usize)
 ```
 
 
+### `String::is_empty`
+
+Enable `String::is_empty`.
+
+```rust
+pub assume_specification [ String::is_empty ] (s: &String) -> (ret: bool)
+    returns
+        s@.len() == 0,
+    no_unwind
+        ;
+```
+
+
 ### `String::with_capacity`
 
 Enable `String::with_capacity`.
@@ -82,6 +85,23 @@ Enable `String::with_capacity`.
 pub assume_specification [ String::with_capacity ] (cap: usize) -> (s: String)
     ensures
         s@ =~= Seq::<char>::empty(),
+        ;
+```
+
+
+### `String::from_utf8`
+
+Enable `String::from_utf8`.
+
+```rust
+pub assume_specification [ String::from_utf8 ] (vec: Vec<u8>) -> (ret: Result<String, FromUtf8Error>)
+    ensures
+        ({
+            match ret {
+                Ok(s) => vec@.is_utf8() && s@ =~= vec@.as_str(),
+                Err(e) => !vec@.is_utf8() && e.is_str_utf8_error(),
+            }
+        }),
         ;
 ```
 
@@ -99,6 +119,20 @@ pub assume_specification [ String::into_bytes ] (s: String) -> (bytes: Vec<u8>)
 ```
 
 
+### `String::as_mut_str`
+
+Enable `String::as_mut_str`.
+
+```rust
+pub assume_specification [ String::as_mut_str ] (s: &mut String) -> (ret: &mut str)
+    ensures
+        ret@ =~= old(s)@,
+        final(ret)@ =~= final(s)@,
+    no_unwind
+        ;
+```
+
+
 ### `String::clear`
 
 Enable `String::clear`.
@@ -106,7 +140,7 @@ Enable `String::clear`.
 ```rust
 pub assume_specification [ String::clear ] (s: &mut String)
     ensures
-        s@ =~= Seq::<char>::empty(),
+        final(s)@ =~= Seq::<char>::empty(),
     no_unwind
         ;
 ```
@@ -119,7 +153,19 @@ Enable `String::push`.
 ```rust
 pub assume_specification [ String::push ] (s: &mut String, ch: char)
     ensures
-        s@ =~= old(s)@.push(ch),
+        final(s)@ =~= old(s)@.push(ch),
+        ;
+```
+
+
+### `String::push_str`
+
+Enable `String::push_str`.
+
+```rust
+pub assume_specification [ String::push_str ] (s: &mut String, string: &str)
+    ensures
+        final(s)@ =~= old(s)@ + string@,
         ;
 ```
 
@@ -131,8 +177,8 @@ Enable `String::pop`.
 ```rust
 pub assume_specification [ String::pop ] (s: &mut String) -> (ch: Option<char>)
     ensures
-        old(s)@.len() > 0 ==> s@ =~= old(s)@.drop_last() && ch == Some(old(s)@.last()),
-        old(s)@.len() == 0 ==> s@ =~= old(s)@ && ch.is_none(),
+        old(s)@.len() > 0 ==> final(s)@ =~= old(s)@.drop_last() && ch == Some(old(s)@.last()),
+        old(s)@.len() == 0 ==> final(s)@ =~= old(s)@ && ch.is_none(),
     no_unwind
         ;
 ```
@@ -145,7 +191,7 @@ Enable `String::reserve`.
 ```rust
 pub assume_specification [ String::reserve ] (s: &mut String, _amt: usize)
     ensures
-        s@ =~= old(s)@,
+        final(s)@ =~= old(s)@,
         ;
 ```
 
@@ -157,7 +203,7 @@ Enable `String::reserve_exact`.
 ```rust
 pub assume_specification [ String::reserve_exact ] (s: &mut String, _amt: usize)
     ensures
-        s@ =~= old(s)@,
+        final(s)@ =~= old(s)@,
         ;
 ```
 
@@ -172,11 +218,9 @@ falls between code points.
 ```rust
 pub assume_specification [ String::insert ] (s: &mut String, idx: usize, ch: char)
     requires
-        idx <= old(s)@.as_bytes().len(),
-        old(s)@.as_bytes().take(idx as int).is_utf8(),
-        old(s)@.as_bytes().skip(idx as int).is_utf8(),
+        is_char_boundary(s@.as_bytes(), idx as int),
     ensures
-        s@.as_bytes() =~= old(s)@.as_bytes().take(idx as int) + seq![ch].as_bytes() + old(s)@.as_bytes().skip(idx as int),
+        final(s)@.as_bytes() =~= old(s)@.as_bytes().take(idx as int) + seq![ch].as_bytes() + old(s)@.as_bytes().skip(idx as int),
         ;
 ```
 
@@ -191,11 +235,42 @@ falls between code points.
 ```rust
 pub assume_specification [ String::insert_str ] (s: &mut String, idx: usize, string: &str)
     requires
-        idx <= old(s)@.as_bytes().len(),
-        old(s)@.as_bytes().take(idx as int).is_utf8(),
-        old(s)@.as_bytes().skip(idx as int).is_utf8(),
+        is_char_boundary(s@.as_bytes(), idx as int),
     ensures
-        s@.as_bytes() =~= old(s)@.as_bytes().take(idx as int) + string@.as_bytes() + old(s)@.as_bytes().skip(idx as int),
+        final(s)@.as_bytes() =~= old(s)@.as_bytes().take(idx as int) + string@.as_bytes() + old(s)@.as_bytes().skip(idx as int),
+        ;
+```
+
+
+### `String::remove`
+
+Enable `String::remove`.
+
+Note that this function no longer panics, but requires proving that `idx` is valid.
+
+```rust
+pub assume_specification [ String::remove ] (s: &mut String, idx: usize) -> (ret: char)
+    requires
+        is_char_boundary(s@.as_bytes(), idx as int),
+        idx < s@.as_bytes().len(),
+    ensures
+        ret as u32 == decode_first_scalar(old(s)@.as_bytes().skip(idx as int)),
+        final(s)@.as_bytes() =~=
+            old(s)@.as_bytes().take(idx as int) + pop_first_scalar(old(s)@.as_bytes().skip(idx as int)),
+        ;
+```
+
+
+### `String::retain`
+
+Enable `String::retain`.
+
+```rust
+pub assume_specification<F> [ String::retain ] (s: &mut String, f: F)
+    where
+    F: FnMut(char) -> bool,
+    ensures
+        final(s)@ =~= old(s)@.filter(|c: char| call_ensures(f, (c,), true)),
         ;
 ```
 
@@ -210,11 +285,9 @@ falls between code points.
 ```rust
 pub assume_specification [ String::split_off ] (s: &mut String, at: usize) -> (rem: String)
     requires
-        at <= old(s)@.as_bytes().len(),
-        old(s)@.as_bytes().take(at as int).is_utf8(),
-        old(s)@.as_bytes().skip(at as int).is_utf8(),
+        is_char_boundary(s@.as_bytes(), at as int),
     ensures
-        s@.as_bytes() =~= old(s)@.as_bytes().take(at as int),
+        final(s)@.as_bytes() =~= old(s)@.as_bytes().take(at as int),
         rem@.as_bytes() =~= old(s)@.as_bytes().skip(at as int),
         ;
 ```
@@ -230,10 +303,9 @@ falls between code points.
 ```rust
 pub assume_specification [ String::truncate ] (s: &mut String, new_len: usize)
     requires
-        new_len <= old(s)@.as_bytes().len(),
-        old(s)@.as_bytes().take(new_len as int).is_utf8(),
+        is_char_boundary(s@.as_bytes(), new_len as int),
     ensures
-        s@.as_bytes() =~= old(s)@.as_bytes().take(new_len as int),
+        final(s)@.as_bytes() =~= old(s)@.as_bytes().take(new_len as int),
     no_unwind
         ;
 ```

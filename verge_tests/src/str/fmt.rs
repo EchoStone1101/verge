@@ -76,7 +76,7 @@ fn test_int_to_string_specs() {
     proof {
         lemma_int_to_string(&positive, positive_s);
         reveal(spec_int_to_str);
-        reveal_with_fuel(spec_int_to_str_rec, 2);
+        reveal_with_fuel(spec_int_to_str_rec, 4);
     }
     assert(positive_s@ == seq!['7']);
 
@@ -85,7 +85,7 @@ fn test_int_to_string_specs() {
     proof {
         lemma_int_to_string(&negative, negative_s);
         reveal(spec_int_to_str);
-        reveal_with_fuel(spec_int_to_str_rec, 2);
+        reveal_with_fuel(spec_int_to_str_rec, 4);
     }
     assert(negative_s@ == seq!['-', '3']);
 }
@@ -97,6 +97,17 @@ fn test_ref_to_string_delegates_to_underlying_display() {
     proof {
         lemma_ref_to_string::<bool>(&b_ref, s);
         lemma_bool_to_string(b_ref, s);
+    }
+    assert(s@ == seq!['t', 'r', 'u', 'e']);
+}
+
+fn test_mut_ref_to_string_delegates_to_underlying_display() {
+    let mut b = true;
+    let b_mut = &mut b;
+    let s = b_mut.to_string();
+    proof {
+        lemma_mut_ref_to_string::<bool>(&b_mut, s);
+        lemma_bool_to_string(&*b_mut, s);
     }
     assert(s@ == seq!['t', 'r', 'u', 'e']);
 }

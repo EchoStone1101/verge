@@ -65,18 +65,18 @@ pub struct ExFile(File);
 ```
 
 
-### `ExReadDir`
+### `VergeReadDir`
 
 Iterator over the entries in a directory.
 
 ```rust
-pub struct ExReadDir(ReadDir);
+pub struct VergeReadDir(ReadDir);
 ```
 
 
 ### `ExDirEntry`
 
-Entries returned by the `ReadDir` iterator.
+Entries returned by the `VergeReadDir` iterator.
 
 ```rust
 pub struct ExDirEntry(DirEntry);
@@ -189,8 +189,8 @@ proof fn sync(&self, fs: &mut Fs)
     requires
         self.inv(),
     ensures
-        self.atime() <= fs.epoch(),
-        old(fs).epoch() <= fs.epoch(),
+        self.atime() <= final(fs).epoch(),
+        old(fs).epoch() <= final(fs).epoch(),
         ;
 ```
 
@@ -216,60 +216,6 @@ fn seal(self)
 ```
 
 
-### `ReadDirSpec`
-
-This trait specifies `ReadDir`.
-
-```rust
-pub trait ReadDirSpec
-```
-
-
-#### `inv`
-
-Invariant of the iterator (broke at the first error).
-
-```rust
-spec fn inv(&self) -> bool;
-```
-
-
-#### `seal`
-
-Drops the iterator and decreases `read_dir_count`.
-
-This is essentially explicitly calling `drop`, but with `spec` to
-update the file system states.
-
-```rust
-fn seal(self, fs: &mut Fs)
-    requires
-        self.inv(),
-        old(fs).read_dir_count() > 0,
-    ensures
-        old(fs) <= fs,
-        old(fs).ops() == fs.ops(),
-        old(fs).read_dir_count() - 1 == fs.read_dir_count(),
-        ;
-```
-
-
-### `DirEntrySpec`
-
-This trait specifies `DirEntry`.
-
-```rust
-pub trait DirEntrySpec
-```
-
-
-#### `view`
-
-```rust
-spec fn view(&self) -> PathView;
-```
-
-
 ## Functions
 
 
@@ -285,18 +231,6 @@ pub fn init() -> (ret: Fs)
     ensures
         ret.ops().len() == 0,
         ret.read_dir_count() == 0,
-```
-
-
-### `ReadDir::next`
-
-Enables `ReadDir` as an iterator.
-
-```rust
-pub assume_specification [ ReadDir::next ] (this: &mut ReadDir) -> (r: Option<Result<DirEntry>>)
-    ensures
-        old(this).inv() ==> {
-            let (old_index, old_seq) = old(this)@;
 ```
 
 
@@ -370,7 +304,7 @@ pub closed spec fn ops(&self) -> Seq<FsMutOp>
 
 #### `read_dir_count`
 
-Number of outstanding `ReadDir` iterators.
+Number of outstanding `VergeReadDir` iterators.
 
 See the comments for `Fs::read_dir()`
 
@@ -651,8 +585,8 @@ Enables `fs::exists` (check if the path points at an existing entity).
 ```rust
 pub fn exists(&mut self, path: &str) -> (ret: Result<bool>)
     ensures
-        old(self) <= self,
-        old(self).ops() == self.ops(),
+        old(self) <= final(self),
+        old(self).ops() == final(self).ops(),
         ({
             let path = path@.as_path().normalize();
             match ret {
@@ -679,8 +613,8 @@ Enables `File::open` (open a file in read-only mode).
 ```rust
 pub fn open(&mut self, path: &str) -> (ret: Result<File>)
     ensures
-        old(self) <= self,
-        old(self).ops() == self.ops(),
+        old(self) <= final(self),
+        old(self).ops() == final(self).ops(),
         ({
             let path = path@.as_path().normalize();
             match ret {
@@ -721,12 +655,12 @@ pub fn create(&mut self, path: &str) -> (ret: Result<File>)
     requires
         old(self).read_dir_count() == 0,
     ensures
-        old(self) <= self,
+        old(self) <= final(self),
         ({
             let path = path@.as_path().normalize();
             match ret {
                 Ok(file) => {
-                    &&& self.ops() == old(self).ops().push(FsMutOp::Mutate(path))
+                    &&& final(self).ops() == old(self).ops().push(FsMutOp::Mutate(path))
                     &&& Fs::file_exists(old(self).epoch(), path)
                     &&& !Fs::file_is_dir(old(self).epoch(), path) // `create` does not create directories
                     &&& file.inv()
@@ -739,7 +673,7 @@ pub fn create(&mut self, path: &str) -> (ret: Result<File>)
                 },
                 Err(e) => {
                     &&& e.is_fs_error()
-                    &&& self.ops() == old(self).ops()
+                    &&& final(self).ops() == old(self).ops()
                     &&& matches!(e.kind(),
                         ErrorKind::PermissionDenied | ErrorKind::QuotaExceeded |
                         ErrorKind::FileTooLarge | ErrorKind::Interrupted |
@@ -771,13 +705,13 @@ pub fn create_new(&mut self, path: &str) -> (ret: Result<File>)
     requires
         old(self).read_dir_count() == 0,
     ensures
-        old(self) <= self,
+        old(self) <= final(self),
         ({
             let path = path@.as_path().normalize();
-            let t = Fs::between(old(self), self);
+            let t = Fs::between(old(self), final(self));
             match ret {
                 Ok(file) => {
-                    &&& self.ops() == old(self).ops().push(FsMutOp::Mutate(path))
+                    &&& final(self).ops() == old(self).ops().push(FsMutOp::Mutate(path))
                     &&& !Fs::file_exists(old(self).epoch(), path) && Fs::file_exists(t, path)
                     &&& !Fs::file_is_dir(t, path) // `create_new` does not create directories
                     &&& file.inv()
@@ -790,7 +724,7 @@ pub fn create_new(&mut self, path: &str) -> (ret: Result<File>)
                 },
                 Err(e) => {
                     &&& e.is_fs_error()
-                    &&& self.ops() == old(self).ops()
+                    &&& final(self).ops() == old(self).ops()
                     &&& matches!(e.kind(),
                         ErrorKind::PermissionDenied | ErrorKind::ResourceBusy |
                         ErrorKind::QuotaExceeded | ErrorKind::FileTooLarge |
@@ -818,8 +752,8 @@ Enable `fs::read` (reads the entire contents of a file into a bytes vector).
 ```rust
 pub fn read(&mut self, path: &str) -> (ret: Result<Vec<u8>>)
     ensures
-        old(self) <= self,
-        self.ops() == old(self).ops(),
+        old(self) <= final(self),
+        final(self).ops() == old(self).ops(),
         ({
             let path = path@.as_path().normalize();
             match ret {
@@ -855,8 +789,8 @@ Enable `fs::read_to_string` (reads the entire contents of a file into a string).
 ```rust
 pub fn read_to_string(&mut self, path: &str) -> (ret: Result<String>)
     ensures
-        old(self) <= self,
-        self.ops() == old(self).ops(),
+        old(self) <= final(self),
+        final(self).ops() == old(self).ops(),
         ({
             let path = path@.as_path().normalize();
             match ret {
@@ -894,19 +828,19 @@ This function will create a file if it does not exist, and will entirely replace
 ```rust
 pub fn write(&mut self, path: &str, contents: &[u8]) -> (ret: Result<()>)
     ensures
-        old(self) <= self,
+        old(self) <= final(self),
         ({
             let path = path@.as_path().normalize();
             match ret {
                 Ok(_) => {
-                    &&& self.ops() == old(self).ops().push(FsMutOp::Mutate(path))
+                    &&& final(self).ops() == old(self).ops().push(FsMutOp::Mutate(path))
                     &&& Fs::file_exists(old(self).epoch(), path)
                     &&& !Fs::file_is_dir(old(self).epoch(), path) // `write` does not work on directories
                     &&& Fs::file(old(self).epoch(), path) =~= contents@
                 },
                 Err(e) => {
                     &&& e.is_fs_error()
-                    &&& self.ops() == old(self).ops()
+                    &&& final(self).ops() == old(self).ops()
                     &&& matches!(e.kind(),
                         ErrorKind::PermissionDenied | ErrorKind::QuotaExceeded |
                         ErrorKind::FileTooLarge | ErrorKind::Interrupted |
@@ -936,19 +870,19 @@ pub fn remove(&mut self, path: &str) -> (ret: Result<()>)
     requires
         old(self).read_dir_count() == 0,
     ensures
-        old(self) <= self,
+        old(self) <= final(self),
         ({
             let path = path@.as_path().normalize();
-            let t = Fs::between(old(self), self);
+            let t = Fs::between(old(self), final(self));
             match ret {
                 Ok(_) => {
-                    &&& self.ops() == old(self).ops().push(FsMutOp::Delete(path))
+                    &&& final(self).ops() == old(self).ops().push(FsMutOp::Delete(path))
                     &&& Fs::file_exists(old(self).epoch(), path) && !Fs::file_exists(t, path)
                     &&& !Fs::file_is_dir(old(self).epoch(), path) // `remove` does not remove directories
                 },
                 Err(e) => {
                     &&& e.is_fs_error()
-                    &&& self.ops() == old(self).ops()
+                    &&& final(self).ops() == old(self).ops()
                     &&& matches!(e.kind(),
                         ErrorKind::PermissionDenied | ErrorKind::ResourceBusy |
                         ErrorKind::IsADirectory | ErrorKind::InvalidFilename |
@@ -974,13 +908,13 @@ pub fn create_dir(&mut self, path: &str) -> (ret: Result<()>)
     requires
         old(self).read_dir_count() == 0,
     ensures
-        old(self) <= self,
+        old(self) <= final(self),
         ({
             let path = path@.as_path().normalize();
-            let t = Fs::between(old(self), self);
+            let t = Fs::between(old(self), final(self));
             match ret {
                 Ok(_) => {
-                    &&& self.ops() == old(self).ops().push(FsMutOp::Mutate(path))
+                    &&& final(self).ops() == old(self).ops().push(FsMutOp::Mutate(path))
                     &&& !Fs::file_exists(old(self).epoch(), path) && Fs::file_exists(t, path)
                     &&& Fs::file_is_dir(t, path)
                     // directory is empty
@@ -988,7 +922,7 @@ pub fn create_dir(&mut self, path: &str) -> (ret: Result<()>)
                 },
                 Err(e) => {
                     &&& e.is_fs_error()
-                    &&& self.ops() == old(self).ops()
+                    &&& final(self).ops() == old(self).ops()
                     &&& matches!(e.kind(),
                         ErrorKind::PermissionDenied | ErrorKind::QuotaExceeded |
                         ErrorKind::AlreadyExists | ErrorKind::InvalidInput |
@@ -1015,13 +949,13 @@ pub fn remove_dir(&mut self, path: &str) -> (ret: Result<()>)
     requires
         old(self).read_dir_count() == 0,
     ensures
-        old(self) <= self,
+        old(self) <= final(self),
         ({
             let path = path@.as_path().normalize();
-            let t = Fs::between(old(self), self);
+            let t = Fs::between(old(self), final(self));
             match ret {
                 Ok(_) => {
-                    &&& self.ops() == old(self).ops().push(FsMutOp::Delete(path))
+                    &&& final(self).ops() == old(self).ops().push(FsMutOp::Delete(path))
                     &&& Fs::file_exists(old(self).epoch(), path) && !Fs::file_exists(t, path)
                     &&& Fs::file_is_dir(old(self).epoch(), path)
                     // directory was empty
@@ -1029,7 +963,7 @@ pub fn remove_dir(&mut self, path: &str) -> (ret: Result<()>)
                 },
                 Err(e) => {
                     &&& e.is_fs_error()
-                    &&& self.ops() == old(self).ops()
+                    &&& final(self).ops() == old(self).ops()
                     &&& matches!(e.kind(),
                         ErrorKind::PermissionDenied | ErrorKind::ResourceBusy |
                         ErrorKind::InvalidInput | ErrorKind::InvalidFilename |
@@ -1060,46 +994,50 @@ Enables `fs::read_dir` (returns an iterator over the entries within a directory)
 NOTE: the result of `read_dir` is unspecified if files are added to / removed from the directory
 in between calls (https://pubs.opengroup.org/onlinepubs/007904875/functions/readdir_r.html),
 in which case specification becomes impossible.
-As such, Verge tracks the number of outstanding `ReadDir`s with `read_dir_count`, and
+As such, Verge tracks the number of outstanding `VergeReadDir`s with `read_dir_count`, and
 further requires the count to be 0 before performing any operation that would alter
 directories (e.g., creating a file). Note that banning access of the entire file system
 is necessary because of potential links - `Fs::create` may create a file under
-a `ReadDir`-referenced directory, even if the path appears lexically different.
+a `VergeReadDir`-referenced directory, even if the path appears lexically different.
 
 ```rust
-pub fn read_dir(&mut self, path: &str) -> (ret: Result<ReadDir>)
+pub fn read_dir(&mut self, path: &str) -> (ret: Result<VergeReadDir>)
     ensures
-        old(self) <= self,
-        self.ops() == old(self).ops(),
+        old(self) <= final(self),
+        final(self).ops() == old(self).ops(),
         ({
             let path = path@.as_path();
             match ret {
                 Ok(dirs) => {
-                    &&& self.read_dir_count() == old(self).read_dir_count() + 1
+                    &&& final(self).read_dir_count() == old(self).read_dir_count() + 1
                     &&& Fs::file_exists(old(self).epoch(), path)
                     &&& Fs::file_is_dir(old(self).epoch(), path)
-                    &&& dirs.inv()
                     // the order of entries is unspecified
                     &&& {
-                        let (index, seq) = dirs@;
-                        &&& index == 0
-                        &&& seq.len() <= Fs::files_in_dir(old(self).epoch(), path).len()
-                        // only the last item could be an error
-                        &&& forall|i: int| 0 <= i < seq.len() - 1 ==> #[trigger] seq[i].is_ok()
+                        let seq = dirs.seq();
+                        &&& dirs.idx() == 0
+                        &&& seq.len() == Fs::files_in_dir(old(self).epoch(), path).len()
                         // error semantics
-                        &&& seq.last().is_err() ==> spec_unwrap_err(seq.last()).is_fs_error()
-                        // non-error item is an entry
-                        &&& forall|i: int| 0 <= i < seq.len() && #[trigger] seq[i].is_ok()
-                            ==> Fs::files_in_dir(old(self).epoch(), path)
-                                    .contains(spec_unwrap(seq[i])@.normalize())
-                        // if no error, then all entries have been visited
-                        &&& (forall|i: int| 0 <= i < seq.len() ==> #[trigger] seq[i].is_ok())
-                            ==> seq.len() == Fs::files_in_dir(old(self).epoch(), path).len()
+                        &&& forall|i: int| 0 <= i < seq.len() && #[trigger] seq[i].is_err()
+                            ==> spec_unwrap_err(seq[i]).is_fs_error()
+                        // non-error items form a subset of the entries
+                        &&& {
+                            let items = seq.filter_map(
+                                |item: Result<DirEntry>|
+                                if item.is_ok() {
+                                    Some(spec_unwrap(item)@.normalize())
+                                } else {
+                                    None
+                                }
+                            );
+                            &&& items.no_duplicates()
+                            &&& items.to_set().subset_of(Fs::files_in_dir(old(self).epoch(), path))
+                        }
                     }
                 },
                 Err(e) => {
                     &&& e.is_fs_error()
-                    &&& self.read_dir_count() == old(self).read_dir_count()
+                    &&& final(self).read_dir_count() == old(self).read_dir_count()
                     &&& matches!(e.kind(),
                         ErrorKind::PermissionDenied | ErrorKind::FileTooLarge |
                         ErrorKind::Interrupted | ErrorKind::InvalidInput |
@@ -1126,8 +1064,8 @@ Enables `fs::metadata` (queries the file system to get information about a file)
 ```rust
 pub fn metadata(&mut self, path: &str) -> (ret: Result<Metadata>)
     ensures
-        old(self) <= self,
-        self.ops() == old(self).ops(),
+        old(self) <= final(self),
+        final(self).ops() == old(self).ops(),
         ({
             let path = path@.as_path().normalize();
             match ret {
@@ -1147,4 +1085,29 @@ pub fn metadata(&mut self, path: &str) -> (ret: Result<Metadata>)
                 },
             }
         }),
+```
+
+
+### `impl VergeReadDir`
+
+```rust
+impl VergeReadDir
+```
+
+
+#### `seal`
+
+Drops the iterator and decreases `read_dir_count`.
+
+This is essentially explicitly calling `drop`, but with `spec` to
+update the file system states.
+
+```rust
+pub fn seal(self, fs: &mut Fs)
+    requires
+        old(fs).read_dir_count() > 0,
+    ensures
+        old(fs) <= final(fs),
+        old(fs).ops() == final(fs).ops(),
+        old(fs).read_dir_count() - 1 == final(fs).read_dir_count(),
 ```

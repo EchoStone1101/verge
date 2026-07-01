@@ -13,9 +13,10 @@ to Verus than supported in `vstd`. This process is deliberately kept minimal:
 Verge adds only *specification*, not *implementation*.
 
 # Tests as Examples
-Verge specifications come with unit tests (`mod tests`), in the form of private `exec fn`s
-that use the Verge specs to specify and prove properties (automatically checked by Verus).
-These tests also double as examples, showing how the Verge APIs can be used.
+Verge specifications come with integration tests in the `verge_tests` crate, in the form of
+private `exec fn`s that use the public Verge APIs to specify and prove properties
+(automatically checked by Verus). These tests also double as examples, showing how the Verge
+APIs can be used from a downstream crate.
 
 
 ## Traits
@@ -39,7 +40,65 @@ pub trait ExAsMut<T: std::marker::PointeeSized>: std::marker::PointeeSized
 ```
 
 
+### `VergeView`
+
+The `VergeView` trait adds the `view` method to a type that otherwise
+does not implement `vstd::View`.
+Semantically it is equivalent to implement `view` as part of the type's `impl` block,
+but `VergeView` has the advantage of working as a trait bound.
+
+```rust
+pub trait VergeView
+```
+
+
+#### `V`
+
+```rust
+type V;
+```
+
+
+#### `view`
+
+```rust
+spec fn view(&self) -> Self::V;
+```
+
+
 ## Functions
+
+
+### `is_deterministic`
+
+This function encodes whether an `exec`-mode function `f` is deterministic.
+
+```rust
+pub open spec fn is_deterministic<F, Args: Tuple>(f: F) -> bool
+    where
+    F: FnMut<Args>,
+    Args: Tuple,
+{
+        forall |args: Args, o1: <F as FnOnce<Args>>::Output, o2: <F as FnOnce<Args>>::Output|
+            #![trigger call_ensures(f, args, o1), call_ensures(f, args, o2)]
+            call_requires(f, args) && call_ensures(f, args, o1) && call_ensures(f, args, o2) ==> o1 == o2
+}
+```
+
+
+### `is_total`
+
+This function encodes whether an `exec`-mode function `f` is total.
+
+```rust
+pub open spec fn is_total<F, Args: Tuple>(f: F) -> bool
+    where
+    F: FnMut<Args>,
+    Args: Tuple,
+{
+        forall |args: Args| #[trigger] call_requires(f, args)
+}
+```
 
 
 ### `dummy`
@@ -57,44 +116,4 @@ Used for a dummy two-term trigger.
 
 ```rust
 pub uninterp spec fn dummy2<A, B>(a: A, b: B) -> ();
-```
-
-
-### `box_as_ref`
-
-Enables `Box::<T>::as_ref`.
-
-```rust
-pub uninterp spec fn box_as_ref<T: ?Sized, A: Allocator>(ptr: &Box<T, A>) -> &T;
-```
-
-
-### `Box::<T, A>::as_ref`
-
-```rust
-pub assume_specification<T: ?Sized, A: Allocator>[ Box::<T, A>::as_ref ](this: &Box<T, A>) -> (ret: &T)
-    ensures
-        this == ret,
-    no_unwind
-        ;
-```
-
-
-### `rc_as_ref`
-
-Enables `Rc::<T>::as_ref`.
-
-```rust
-pub uninterp spec fn rc_as_ref<T: ?Sized, A: Allocator>(ptr: &Rc<T, A>) -> &T;
-```
-
-
-### `Rc::<T, A>::as_ref`
-
-```rust
-pub assume_specification<T: ?Sized, A: Allocator>[ Rc::<T, A>::as_ref ](this: &Rc<T, A>) -> (ret: &T)
-    ensures
-        this == ret,
-    no_unwind
-        ;
 ```

@@ -41,38 +41,6 @@ pub struct PathView
 ```
 
 
-### `Ancestors`
-
-```rust
-pub struct Ancestors<'a>(std::path::Ancestors<'a>);
-```
-
-
-### `ExAncestors`
-
-Enable `std::path::Ancestors` as an iterator.
-
-```rust
-pub struct ExAncestors<'a>(Ancestors<'a>);
-```
-
-
-### `Iter`
-
-```rust
-pub struct Iter<'a>(std::path::Iter<'a>);
-```
-
-
-### `ExIter`
-
-Enable `std::path::Iter` as an iterator.
-
-```rust
-pub struct ExIter<'a>(Iter<'a>);
-```
-
-
 ## Traits
 
 
@@ -107,13 +75,6 @@ pub trait PathAdditionalFns
 
 ```rust
 spec fn str_view(&self) -> Seq<char>;
-```
-
-
-#### `view`
-
-```rust
-spec fn view(&self) -> PathView;
 ```
 
 
@@ -170,13 +131,6 @@ pub trait PathBufAdditionalFns
 
 ```rust
 spec fn str_view(&self) -> Seq<char>;
-```
-
-
-#### `view`
-
-```rust
-spec fn view(&self) -> PathView;
 ```
 
 
@@ -333,18 +287,22 @@ pub assume_specification [ Path::parent ] (p: &Path) -> (ret: Option<&Path>)
 ```
 
 
-### `impl_iterator_verge!(path_ancestors)`
+### `impl_iterator!(Ancestors)`
+
+Specifies the iterator `VergeAncestors` which wraps `Ancestors`,
+contructed via `path::ancestors_iter()`.
 
 ```rust
-impl_iterator_verge!(
-    Ancestors['a] where Item = &'a Path
-    [ path_ancestors via Path::ancestors ] (p: &'a Path) -> |seq| {
-    let norm = p@.normalize();
+impl_iterator!(
+    [ Ancestors['a] as VergeAncestors['_] :: Item = &'a Path ]
+    [ [Path as VergeView<V=PathView>] :: ancestors_iter via ancestors ]
+    (&self,) -> |seq| {
+    let norm = self@.normalize();
     &&& seq.len() == norm.path.len() + 1
     &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
     ==> {
     &&& seq[i]@.is_normalized()
-    &&& seq[i]@.abs == p@.abs
+    &&& seq[i]@.abs == self@.abs
     &&& seq[i]@.path == norm.path.take(norm.path.len() - i)
     }
     }
@@ -352,30 +310,43 @@ impl_iterator_verge!(
 ```
 
 
-### `path_iter`
+### `impl_iterator!(Iter)`
 
-Enables `Path::iter()`.
+Specifies the iterator `VergeIter` which wraps `Iter`,
+contructed via `path::iterate()`.
 
 ```rust
-pub fn path_iter<'a>(p: &'a Path) -> (ret: Iter<'a>)
-    ensures
-        ({
-            let (index, seq) = ret@;
-            let norm = p@.normalize();
-            &&& index == 0
-            &&& !norm.abs ==> {
-                &&& seq.len() == norm.path.len()
-                &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
-                    ==> seq[i]@ == norm.path[i].drop_last()
-            }
-            &&& norm.abs ==> {
-                &&& seq.len() == norm.path.len() + 1
-                &&& seq[0]@ == seq![MAIN_SEPARATOR]
-                &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
-                    ==> seq[i+1]@ == norm.path[i].drop_last()
-            }
-        }),
-    no_unwind
+impl_iterator!(
+    [ Iter['a] as VergeIter['_] :: Item = &'a str ]
+    [ [Path as VergeView<V=PathView>] :: iterate via iter ]
+    #[custom_next]
+    (&self,) -> |seq| {
+    let norm = self@.normalize();
+    &&& !norm.abs ==> {
+    &&& seq.len() == norm.path.len()
+    &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
+    ==> seq[i]@ == norm.path[i].drop_last()
+    }
+    &&& norm.abs ==> {
+    &&& seq.len() == norm.path.len() + 1
+    &&& seq[0]@ == seq![MAIN_SEPARATOR]
+    &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
+    ==> seq[i+1]@ == norm.path[i].drop_last()
+    }
+    }
+    );
+```
+
+
+### `impl_double_ended_iterator!(custom_next)`
+
+Specifies the iterator `VergeIter` as a double-ended iterator.
+
+```rust
+impl_double_ended_iterator!(
+    #[custom_next]
+    Iter as VergeIter ['a] :: Item = &'a str
+    );
 ```
 
 
@@ -424,7 +395,7 @@ Enable `PathBuf::clear`.
 ```rust
 pub assume_specification [ PathBuf::clear ] (buf: &mut PathBuf)
     ensures
-        buf.str_view() == Seq::<char>::empty(),
+        final(buf).str_view() == Seq::<char>::empty(),
     no_unwind
         ;
 ```
@@ -440,8 +411,8 @@ pub assume_specification [ PathBuf::pop ] (buf: &mut PathBuf) -> (ret: bool)
         ({
             let norm = old(buf)@.normalize();
             &&& ret == (norm.path.len() > 0)
-            &&& ret ==> buf@.normalize() == norm.parent()
-            &&& !ret ==> *buf == *old(buf)
+            &&& ret ==> final(buf)@.normalize() == norm.parent()
+            &&& !ret ==> *final(buf) == *old(buf)
         }),
     no_unwind
         ;

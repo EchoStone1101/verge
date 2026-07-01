@@ -11,15 +11,19 @@ The workspace has three crates:
 
 | Module | Covers |
 |--------|--------|
-| `str` | String specs: UTF-8, parsing, formatting, iteration, pattern matching |
+| `prelude` | Re-export surface for commonly used Verge traits, specs, and lemmas |
+| `clone` | Verified clone/copy traits and structural clone invariants |
+| `cmp` | Verified comparison traits plus generic lexicographic sequence specs and lemmas |
+| `env` | `std::env`: `Args`, `Vars`, environment variables |
+| `error` | Error semantics tagging (fs, I/O, UTF-8, parse errors) |
 | `fs` | File system: `File`, `ReadDir`, `DirEntry`, path, metadata |
 | `io` | I/O traits and impls: `Read`, `Write`, `BufReader`, stdio |
 | `iter` | `Iterator` trait specs, wrapper iterators, and constructor-method extensions |
-| `env` | `std::env`: `Args`, `Vars`, environment variables |
-| `error` | Error semantics tagging (fs, I/O, UTF-8, parse errors) |
 | `mem` | `forget`, `replace`, `copy_from_slice` |
 | `nt` | Number theory: GCD, LCM, Euler's totient |
+| `seq` | Extended `Seq` specs and sequence lemmas |
 | `set` | Extended set ops: Cartesian product, fold |
+| `str` | String specs: UTF-8, comparison, parsing, formatting, iteration, pattern matching |
 
 ## Defensive Spec Design
 
@@ -50,6 +54,10 @@ See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 **Iterator specs:** Use `impl_iterator!` for concrete iterator wrapper types and `impl_iterator_method!` for generic `Iterator` adapter methods; iterators are tracked as `(index: int, sequence: Seq<T>)`.
 
 **String model:** Strings are viewed as `Seq<char>`; byte-level reasoning uses `Seq<u8>` via `vstd::utf8` conversion.
+
+**Comparison specs:** `cmp` defines `PartialEqVerified`, `EqVerified`, `PartialOrdVerified`, and `OrdVerified` proof traits. Generic `lexico_cmp`/`lexico_eq` specs and lemmas live in `cmp::lexico` and are re-exported from `cmp`; private helper proofs live in `cmp::internal`. `lexico_cmp` is recursive; `lemma_lexico_cmp_by_prefix` links it to the first-non-`Equal` prefix formulation used by tuple-style proofs.
+
+**String comparison specs:** `str::cmp` links `str`/`String` `PartialEq`, `PartialOrd`, and `Ord` spec methods to byte-sequence `cmp::lexico_eq`/`cmp::lexico_cmp` via broadcast lemmas because Rust orphan rules prevent implementing vstd's spec traits directly for those standard types.
 
 **String pattern proofs:** Large `str::pattern` broadcast lemmas live in internal submodules organized by API (for example, `str::pattern::split` and `str::pattern::rmatch_indices`) and are re-exported from `str::pattern` to preserve the public API while reducing per-module proof burden; shared private helper lemmas live in `str::pattern::internal`.
 

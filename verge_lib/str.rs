@@ -41,7 +41,7 @@ verus! {
 
 pub mod chars;
 pub mod fmt;
-pub mod ord;
+pub mod cmp;
 pub mod iter;
 pub mod string;
 pub mod parse;
@@ -49,7 +49,7 @@ pub mod pattern;
 
 pub use chars::*;
 pub use fmt::*;
-pub use ord::*;
+pub use cmp::*;
 pub use iter::*;
 pub use string::*;
 pub use parse::*;

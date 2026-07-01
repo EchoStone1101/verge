@@ -102,32 +102,6 @@ pub struct ExCursor<T>(Cursor<T>);
 ## Traits
 
 
-### `ReadBuf`
-
-The `ReadBuf` trait defines types that can be used as the destination buffer for `Read::read`.
-
-It is essentially `AsMut<[u8]>` with a `View` bound. This has to be external due to Verus's
-limited support of `&mut`. See comments on `Read` for more information.
-
-```rust
-pub trait ReadBuf: View<V = Seq<u8>>
-```
-
-
-#### `as_mut`
-
-```rust
-fn as_mut(&mut self, range: Option<Range<usize>>) -> &mut [u8];
-```
-
-
-### `ExReadBuf`
-
-```rust
-pub trait ExReadBuf: View<V = Seq<u8>>
-```
-
-
 ### `ExRead`
 
 ```rust
@@ -153,18 +127,14 @@ pub trait ExWrite
 
 The `Read` trait allows for reading bytes from a source.
 
-### Notes on the interface
-`Read::read()`'s interface is different from `std::io::Read::read()`, in that the buffer is `&mut B where B: ReadBuf`
-instead of `&mut [u8]`, and it also accepts an extra argument `range: Option<Range>` for writing to a
-subrange of the read buffer.
-
-This is entirely a workaround for Verus's limited support of `&mut`. In native Rust, the caller
-can produce an `&mut` subrange from various actual buffers like `[u8; N]` or `Vec<u8>`.
-However, `&mut` at the return position is currently forbidden in Verus, making such an interface
-essentially unusable.
-
-We solve this with the `ReadBuf` trait and the separate `range` argument. Implementors of `ReadBuf`
-bypass the `&mut` issue by using external operations.
+### Notes on using the interface
+Verus does not yet support `IndexMut` with range types (no `&mut buf[start..end]`).
+To read into a sub-range of a buffer, use `split_at_mut`:
+```rust,ignore
+let (_, target) = buf.split_at_mut(start);
+let (write_area, _) = target.split_at_mut(end - start);
+reader.read(write_area)
+```
 
 ```rust
 pub trait Read: ReadSpec
@@ -176,38 +146,29 @@ pub trait Read: ReadSpec
 Pull some bytes from this source into the specified buffer, returning how many bytes were read.
 
 ```rust
-fn read<B: ReadBuf + ?Sized>(&mut self, buf: &mut B, range: Option<Range<usize>>) -> (res: Result<usize>)
+fn read(&mut self, buf: &mut [u8]) -> (res: Result<usize>)
     requires
         old(self).read_inv(),
-        match range {
-            Some(range) => 0 <= range.start <= range.end <= old(buf)@.len(),
-            _ => true,
-        },
     ensures
-        self.read_inv(),
+        final(self).read_inv(),
         ({
-            let (start, end) = match range {
-                Some(range) => (range.start as int, range.end as int),
-                _ => (0int, buf@.len() as int),
-            };
             match res {
                 Ok(nread) => {
-                    &&& nread <= old(self).bytes().len() && nread <= end - start
-                    &&& buf@ =~=
-                        old(buf)@.take(start)
-                        + old(self).bytes().take(nread as int)
-                        + old(buf)@.skip(start + nread as int)
-                    &&& self.bytes() =~= old(self).bytes().skip(nread as int)
+                    &&& nread <= old(self).bytes().len() && nread <= old(buf)@.len()
+                    &&& final(buf)@ =~=
+                        old(self).bytes().take(nread as int)
+                        + old(buf)@.skip(nread as int)
+                    &&& final(self).bytes() =~= old(self).bytes().skip(nread as int)
                     // ^ basic read semantics
-                    &&& Self::read_ok(old(self), self)
-                    &&& end - start > 0 && nread == 0 ==> self.read_eof()
+                    &&& Self::read_ok(old(self), final(self))
+                    &&& old(buf)@.len() > 0 && nread == 0 ==> final(self).read_eof()
                 },
                 Err(e) => {
-                    &&& self.bytes() =~= old(self).bytes()
-                    &&& buf@ =~= old(buf)@
-                    &&& e.kind() == ErrorKind::Interrupted ==> Self::read_ok(old(self), self)
+                    &&& final(self).bytes() =~= old(self).bytes()
+                    &&& final(buf)@ =~= old(buf)@
+                    &&& e.kind() == ErrorKind::Interrupted ==> Self::read_ok(old(self), final(self))
                     // ^ basic error semantics
-                    &&& Self::read_err(e, old(self), self)
+                    &&& Self::read_err(e, old(self), final(self))
                 }
             }
         }),
@@ -225,24 +186,24 @@ fn read_to_end(&mut self, buf: &mut Vec<u8>) -> (res: Result<usize>)
         old(self).read_inv(),
         old(self).bytes().len() <= isize::MAX,
     ensures
-        self.read_inv(),
+        final(self).read_inv(),
         ({
             match res {
                 Ok(nread) => {
-                    &&& self.read_eof()
-                    &&& nread <= old(self).bytes().len() && buf@.len() == old(buf)@.len() + nread
-                    &&& buf@ =~= old(buf)@ + old(self).bytes().take(nread as int)
-                    &&& self.bytes() =~= old(self).bytes().skip(nread as int)
-                    &&& Self::read_ok(old(self), self)
+                    &&& final(self).read_eof()
+                    &&& nread <= old(self).bytes().len() && final(buf)@.len() == old(buf)@.len() + nread
+                    &&& final(buf)@ =~= old(buf)@ + old(self).bytes().take(nread as int)
+                    &&& final(self).bytes() =~= old(self).bytes().skip(nread as int)
+                    &&& Self::read_ok(old(self), final(self))
                 },
                 Err(e) => {
-                    let nread = old(self).bytes().len() - self.bytes().len();
+                    let nread = old(self).bytes().len() - final(self).bytes().len();
                     &&& nread >= 0
-                    &&& self.bytes() =~= old(self).bytes().skip(nread)
-                    &&& buf@ =~= old(buf)@ + old(self).bytes().take(nread)
+                    &&& final(self).bytes() =~= old(self).bytes().skip(nread)
+                    &&& final(buf)@ =~= old(buf)@ + old(self).bytes().take(nread)
                     //  ^ bytes already read are in `buf`
                     &&& e.kind() != ErrorKind::Interrupted // interrupts are retried
-                    &&& Self::read_err(e, old(self), self)
+                    &&& Self::read_err(e, old(self), final(self))
                 },
             }
         }),
@@ -262,27 +223,27 @@ fn read_to_string(&mut self, buf: &mut String) -> (res: Result<(usize)>)
         old(self).read_inv(),
         old(self).bytes().len() <= isize::MAX,
     ensures
-        self.read_inv(),
+        final(self).read_inv(),
         ({
             match res {
                 Ok(nread) => {
-                    &&& self.read_eof()
+                    &&& final(self).read_eof()
                     &&& nread <= old(self).bytes().len()
                     &&& old(self).bytes().take(nread as int).is_utf8()
-                    &&& buf@.as_bytes() =~= old(buf)@.as_bytes() + old(self).bytes().take(nread as int)
-                    &&& self.bytes() =~= old(self).bytes().skip(nread as int)
-                    &&& Self::read_ok(old(self), self)
+                    &&& final(buf)@.as_bytes() =~= old(buf)@.as_bytes() + old(self).bytes().take(nread as int)
+                    &&& final(self).bytes() =~= old(self).bytes().skip(nread as int)
+                    &&& Self::read_ok(old(self), final(self))
                 },
                 Err(e) => {
-                    let nread = old(self).bytes().len() - self.bytes().len();
+                    let nread = old(self).bytes().len() - final(self).bytes().len();
                     &&& nread >= 0
-                    &&& self.bytes() =~= old(self).bytes().skip(nread)
-                    &&& buf@ =~= old(buf)@
+                    &&& final(self).bytes() =~= old(self).bytes().skip(nread)
+                    &&& final(buf)@ =~= old(buf)@
                     //  ^ bytes already read are *not* in `buf`
                     &&& e.kind() == ErrorKind::InvalidData ==>
                             !old(self).bytes().take(nread).is_utf8()
                     &&& e.kind() != ErrorKind::Interrupted // interrupts are retried
-                    &&& Self::read_err(e, old(self), self)
+                    &&& Self::read_err(e, old(self), final(self))
                 },
             }
         }),
@@ -295,23 +256,23 @@ fn read_to_string(&mut self, buf: &mut String) -> (res: Result<(usize)>)
 Reads the exact number of bytes required to fill `buf`.
 
 ```rust
-fn read_exact<B: ReadBuf>(&mut self, buf: &mut B) -> (res: Result<()>)
+fn read_exact(&mut self, buf: &mut [u8]) -> (res: Result<()>)
     requires
         old(self).read_inv(),
     ensures
-        self.read_inv(),
+        final(self).read_inv(),
         ({
             match res {
                 Ok(_) => {
                     &&& old(buf)@.len() <= old(self).bytes().len()
-                    &&& buf@ =~= old(self).bytes().take(old(buf)@.len() as int)
-                    &&& self.bytes() =~= old(self).bytes().skip(old(buf)@.len() as int)
-                    &&& Self::read_ok(old(self), self)
+                    &&& final(buf)@ =~= old(self).bytes().take(old(buf)@.len() as int)
+                    &&& final(self).bytes() =~= old(self).bytes().skip(old(buf)@.len() as int)
+                    &&& Self::read_ok(old(self), final(self))
                 },
                 Err(e) => {
                     &&& e.kind() != ErrorKind::Interrupted // interrupts are retried
-                    &&& e.kind() == ErrorKind::UnexpectedEof ==> self.read_eof()
-                    &&& Self::read_err(e, old(self), self)
+                    &&& e.kind() == ErrorKind::UnexpectedEof ==> final(self).read_eof()
+                    &&& Self::read_err(e, old(self), final(self))
                 },
             }
         }),
@@ -390,7 +351,7 @@ spec fn read_eof(&self) -> bool;
 open spec fn read_ok_extra_ensures(
     pre_self: &Self, post_self: &Self,
     pre_buf: Seq<u8>, post_buf: Seq<u8>,
-    range: Option<Range<usize>>, res: Result<usize>,
+    res: Result<usize>,
     ) -> bool { true }
 
     proof fn read_ok_is_reflexive(inst: &Self)
@@ -449,23 +410,23 @@ fn fill_buf(&mut self) -> (res: Result<&[u8]>)
     requires
         old(self).read_inv(),
     ensures
-        self.read_inv(),
-        self.bytes() =~= old(self).bytes(),
+        final(self).read_inv(),
+        final(self).bytes() =~= old(self).bytes(),
         match res {
             Ok(buf) => ({
                 let buflen = buf@.len();
-                &&& buf@ =~= self.buffer()
+                &&& buf@ =~= final(self).buffer()
                 &&& buflen <= old(self).bytes().len()
-                &&& self.buffer() =~= old(self).bytes().take(buflen as int)
-                &&& Self::read_ok(old(self), self)
-                &&& buflen == 0 ==> self.read_eof()
+                &&& final(self).buffer() =~= old(self).bytes().take(buflen as int)
+                &&& Self::read_ok(old(self), final(self))
+                &&& buflen == 0 ==> final(self).read_eof()
             }),
             Err(e) => ({
                 // effectively one failed `read`
-                &&& old(self).buffer().len() == 0 && self.buffer().len() == 0
-                &&& self.buffer() =~= old(self).buffer()
-                &&& e.kind() == ErrorKind::Interrupted ==> Self::read_ok(old(self), self)
-                &&& Self::read_err(e, old(self), self)
+                &&& old(self).buffer().len() == 0 && final(self).buffer().len() == 0
+                &&& final(self).buffer() =~= old(self).buffer()
+                &&& e.kind() == ErrorKind::Interrupted ==> Self::read_ok(old(self), final(self))
+                &&& Self::read_err(e, old(self), final(self))
             })
         },
         ;
@@ -483,11 +444,11 @@ fn consume(&mut self, amount: usize)
         old(self).read_inv(),
         amount <= old(self).buffer().len(),
     ensures
-        self.read_inv(),
-        self.buffer() =~= old(self).buffer().skip(amount as int),
-        self.bytes() =~= old(self).bytes().skip(amount as int),
-        Self::read_ok(old(self), self),
-        Self::read_eof(old(self)) ==> self.read_eof(),
+        final(self).read_inv(),
+        final(self).buffer() =~= old(self).buffer().skip(amount as int),
+        final(self).bytes() =~= old(self).bytes().skip(amount as int),
+        Self::read_ok(old(self), final(self)),
+        Self::read_eof(old(self)) ==> final(self).read_eof(),
         ;
 ```
 
@@ -506,26 +467,26 @@ fn read_until(&mut self, byte: u8, buf: &mut Vec<u8>) -> (res: Result<usize>)
         old(self).read_inv(),
         old(self).bytes().len() <= isize::MAX,
     ensures
-        self.read_inv(),
+        final(self).read_inv(),
         ({
             match res {
                 Ok(nread) => ({
                     &&& nread <= old(self).bytes().len()
-                    &&& buf@ =~= old(buf)@ + old(self).bytes().take(nread as int)
-                    &&& self.bytes() =~= old(self).bytes().skip(nread as int)
-                    &&& forall|i: int| #![auto] old(buf)@.len() <= i < buf@.len() - 1 ==> buf[i] != byte
-                    &&& (nread == 0 || buf@.last() != byte) ==> self.read_eof()
-                    &&& Self::read_ok(old(self), self)
+                    &&& final(buf)@ =~= old(buf)@ + old(self).bytes().take(nread as int)
+                    &&& final(self).bytes() =~= old(self).bytes().skip(nread as int)
+                    &&& forall|i: int| #![auto] old(buf)@.len() <= i < final(buf)@.len() - 1 ==> final(buf)[i] != byte
+                    &&& (nread == 0 || final(buf)@.last() != byte) ==> final(self).read_eof()
+                    &&& Self::read_ok(old(self), final(self))
                 }),
                 Err(e) => ({
-                    let nread = old(self).bytes().len() - self.bytes().len();
+                    let nread = old(self).bytes().len() - final(self).bytes().len();
                     &&& nread >= 0
-                    &&& self.bytes() =~= old(self).bytes().skip(nread)
-                    &&& buf@ =~= old(buf)@ + old(self).bytes().take(nread)
-                    &&& forall|i: int| #![auto] old(buf)@.len() <= i < buf@.len() ==> buf[i] != byte
+                    &&& final(self).bytes() =~= old(self).bytes().skip(nread)
+                    &&& final(buf)@ =~= old(buf)@ + old(self).bytes().take(nread)
+                    &&& forall|i: int| #![auto] old(buf)@.len() <= i < final(buf)@.len() ==> final(buf)[i] != byte
                     //  ^ bytes already read are in `buf`
                     &&& e.kind() != ErrorKind::Interrupted // interrupts are retried
-                    &&& Self::read_err(e, old(self), self)
+                    &&& Self::read_err(e, old(self), final(self))
                 }),
             }
         }),
@@ -546,23 +507,23 @@ fn skip_until(&mut self, byte: u8) -> (res: Result<usize>)
         old(self).read_inv(),
         old(self).bytes().len() <= isize::MAX,
     ensures
-        self.read_inv(),
+        final(self).read_inv(),
         ({
             match res {
                 Ok(nread) => ({
                     &&& nread <= old(self).bytes().len()
-                    &&& self.bytes() =~= old(self).bytes().skip(nread as int)
+                    &&& final(self).bytes() =~= old(self).bytes().skip(nread as int)
                     &&& forall|i: int| #![auto] 0 <= i < nread as int - 1 ==> old(self).bytes()[i] != byte
-                    &&& (nread == 0 || old(self).bytes()[nread as int - 1] != byte) ==> self.read_eof()
-                    &&& Self::read_ok(old(self), self)
+                    &&& (nread == 0 || old(self).bytes()[nread as int - 1] != byte) ==> final(self).read_eof()
+                    &&& Self::read_ok(old(self), final(self))
                 }),
                 Err(e) => ({
-                    let nread = old(self).bytes().len() - self.bytes().len();
+                    let nread = old(self).bytes().len() - final(self).bytes().len();
                     &&& nread >= 0
-                    &&& self.bytes() =~= old(self).bytes().skip(nread)
+                    &&& final(self).bytes() =~= old(self).bytes().skip(nread)
                     &&& forall|i: int| #![auto] 0 <= i < nread ==> old(self).bytes()[i] != byte
                     &&& e.kind() != ErrorKind::Interrupted // interrupts are retried
-                    &&& Self::read_err(e, old(self), self)
+                    &&& Self::read_err(e, old(self), final(self))
                 }),
             }
         }),
@@ -589,22 +550,22 @@ fn read_line(&mut self, buf: &mut String) -> (res: Result<usize>)
                 Ok(nread) => ({
                     &&& nread <= old(self).bytes().len()
                     &&& old(self).bytes().take(nread as int).is_utf8()
-                    &&& buf@.as_bytes() =~= old(buf)@.as_bytes() + old(self).bytes().take(nread as int)
-                    &&& self.bytes() =~= old(self).bytes().skip(nread as int)
-                    &&& forall|i: int| old(buf)@.len() <= i < buf@.len() - 1 ==> #[trigger] buf@[i] != 0xA
-                    &&& (nread == 0 || buf@.last() != 0xA) ==> self.read_eof()
-                    &&& Self::read_ok(old(self), self)
+                    &&& final(buf)@.as_bytes() =~= old(buf)@.as_bytes() + old(self).bytes().take(nread as int)
+                    &&& final(self).bytes() =~= old(self).bytes().skip(nread as int)
+                    &&& forall|i: int| old(buf)@.len() <= i < final(buf)@.len() - 1 ==> #[trigger] final(buf)@[i] != 0xA
+                    &&& (nread == 0 || final(buf)@.last() != 0xA) ==> final(self).read_eof()
+                    &&& Self::read_ok(old(self), final(self))
                 }),
                 Err(e) => ({
-                    let nread = old(self).bytes().len() - self.bytes().len();
+                    let nread = old(self).bytes().len() - final(self).bytes().len();
                     &&& nread >= 0
-                    &&& self.bytes() =~= old(self).bytes().skip(nread)
-                    &&& buf@ =~= old(buf)@
+                    &&& final(self).bytes() =~= old(self).bytes().skip(nread)
+                    &&& final(buf)@ =~= old(buf)@
                     //  ^ bytes already read are *not* in `buf`
                     &&& e.kind() == ErrorKind::InvalidData ==>
                             !old(self).bytes().take(nread).is_utf8()
                     &&& e.kind() != ErrorKind::Interrupted // interrupts are retried
-                    &&& Self::read_err(e, old(self), self)
+                    &&& Self::read_err(e, old(self), final(self))
                 }),
             }
         }),
@@ -666,21 +627,21 @@ fn write(&mut self, buf: &[u8]) -> (res: Result<usize>)
     requires
         old(self).write_inv(),
     ensures
-        self.write_inv(),
+        final(self).write_inv(),
         ({
             match res {
                 Ok(nwritten) => {
                     &&& nwritten <= buf@.len()
-                    &&& self.bytes() =~= old(self).bytes() + buf@.take(nwritten as int)
+                    &&& final(self).bytes() =~= old(self).bytes() + buf@.take(nwritten as int)
                     // ^ basic write semantics
-                    &&& Self::write_ok(old(self), self)
-                    &&& buf@.len() > 0 && nwritten == 0 ==> self.write_eof()
+                    &&& Self::write_ok(old(self), final(self))
+                    &&& buf@.len() > 0 && nwritten == 0 ==> final(self).write_eof()
                 },
                 Err(e) => {
-                    &&& self.bytes() =~= old(self).bytes()
-                    &&& e.kind() == ErrorKind::Interrupted ==> Self::write_ok(old(self), self)
+                    &&& final(self).bytes() =~= old(self).bytes()
+                    &&& e.kind() == ErrorKind::Interrupted ==> Self::write_ok(old(self), final(self))
                     // ^ basic error semantics
-                    &&& Self::write_err(e, old(self), self)
+                    &&& Self::write_err(e, old(self), final(self))
                 }
             }
         }),
@@ -699,20 +660,20 @@ fn flush(&mut self) -> (res: Result<()>)
     requires
         old(self).write_inv(),
     ensures
-        self.write_inv(),
-        self.bytes() =~= old(self).bytes(),
+        final(self).write_inv(),
+        final(self).bytes() =~= old(self).bytes(),
         ({
             match res {
                 Ok(_) => {
-                    &&& self.buffer().len() == 0
-                    &&& Self::write_ok(old(self), self)
+                    &&& final(self).buffer().len() == 0
+                    &&& Self::write_ok(old(self), final(self))
                 },
                 Err(e) => {
-                    &&& self.buffer().len() <= old(self).buffer().len()
-                    &&& Self::write_err(e, old(self), self)
+                    &&& final(self).buffer().len() <= old(self).buffer().len()
+                    &&& Self::write_err(e, old(self), final(self))
                     &&& e.kind() != ErrorKind::Interrupted
                     &&& e.kind() == ErrorKind::WriteZero
-                        ==> self.write_eof()
+                        ==> final(self).write_eof()
                 }
             }
         }),
@@ -731,25 +692,25 @@ fn write_all(&mut self, buf: &[u8]) -> (res: Result<()>)
     requires
         old(self).write_inv(),
     ensures
-        self.write_inv(),
+        final(self).write_inv(),
         ({
             match res {
                 Ok(_) => {
                     let nwritten = buf@.len();
-                    &&& self.bytes() =~= old(self).bytes() + buf@
-                    &&& Self::write_ok(old(self), self)
-                    &&& buf@.len() > 0 && nwritten == 0 ==> self.write_eof()
-                    &&& buf@.len() == 0 ==> *self == *old(self)
+                    &&& final(self).bytes() =~= old(self).bytes() + buf@
+                    &&& Self::write_ok(old(self), final(self))
+                    &&& buf@.len() > 0 && nwritten == 0 ==> final(self).write_eof()
+                    &&& buf@.len() == 0 ==> *final(self) == *old(self)
                 },
                 Err(e) => {
-                    let nwritten = self.bytes().len() - old(self).bytes().len();
+                    let nwritten = final(self).bytes().len() - old(self).bytes().len();
                     &&& 0 <= nwritten < buf@.len()
-                    &&& self.bytes() =~= old(self).bytes() + buf@.take(nwritten)
+                    &&& final(self).bytes() =~= old(self).bytes() + buf@.take(nwritten)
                     //  ^ bytes already written are in the sink
                     &&& e.kind() != ErrorKind::Interrupted // interrupts are retried
-                    &&& Self::write_err(e, old(self), self)
+                    &&& Self::write_err(e, old(self), final(self))
                     &&& e.kind() == ErrorKind::WriteZero
-                        ==> self.write_eof()
+                        ==> final(self).write_eof()
                 }
             }
         }),
@@ -1505,9 +1466,9 @@ pub assume_specification<T>[ Cursor::set_position ](this: &mut Cursor<T>, pos: u
         old(this).inv(),
         pos <= usize::MAX,
     ensures
-        this.inv(),
-        this.pos() == pos,
-        *this.inner() == *old(this).inner(),
+        final(this).inv(),
+        final(this).pos() == pos,
+        *final(this).inner() == *old(this).inner(),
     no_unwind
         ;
 ```
