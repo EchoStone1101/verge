@@ -13,7 +13,7 @@ The workspace has three crates:
 |--------|--------|
 | `prelude` | Re-export surface for commonly used Verge traits, specs, and lemmas |
 | `clone` | Verified clone/copy traits and structural clone invariants |
-| `cmp` | Verified comparison traits plus generic lexicographic sequence specs and lemmas |
+| `cmp` | Verified comparison traits, type-family comparison impls, string comparison specs, and generic lexicographic sequence lemmas |
 | `env` | `std::env`: `Args`, `Vars`, environment variables |
 | `error` | Error semantics tagging (fs, I/O, UTF-8, parse errors) |
 | `fs` | File system: `File`, `ReadDir`, `DirEntry`, path, metadata |
@@ -23,7 +23,7 @@ The workspace has three crates:
 | `nt` | Number theory: GCD, LCM, Euler's totient |
 | `seq` | Extended `Seq` specs and sequence lemmas |
 | `set` | Extended set ops: Cartesian product, fold |
-| `str` | String specs: UTF-8, comparison, parsing, formatting, iteration, pattern matching |
+| `str` | String specs: UTF-8, parsing, formatting, iteration, pattern matching |
 
 ## Defensive Spec Design
 
@@ -55,9 +55,9 @@ See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 
 **String model:** Strings are viewed as `Seq<char>`; byte-level reasoning uses `Seq<u8>` via `vstd::utf8` conversion.
 
-**Comparison specs:** `cmp` defines `PartialEqVerified`, `EqVerified`, `PartialOrdVerified`, and `OrdVerified` proof traits. Generic `lexico_cmp`/`lexico_eq` specs and lemmas live in `cmp::lexico` and are re-exported from `cmp`; private helper proofs live in `cmp::internal`. `lexico_cmp` is recursive; `lemma_lexico_cmp_by_prefix` links it to the first-non-`Equal` prefix formulation used by tuple-style proofs. Tuple comparison impls also add direct `assume_specification` entries for the executable methods Verus accepts (`eq`, `ne`, `lt`, `gt`, and `cmp`).
+**Comparison specs:** `cmp` defines `PartialEqVerified`, `EqVerified`, `PartialOrdVerified`, and `OrdVerified` proof traits. Generic `lexico_cmp`/`lexico_eq` specs and lemmas live in `cmp::lexico` and are re-exported from `cmp`; private helper proofs live in `cmp::internal`. Type-family impls live under focused submodules such as `cmp::num`, `cmp::option`, `cmp::reference`, `cmp::tuple`, and `cmp::string`, with their public items re-exported from `cmp`. `lexico_cmp` is recursive; `lemma_lexico_cmp_by_prefix` links it to the first-non-`Equal` prefix formulation used by tuple-style proofs. Tuple comparison impls also add direct `assume_specification` entries for the executable methods Verus accepts (`eq`, `ne`, `lt`, `gt`, and `cmp`).
 
-**String comparison specs:** `str::cmp` links `str`/`String` `PartialEq`, `PartialOrd`, and `Ord` spec methods to byte-sequence `cmp::lexico_eq`/`cmp::lexico_cmp` via broadcast lemmas because Rust orphan rules prevent implementing vstd's spec traits directly for those standard types.
+**String comparison specs:** `cmp::string` links `str`/`String` `PartialEq`, `PartialOrd`, and `Ord` spec methods to byte-sequence `cmp::lexico_eq`/`cmp::lexico_cmp` via broadcast lemmas because Rust orphan rules prevent implementing vstd's spec traits directly for those standard types. `str` re-exports these string comparison items so `group_str_axioms` still includes `group_str_ordering`.
 
 **String pattern proofs:** Large `str::pattern` broadcast lemmas live in internal submodules organized by API (for example, `str::pattern::split` and `str::pattern::rmatch_indices`) and are re-exported from `str::pattern` to preserve the public API while reducing per-module proof burden; shared private helper lemmas live in `str::pattern::internal`.
 

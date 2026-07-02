@@ -8,6 +8,7 @@
 //! with actual spec clauses.
 
 use super::*;
+use crate::str::BytesView;
 use vstd::std_specs::cmp::*;
 
 use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};

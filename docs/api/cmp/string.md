@@ -1,4 +1,4 @@
-# `verge::str::cmp`
+# `verge::cmp::string`
 
 Specifications and lemmas for string comparison.
 

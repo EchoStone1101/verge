@@ -15,6 +15,7 @@ Mirror the `verge_lib` module layout in `verge_tests/src/`:
 
 - `verge_tests/src/str/mod.rs` contains tests for public items in `verge::str`.
 - `verge_tests/src/str/chars.rs` contains tests for `verge::str::chars`.
+- `verge_tests/src/cmp/string.rs` contains tests for `verge::cmp::string`.
 - `verge_tests/src/io/impls.rs` contains tests for `verge::io::impls`.
 
 New test files should follow the same pattern. The goal is that a path in `verge_tests/src/` makes it obvious which library module it exercises.

@@ -17,7 +17,7 @@ verus! {
 fn test_str_comparison_methods_are_callable() {
     proof {
         broadcast use group_str_axioms;
-        broadcast use group_str_ordering;
+        broadcast use verge::cmp::string::group_str_ordering;
         reveal_strlit("ab");
         reveal_strlit("ac");
         reveal_with_fuel(lexico_cmp, 3);
@@ -67,7 +67,7 @@ fn test_str_comparison_methods_are_callable() {
 fn test_string_comparison_methods_are_callable() {
     proof {
         broadcast use group_str_axioms;
-        broadcast use group_str_ordering;
+        broadcast use verge::cmp::string::group_str_ordering;
         reveal_strlit("ab");
         reveal_strlit("ac");
         reveal_with_fuel(lexico_cmp, 3);
@@ -93,8 +93,8 @@ fn test_string_comparison_methods_are_callable() {
     let a = String::from_str("ab");
     let b = String::from_str("ac");
     proof {
-        lemma_string_lexico_partial_cmp_spec(&a, &b);
-        lemma_string_lexico_cmp_spec(&a, &b);
+        verge::cmp::string::lemma_string_lexico_partial_cmp_spec(&a, &b);
+        verge::cmp::string::lemma_string_lexico_cmp_spec(&a, &b);
     }
     assert(<String as PartialOrdSpec>::partial_cmp_spec(&a, &b) == Some(Ordering::Less));
     assert(<String as OrdSpec>::cmp_spec(&a, &b) == Ordering::Less);
@@ -152,7 +152,7 @@ fn test_verified_bridge_lemmas_for_strings() {
 fn test_btree_map_string_key() {
     proof {
         broadcast use group_str_axioms;
-        broadcast use group_str_ordering;
+        broadcast use verge::cmp::string::group_str_ordering;
         broadcast use vstd::std_specs::btree::group_btree_axioms;
         verge::cmp::lemma_ord_verified::<String>();
         reveal_strlit("key");
