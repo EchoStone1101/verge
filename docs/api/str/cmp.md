@@ -58,10 +58,7 @@ spec fn spec_ge(self, rhs: Self) -> bool;
 Enable `str` equality.
 
 ```rust
-pub assume_specification[ <str as PartialEq>::eq ](s: &str, other: &str) -> (res: bool)
-    ensures
-        res == crate::cmp::lexico_eq(s@.as_bytes(), other@.as_bytes()),
-        ;
+pub assume_specification[ <str as PartialEq>::eq ](s: &str, other: &str) -> bool;
 ```
 
 
@@ -113,6 +110,24 @@ pub broadcast axiom fn lemma_string_eq_spec(a: &String, b: &String)
 ```
 
 
+### `<String as PartialOrd>::partial_cmp`
+
+Enable `String::partial_cmp`.
+
+```rust
+pub assume_specification[ <String as PartialOrd>::partial_cmp ](a: &String, b: &String) -> Option<Ordering>;
+```
+
+
+### `<str as PartialOrd>::partial_cmp`
+
+Enable `str::partial_cmp`.
+
+```rust
+pub assume_specification[ <str as PartialOrd>::partial_cmp ](a: &str, b: &str) -> Option<Ordering>;
+```
+
+
 ### `lemma_str_obeys_partial_cmp_spec`
 
 Proof that asserts `str` obeys `PartialOrd`.
@@ -158,6 +173,24 @@ pub broadcast axiom fn lemma_string_lexico_partial_cmp_spec(a: &String, b: &Stri
         #![trigger <String as PartialOrdSpec>::partial_cmp_spec(a, b)]
         <String as PartialOrdSpec>::partial_cmp_spec(a, b) ==
             crate::cmp::lexico_cmp(a@.as_bytes(), b@.as_bytes());
+```
+
+
+### `<String as Ord>::cmp`
+
+Enable `String::cmp`.
+
+```rust
+pub assume_specification[ <String as Ord>::cmp ](a: &String, b: &String) -> Ordering;
+```
+
+
+### `<str as Ord>::cmp`
+
+Enable `str::cmp`.
+
+```rust
+pub assume_specification[ <str as Ord>::cmp ](a: &str, b: &str) -> Ordering;
 ```
 
 

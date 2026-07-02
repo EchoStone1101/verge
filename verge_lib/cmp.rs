@@ -33,7 +33,7 @@ pub use lexico::*;
 /// for the type's `eq_spec`.
 ///
 /// Implementing this trait certifies that the type's `PartialEq` implementation satisfies
-/// the expected mathematical properties. 
+/// the expected mathematical properties.
 ///
 /// # Usage
 ///
@@ -297,6 +297,8 @@ impl<T: OrdVerified> OrdVerified for Option<T> {
 macro_rules! tuple_cmp_impl {
     ($($idx:tt $T:ident, )+) => {
         verus! {
+        pub assume_specification<$($T: PartialEq),+>[ <($($T,)+) as PartialEq>::eq ](a: &($($T,)+), b: &($($T,)+)) -> bool;
+        pub assume_specification<$($T: PartialEq),+>[ <($($T,)+) as PartialEq>::ne ](a: &($($T,)+), b: &($($T,)+)) -> bool;
         impl<$($T: PartialEqVerified),+> PartialEqVerified for ($($T,)+) {
             proof fn lemma_obeys_eq_spec() {
                 $($T::lemma_obeys_eq_spec(); )+
@@ -313,6 +315,11 @@ macro_rules! tuple_cmp_impl {
                 $($T::lemma_eq_reflexive(&a.$idx); )+
             }
         }
+        // XXX: due to Verus's self-reference checks being overly conservative (#1487),
+        // `partial_cmp`, `le`, and `ge` cannot be added.
+        pub assume_specification<$($T: PartialOrd),+>[ <($($T,)+) as PartialOrd>::lt ](a: &($($T,)+), b: &($($T,)+)) -> bool;
+        pub assume_specification<$($T: PartialOrd),+>[ <($($T,)+) as PartialOrd>::gt ](a: &($($T,)+), b: &($($T,)+)) -> bool;
+        pub assume_specification<$($T: Ord),+>[ <($($T,)+) as Ord>::cmp ](a: &($($T,)+), b: &($($T,)+)) -> Ordering;
         impl<$($T: PartialOrdVerified),+> PartialOrdVerified for ($($T,)+) {
             proof fn lemma_obeys_partial_cmp_spec() {
                 $($T::lemma_obeys_partial_cmp_spec(); )+

@@ -17,4 +17,5 @@
 #![feature(slice_index_methods)]
 
 mod io;
+mod cmp;
 mod str;

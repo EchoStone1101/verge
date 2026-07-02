@@ -439,7 +439,6 @@ Enable `<Path as PartialEq>::eq`.
 pub assume_specification<'a, 'b> [ <Path as PartialEq>::eq ] (this: &'a Path, other: &'b Path) -> (ret: bool)
     returns
         this@.normalize() == other@.normalize(),
-    no_unwind
         ;
 ```
 
@@ -452,7 +451,6 @@ Enable `<PathBuf as PartialEq>::eq`.
 pub assume_specification<'a, 'b> [ <PathBuf as PartialEq>::eq ] (this: &'a PathBuf, other: &'b PathBuf) -> (ret: bool)
     returns
         this@.normalize() == other@.normalize(),
-    no_unwind
         ;
 ```
 
@@ -465,7 +463,6 @@ Enable `<Path as PartialEq<PathBuf>>::eq`.
 pub assume_specification<'a, 'b> [ <Path as PartialEq<PathBuf>>::eq ] (this: &'a Path, other: &'b PathBuf) -> (ret: bool)
     returns
         this@.normalize() == other@.normalize(),
-    no_unwind
         ;
 ```
 
@@ -478,7 +475,6 @@ Enable `<PathBuf as PartialEq<Path>>::eq`.
 pub assume_specification<'a, 'b> [ <PathBuf as PartialEq<Path>>::eq ] (this: &'a PathBuf, other: &'b Path) -> (ret: bool)
     returns
         this@.normalize() == other@.normalize(),
-    no_unwind
         ;
 ```
 
@@ -491,7 +487,6 @@ Enable `<Path as PartialEq<str>>::eq`.
 pub assume_specification<'a, 'b> [ <Path as PartialEq<str>>::eq ] (this: &'a Path, other: &'b str) -> (ret: bool)
     returns
         this@.normalize() == other@.as_path().normalize(),
-    no_unwind
         ;
 ```
 
@@ -504,7 +499,6 @@ Enable `<Path as PartialEq<String>>::eq`.
 pub assume_specification<'a, 'b> [ <Path as PartialEq<String>>::eq ] (this: &'a Path, other: &'b String) -> (ret: bool)
     returns
         this@.normalize() == other@.as_path().normalize(),
-    no_unwind
         ;
 ```
 
@@ -517,7 +511,6 @@ Enable `<PathBuf as PartialEq<str>>::eq`.
 pub assume_specification<'a, 'b> [ <PathBuf as PartialEq<str>>::eq ] (this: &'a PathBuf, other: &'b str) -> (ret: bool)
     returns
         this@.normalize() == other@.as_path().normalize(),
-    no_unwind
         ;
 ```
 
@@ -530,7 +523,6 @@ Enable `<PathBuf as PartialEq<String>>::eq`.
 pub assume_specification<'a, 'b> [ <PathBuf as PartialEq<String>>::eq ] (this: &'a PathBuf, other: &'b String) -> (ret: bool)
     returns
         this@.normalize() == other@.as_path().normalize(),
-    no_unwind
         ;
 ```
 
@@ -543,7 +535,6 @@ Enable `<str as PartialEq<Path>>::eq`.
 pub assume_specification<'a, 'b> [ <str as PartialEq<Path>>::eq ] (this: &'a str, other: &'b Path) -> (ret: bool)
     returns
         this@.as_path().normalize() == other@.normalize(),
-    no_unwind
         ;
 ```
 
@@ -556,7 +547,6 @@ Enable `<str as PartialEq<PathBuf>>::eq`.
 pub assume_specification<'a, 'b> [ <str as PartialEq<PathBuf>>::eq ] (this: &'a str, other: &'b PathBuf) -> (ret: bool)
     returns
         this@.as_path().normalize() == other@.normalize(),
-    no_unwind
         ;
 ```
 
@@ -569,7 +559,6 @@ Enable `<String as PartialEq<Path>>::eq`.
 pub assume_specification<'a, 'b> [ <String as PartialEq<Path>>::eq ] (this: &'a String, other: &'b Path) -> (ret: bool)
     returns
         this@.as_path().normalize() == other@.normalize(),
-    no_unwind
         ;
 ```
 
@@ -582,7 +571,6 @@ Enable `<String as PartialEq<PathBuf>>::eq`.
 pub assume_specification<'a, 'b> [ <String as PartialEq<PathBuf>>::eq ] (this: &'a String, other: &'b PathBuf) -> (ret: bool)
     returns
         this@.as_path().normalize() == other@.normalize(),
-    no_unwind
         ;
 ```
 

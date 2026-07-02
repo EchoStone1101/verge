@@ -8,7 +8,7 @@ use verge::str::*;
 mod chars;
 mod fmt;
 mod iter;
-mod ord;
+mod cmp;
 
 verus! {
 
@@ -19,11 +19,11 @@ fn test_empty() {
     assert(Seq::<u8>::empty().is_utf8());
 }
 
-fn test_string_literal() -> (ret: String) 
+fn test_string_literal() -> (ret: String)
     ensures ret@ =~= "abcd"@,
 {
     broadcast use group_str_axioms;
-    proof { 
+    proof {
         reveal_strlit("abd");
         reveal_strlit("c");
         reveal_strlit("abcd");
@@ -34,8 +34,8 @@ fn test_string_literal() -> (ret: String)
     s
 }
 
-fn test_string_truncate(s: &mut String) 
-    requires 
+fn test_string_truncate(s: &mut String)
+    requires
         old(s).is_ascii(),
         old(s)@.len() > 1024,
 {
@@ -59,7 +59,7 @@ fn test_utf8(s: &mut String) {
 fn test_trim_ascii() {
     broadcast use group_str_axioms;
 
-    proof { 
+    proof {
         reveal_strlit("  abc  ");
         reveal_strlit("  abc");
         reveal_strlit("abc  ");
@@ -213,7 +213,7 @@ fn test_trim_ascii_order_independent(s: &str) {
 
 fn test_case_sensitive() {
     broadcast use group_str_axioms;
-    proof { 
+    proof {
         reveal_strlit("ABC");
         reveal_strlit("AbC");
         reveal_strlit("abc");
@@ -252,7 +252,7 @@ fn test_from_utf8_verified() {
     assert(s@ =~= bytes@.as_str());
 }
 
-fn test_str_get(s: &mut str) 
+fn test_str_get(s: &mut str)
     requires
         s@.is_ascii(),
         s@.len() > 10,
@@ -298,7 +298,7 @@ fn test_collect() {
 
 //     assert(s@.len() == 4 && s@.as_bytes().len() == 4);
 //     assert("zzz"@.len() == 3 && "zzz"@.as_bytes().len() == 3);
-    
+
 //     assert(s@.subrange(0, 0 + "zzz"@.len() as int) =~= "abc"@);
 //     assert(s@.subrange(1, 1 + "zzz"@.len() as int) =~= "bca"@);
 //     assert(!("abc"@ =~= "zzz"@) && !("bca"@ =~= "zzz"@)) by {

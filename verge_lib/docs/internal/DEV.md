@@ -55,7 +55,7 @@ See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 
 **String model:** Strings are viewed as `Seq<char>`; byte-level reasoning uses `Seq<u8>` via `vstd::utf8` conversion.
 
-**Comparison specs:** `cmp` defines `PartialEqVerified`, `EqVerified`, `PartialOrdVerified`, and `OrdVerified` proof traits. Generic `lexico_cmp`/`lexico_eq` specs and lemmas live in `cmp::lexico` and are re-exported from `cmp`; private helper proofs live in `cmp::internal`. `lexico_cmp` is recursive; `lemma_lexico_cmp_by_prefix` links it to the first-non-`Equal` prefix formulation used by tuple-style proofs.
+**Comparison specs:** `cmp` defines `PartialEqVerified`, `EqVerified`, `PartialOrdVerified`, and `OrdVerified` proof traits. Generic `lexico_cmp`/`lexico_eq` specs and lemmas live in `cmp::lexico` and are re-exported from `cmp`; private helper proofs live in `cmp::internal`. `lexico_cmp` is recursive; `lemma_lexico_cmp_by_prefix` links it to the first-non-`Equal` prefix formulation used by tuple-style proofs. Tuple comparison impls also add direct `assume_specification` entries for the executable methods Verus accepts (`eq`, `ne`, `lt`, `gt`, and `cmp`).
 
 **String comparison specs:** `str::cmp` links `str`/`String` `PartialEq`, `PartialOrd`, and `Ord` spec methods to byte-sequence `cmp::lexico_eq`/`cmp::lexico_cmp` via broadcast lemmas because Rust orphan rules prevent implementing vstd's spec traits directly for those standard types.
 
