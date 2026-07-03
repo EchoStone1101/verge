@@ -23,18 +23,32 @@ verus! {
 
 pub mod lexico;
 mod internal;
+pub mod array;
 pub mod num;
 pub mod option;
+pub mod pointer;
 pub mod reference;
+pub mod result;
+pub mod slice;
 pub mod string;
 pub mod tuple;
+pub mod unit;
+pub mod vec;
+pub mod vec_deque;
 
 pub use lexico::*;
+pub use array::*;
 pub use num::*;
 pub use option::*;
+pub use pointer::*;
 pub use reference::*;
+pub use result::*;
+pub use slice::*;
 pub use string::*;
 pub use tuple::*;
+pub use unit::*;
+pub use vec::*;
+pub use vec_deque::*;
 
 /// A verified `PartialEq` that requires proofs of symmetry and transitivity
 /// for the type's `eq_spec`.
