@@ -5,6 +5,117 @@ use core::cmp::{Ord, Ordering, PartialEq, PartialOrd};
 use vstd::math::min;
 
 macro_rules! tuple_cmp_impl {
+    () => {
+        verus! {
+
+        /// Linking lemmas for unit tuple comparison.
+        pub broadcast group group_unit_ordering {
+            lemma_unit_obeys_eq_spec,
+            lemma_unit_eq_spec,
+            lemma_unit_obeys_partial_cmp_spec,
+            lemma_unit_partial_cmp_spec,
+            lemma_unit_obeys_cmp_spec,
+            lemma_unit_cmp_spec,
+        }
+
+        /// Enable unit tuple equality.
+        pub assume_specification[ <() as PartialEq>::eq ](a: &(), b: &()) -> bool;
+
+        /// Enable unit tuple inequality.
+        pub assume_specification[ <() as PartialEq>::ne ](a: &(), b: &()) -> bool;
+
+        /// Enable unit tuple partial comparison.
+        pub assume_specification[ <() as PartialOrd>::partial_cmp ](a: &(), b: &()) -> Option<Ordering>;
+
+        /// Enable unit tuple total comparison.
+        pub assume_specification[ <() as Ord>::cmp ](a: &(), b: &()) -> Ordering;
+
+        /// Proof that asserts unit tuple obeys `PartialEq`.
+        pub broadcast axiom fn lemma_unit_obeys_eq_spec()
+            ensures
+                #[trigger] <() as PartialEqSpec>::obeys_eq_spec();
+
+        /// Proof that unit tuple equality is always true.
+        pub broadcast axiom fn lemma_unit_eq_spec(a: &(), b: &())
+            ensures
+                #![trigger <() as PartialEqSpec>::eq_spec(a, b)]
+                <() as PartialEqSpec>::eq_spec(a, b);
+
+        /// Proof that asserts unit tuple obeys `PartialOrd`.
+        pub broadcast axiom fn lemma_unit_obeys_partial_cmp_spec()
+            ensures
+                #[trigger] <() as PartialOrdSpec>::obeys_partial_cmp_spec();
+
+        /// Proof that unit tuple partial comparison is always equal.
+        pub broadcast axiom fn lemma_unit_partial_cmp_spec(a: &(), b: &())
+            ensures
+                #![trigger <() as PartialOrdSpec>::partial_cmp_spec(a, b)]
+                <() as PartialOrdSpec>::partial_cmp_spec(a, b) == Some(Ordering::Equal);
+
+        /// Proof that asserts unit tuple obeys `Ord`.
+        pub broadcast axiom fn lemma_unit_obeys_cmp_spec()
+            ensures
+                #[trigger] <() as OrdSpec>::obeys_cmp_spec();
+
+        /// Proof that unit tuple total comparison is always equal.
+        pub broadcast axiom fn lemma_unit_cmp_spec(a: &(), b: &())
+            ensures
+                #![trigger <() as OrdSpec>::cmp_spec(a, b)]
+                <() as OrdSpec>::cmp_spec(a, b) == Ordering::Equal;
+
+        impl PartialEqVerified for () {
+            proof fn lemma_obeys_eq_spec() {
+                broadcast use group_unit_ordering;
+            }
+
+            proof fn lemma_eq_symmetric(a: &Self, b: &Self) {
+                broadcast use group_unit_ordering;
+            }
+
+            proof fn lemma_eq_transitive(a: &Self, b: &Self, c: &Self) {
+                broadcast use group_unit_ordering;
+            }
+        }
+
+        impl EqVerified for () {
+            proof fn lemma_eq_reflexive(a: &Self) {
+                broadcast use group_unit_ordering;
+            }
+        }
+
+        impl PartialOrdVerified for () {
+            proof fn lemma_obeys_partial_cmp_spec() {
+                broadcast use group_unit_ordering;
+            }
+
+            proof fn lemma_cmp_eq_consistent(a: &Self, b: &Self) {
+                broadcast use group_unit_ordering;
+                assert forall|c: &Self| a.partial_cmp_spec(c) == b.partial_cmp_spec(c) by {
+                    broadcast use group_unit_ordering;
+                }
+            }
+
+            proof fn lemma_cmp_dual(a: &Self, b: &Self) {
+                broadcast use group_unit_ordering;
+            }
+
+            proof fn lemma_cmp_transitive(a: &Self, b: &Self, c: &Self) {
+                broadcast use group_unit_ordering;
+            }
+        }
+
+        impl OrdVerified for () {
+            proof fn lemma_obeys_cmp_spec() {
+                broadcast use group_unit_ordering;
+            }
+
+            proof fn lemma_cmp_consistent(a: &Self, b: &Self) {
+                broadcast use group_unit_ordering;
+            }
+        }
+
+        }
+    };
     ($($idx:tt $T:ident, )+) => {
         verus! {
         pub assume_specification<$($T: PartialEq),+>[ <($($T,)+) as PartialEq>::eq ](a: &($($T,)+), b: &($($T,)+)) -> bool;
@@ -138,6 +249,7 @@ macro_rules! tuple_cmp_impl {
     };
 }
 
+tuple_cmp_impl!();
 tuple_cmp_impl!(0 T, );
 tuple_cmp_impl!(0 U, 1 T, );
 tuple_cmp_impl!(0 V, 1 U, 2 T, );

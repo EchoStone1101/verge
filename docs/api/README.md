@@ -12,7 +12,6 @@ Auto-generated from source. See the [source code](../verge_lib/) for full detail
 - [`verge::cmp::result`](cmp/result.md)
 - [`verge::cmp::slice`](cmp/slice.md)
 - [`verge::cmp::string`](cmp/string.md)
-- [`verge::cmp::unit`](cmp/unit.md)
 - [`verge::cmp::vec`](cmp/vec.md)
 - [`verge::cmp::vec_deque`](cmp/vec_deque.md)
 - [`verge::env`](env.md)

@@ -9,6 +9,5 @@ mod result;
 mod slice;
 mod string;
 mod tuple;
-mod unit;
 mod vec;
 mod vec_deque;

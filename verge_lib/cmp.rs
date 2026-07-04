@@ -32,7 +32,6 @@ pub mod result;
 pub mod slice;
 pub mod string;
 pub mod tuple;
-pub mod unit;
 pub mod vec;
 pub mod vec_deque;
 
@@ -46,7 +45,6 @@ pub use result::*;
 pub use slice::*;
 pub use string::*;
 pub use tuple::*;
-pub use unit::*;
 pub use vec::*;
 pub use vec_deque::*;
 
