@@ -8,6 +8,7 @@ use verge::str::*;
 mod chars;
 mod fmt;
 mod iter;
+mod string;
 
 verus! {
 
