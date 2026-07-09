@@ -25,8 +25,8 @@ impl Env {
 /// contructed via `args_iter()`.
 impl_iterator!(
     [ Args[] as VergeArgs[] :: Item = String ]
-    [ args_iter via args ] () -> |seq| {
-        Env::args() =~~= seq.map(|i: int, arg: String| arg@)
+    [ args_iter via args ] () -> |iter| {
+        Env::args() =~~= iter.seq().map(|i: int, arg: String| arg@)
     }
 );
 
@@ -39,8 +39,8 @@ impl_double_ended_iterator!(
 /// contructed via `vars_iter()`.
 impl_iterator!(
     [ Vars[] as VergeVars[] :: Item = (String, String) ]
-    [ vars_iter via vars ] () -> |seq| {
-        Env::vars().kv_pairs().to_seq() =~~= seq.map(|i: int, var: (String, String)| (var.0@, var.1@))
+    [ vars_iter via vars ] () -> |iter| {
+        Env::vars().kv_pairs().to_seq() =~~= iter.seq().map(|i: int, var: (String, String)| (var.0@, var.1@))
     }
 );
 

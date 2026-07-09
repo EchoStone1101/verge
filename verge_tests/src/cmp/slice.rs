@@ -72,15 +72,9 @@ fn test_verified_bridge_lemmas_for_slice(arr_a: &[u32], arr_b: &[u32]) {
     assert(Some(<[u32] as OrdSpec>::cmp_spec(arr_a, arr_b)) == lexico_cmp(arr_a@, arr_b@));
 }
 
-// TODO(issue): `PartialEq::ne` and `PartialOrd::{lt,le,gt,ge}` are provided
+// TODO(Verus): `PartialEq::ne` and `PartialOrd::{lt,le,gt,ge}` are provided
 // trait methods for slices; Verus currently rejects `assume_specification` for
 // provided trait methods, so direct `!=`, `<`, `<=`, `>`, `>=`, `.ne`, `.lt`,
 // `.le`, `.gt`, and `.ge` calls are intentionally not enabled here.
-// TODO(issue): `Ord::{max,min,clamp}` take `Self` by value and are not callable
-// for unsized `[T]` slices. Use arrays, `Vec<T>`, or `VecDeque<T>` for owned
-// provided-method coverage.
-// TODO(issue): The generic bridge lemmas currently require implicit `Sized`, so
-// `lemma_partial_eq_verified::<[T]>()`, `lemma_partial_ord_verified::<[T]>()`,
-// and `lemma_ord_verified::<[T]>()` are not callable for unsized slices.
 
 } // verus!

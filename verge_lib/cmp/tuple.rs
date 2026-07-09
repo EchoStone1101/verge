@@ -136,7 +136,7 @@ macro_rules! tuple_cmp_impl {
                 $($T::lemma_eq_reflexive(&a.$idx); )+
             }
         }
-        // XXX: due to Verus's self-reference checks being overly conservative (#1487),
+        // XXX(Verus): due to Verus's self-reference checks being overly conservative (#1487),
         // `partial_cmp`, `le`, and `ge` cannot be added.
         pub assume_specification<$($T: PartialOrd),+>[ <($($T,)+) as PartialOrd>::lt ](a: &($($T,)+), b: &($($T,)+)) -> bool;
         pub assume_specification<$($T: PartialOrd),+>[ <($($T,)+) as PartialOrd>::gt ](a: &($($T,)+), b: &($($T,)+)) -> bool;

@@ -16,6 +16,19 @@
 #![feature(specialization)]
 #![feature(slice_index_methods)]
 
+use vstd::prelude::*;
+
 mod io;
 mod cmp;
 mod str;
+
+verus! {
+
+#[verifier::external_body]
+fn exec_assert(cond: bool)
+    requires cond,
+{
+    assert!(cond);
+}
+
+} // verus!

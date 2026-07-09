@@ -130,7 +130,7 @@ fn test_verified_bridge_lemmas_for_vec() {
     assert(<Vec<u32> as OrdSpec>::cmp_spec(&a, &b) == Ordering::Less);
 }
 
-// TODO(issue): `PartialOrd::{lt,le,gt,ge}` are provided trait methods for
+// XXX(Verus): `PartialOrd::{lt,le,gt,ge}` are provided trait methods for
 // `Vec<T>`; Verus currently rejects `assume_specification` for provided trait
 // methods, so direct `<`, `<=`, `>`, `>=`, `.lt`, `.le`, `.gt`, and `.ge` calls
 // are intentionally not enabled here.

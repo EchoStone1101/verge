@@ -43,9 +43,7 @@ See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 - Functions/methods: `assume_specification[...]`
 - Altered signatures (e.g., removing `unsafe`, narrowing generics): add a new `#[verifier::external_body]` function that delegates to the real one
 
-**Specifying traits** — two approaches with different trade-offs:
-1. `assume_specification` on specific implementations — keeps original trait identity (used for `Iterator`), but specs only apply to concrete impls, not generic bounds
-2. New delegating trait with `#[verifier::external_body]` impls — spec lives at the trait level (used for `io::Read`/`io::Write`), but the method is no longer the original
+**Specifying traits:** Prefer `#[verifier::external_trait_specification]` with `#[verifier::external_trait_extension(Spec via SpecImpl)]` when the original trait signature is usable (for example, `str::fmt::ToStringSpec` and `str::parse::FromStrSpec`). Use concrete `assume_specification` bridges when Verus still needs help accepting a standard-library impl call form, and use new delegating Verge traits only when the Rust signature or trait bounds cannot express the needed abstract state (for example, `io::Read`/`io::Write`).
 
 **Broadcast groups:** Lemmas are grouped with `broadcast group group_*` and enabled in proofs with `broadcast use group_*;`.
 
@@ -59,9 +57,11 @@ See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 
 **String comparison specs:** `cmp::string` links `str`/`String` `PartialEq`, `PartialOrd`, and `Ord` spec methods to byte-sequence `cmp::lexico_eq`/`cmp::lexico_cmp` via broadcast lemmas because Rust orphan rules prevent implementing vstd's spec traits directly for those standard types. `str` re-exports these string comparison items so `group_str_axioms` still includes `group_str_ordering`.
 
-**String pattern proofs:** Large `str::pattern` broadcast lemmas live in internal submodules organized by API (for example, `str::pattern::split` and `str::pattern::rmatch_indices`) and are re-exported from `str::pattern` to preserve the public API while reducing per-module proof burden; shared private helper lemmas live in `str::pattern::internal`.
+**String pattern proofs:** Large `str::pattern` broadcast lemmas live in internal submodules organized by API (for example, `str::pattern::split` and `str::pattern::rmatch_indices`) and are re-exported from `str::pattern` to preserve the public API while reducing per-module proof burden; shared private helper lemmas live in `str::pattern::internal`. Pattern linking lemmas are grouped into opt-in per-API broadcast groups such as `group_str_split_iter` and `group_str_match_indices_iter`, but are intentionally not added to the default string axiom group to avoid broad trigger load.
 
 **Formatting specs:** `str::fmt::ToStringSpec` extends `ToString`; custom `ToString` impls provide `ToStringSpecImpl::to_string_ensures`, while `Display`-backed impls delegate to vstd's `to_string_from_display_ensures`.
+
+**Parsing specs:** `str::parse::FromStrSpec` extends `FromStr` with `from_str_recommends`, `from_str_ok_ensures`, and `from_str_err_ensures`; integer parsing shares `spec_int_from_str_radix` for `int` radices ≥ 2, while std `from_str_radix` bridges constrain executable calls to radix 2–36.
 
 **File system model:** Uses epochs to model external interference — specs are parameterized by an `Fs` struct tracking epoch, operation history, and read_dir count.
 

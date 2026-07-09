@@ -235,6 +235,8 @@ pub open spec fn rjoin(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>) -> Seq<char>
     + gap.first()
 }
 
+// TODO: common lemmas concerning join and rjoin
+
 // ---------- Trigger specs ----------
 // These exist as triggers for the per-type lemmas.
 
@@ -695,6 +697,7 @@ pub broadcast axiom fn axiom_string_rmatches_post<'b>(s: Seq<char>, pat: &'b str
             &&& s == rjoin(seq, gap)
         });
 
+// TODO: missing linking lemmas for APIs like str::split_whitespace
 
 /// Proof that links the full spec to `str::contains` with a `char` pattern.
 pub use contains::lemma_str_contains_char;
@@ -968,5 +971,190 @@ pub use strip_suffix::lemma_str_strip_suffix_chars;
 
 /// Proof that links the full spec to `str::strip_suffix` with a string pattern.
 pub use strip_suffix::lemma_str_strip_suffix_string;
+
+// --- Broadcast groups by API ---
+
+/// Broadcast group for all `str::contains` pattern linking lemmas.
+pub broadcast group group_str_contains {
+    lemma_str_contains_char,
+    lemma_str_contains_closure,
+    lemma_str_contains_chars,
+    lemma_str_contains_string,
+}
+
+/// Broadcast group for all `str::starts_with` pattern linking lemmas.
+pub broadcast group group_str_starts_with {
+    lemma_str_starts_with_char,
+    lemma_str_starts_with_closure,
+    lemma_str_starts_with_chars,
+    lemma_str_starts_with_string,
+}
+
+/// Broadcast group for all `str::ends_with` pattern linking lemmas.
+pub broadcast group group_str_ends_with {
+    lemma_str_ends_with_char,
+    lemma_str_ends_with_closure,
+    lemma_str_ends_with_chars,
+    lemma_str_ends_with_string,
+}
+
+/// Broadcast group for all `str::find` pattern linking lemmas.
+pub broadcast group group_str_find {
+    lemma_str_find_char,
+    lemma_str_find_closure,
+    lemma_str_find_chars,
+    lemma_str_find_string,
+}
+
+/// Broadcast group for all `str::rfind` pattern linking lemmas.
+pub broadcast group group_str_rfind {
+    lemma_str_rfind_char,
+    lemma_str_rfind_closure,
+    lemma_str_rfind_chars,
+    lemma_str_rfind_string,
+}
+
+/// Broadcast group for all `str::split` pattern linking lemmas.
+pub broadcast group group_str_split_iter {
+    lemma_str_split_iter_char,
+    lemma_str_split_iter_closure,
+    lemma_str_split_iter_chars,
+    lemma_str_split_iter_string,
+}
+
+/// Broadcast group for all `str::split_inclusive` pattern linking lemmas.
+pub broadcast group group_str_split_inclusive_iter {
+    lemma_str_split_inclusive_iter_char,
+    lemma_str_split_inclusive_iter_closure,
+    lemma_str_split_inclusive_iter_chars,
+    lemma_str_split_inclusive_iter_string,
+}
+
+/// Broadcast group for all `str::rsplit` pattern linking lemmas.
+pub broadcast group group_str_rsplit_iter {
+    lemma_str_rsplit_iter_char,
+    lemma_str_rsplit_iter_closure,
+    lemma_str_rsplit_iter_chars,
+    lemma_str_rsplit_iter_string,
+}
+
+/// Broadcast group for all `str::split_terminator` pattern linking lemmas.
+pub broadcast group group_str_split_terminator_iter {
+    lemma_str_split_terminator_iter_char,
+    lemma_str_split_terminator_iter_closure,
+    lemma_str_split_terminator_iter_chars,
+    lemma_str_split_terminator_iter_string,
+}
+
+/// Broadcast group for all `str::rsplit_terminator` pattern linking lemmas.
+pub broadcast group group_str_rsplit_terminator_iter {
+    lemma_str_rsplit_terminator_iter_char,
+    lemma_str_rsplit_terminator_iter_closure,
+    lemma_str_rsplit_terminator_iter_chars,
+    lemma_str_rsplit_terminator_iter_string,
+}
+
+/// Broadcast group for all `str::splitn` pattern linking lemmas.
+pub broadcast group group_str_splitn_iter {
+    lemma_str_splitn_iter_char,
+    lemma_str_splitn_iter_closure,
+    lemma_str_splitn_iter_chars,
+    lemma_str_splitn_iter_string,
+}
+
+/// Broadcast group for all `str::rsplitn` pattern linking lemmas.
+pub broadcast group group_str_rsplitn_iter {
+    lemma_str_rsplitn_iter_char,
+    lemma_str_rsplitn_iter_closure,
+    lemma_str_rsplitn_iter_chars,
+    lemma_str_rsplitn_iter_string,
+}
+
+/// Broadcast group for all `str::split_once` pattern linking lemmas.
+pub broadcast group group_str_split_once {
+    lemma_str_split_once_char,
+    lemma_str_split_once_closure,
+    lemma_str_split_once_chars,
+    lemma_str_split_once_string,
+}
+
+/// Broadcast group for all `str::rsplit_once` pattern linking lemmas.
+pub broadcast group group_str_rsplit_once {
+    lemma_str_rsplit_once_char,
+    lemma_str_rsplit_once_closure,
+    lemma_str_rsplit_once_chars,
+    lemma_str_rsplit_once_string,
+}
+
+/// Broadcast group for all `str::matches` pattern linking lemmas.
+pub broadcast group group_str_matches_iter {
+    lemma_str_matches_iter_char,
+    lemma_str_matches_iter_closure,
+    lemma_str_matches_iter_chars,
+    lemma_str_matches_iter_string,
+}
+
+/// Broadcast group for all `str::rmatches` pattern linking lemmas.
+pub broadcast group group_str_rmatches_iter {
+    lemma_str_rmatches_iter_char,
+    lemma_str_rmatches_iter_closure,
+    lemma_str_rmatches_iter_chars,
+    lemma_str_rmatches_iter_string,
+}
+
+/// Broadcast group for all `str::match_indices` pattern linking lemmas.
+pub broadcast group group_str_match_indices_iter {
+    lemma_str_match_indices_iter_char,
+    lemma_str_match_indices_iter_closure,
+    lemma_str_match_indices_iter_chars,
+    lemma_str_match_indices_iter_string,
+}
+
+/// Broadcast group for all `str::rmatch_indices` pattern linking lemmas.
+pub broadcast group group_str_rmatch_indices_iter {
+    lemma_str_rmatch_indices_iter_char,
+    lemma_str_rmatch_indices_iter_closure,
+    lemma_str_rmatch_indices_iter_chars,
+    lemma_str_rmatch_indices_iter_string,
+}
+
+/// Broadcast group for all `str::trim_matches` pattern linking lemmas.
+pub broadcast group group_str_trim_matches {
+    lemma_str_trim_matches_char,
+    lemma_str_trim_matches_closure,
+    lemma_str_trim_matches_chars,
+}
+
+/// Broadcast group for all `str::trim_start_matches` pattern linking lemmas.
+pub broadcast group group_str_trim_start_matches {
+    lemma_str_trim_start_matches_char,
+    lemma_str_trim_start_matches_closure,
+    lemma_str_trim_start_matches_chars,
+    lemma_str_trim_start_matches_string,
+}
+
+/// Broadcast group for all `str::trim_end_matches` pattern linking lemmas.
+pub broadcast group group_str_trim_end_matches {
+    lemma_str_trim_end_matches_char,
+    lemma_str_trim_end_matches_closure,
+    lemma_str_trim_end_matches_chars,
+    lemma_str_trim_end_matches_string,
+}
+
+/// Broadcast group for all `str::strip_prefix` pattern linking lemmas.
+pub broadcast group group_str_strip_prefix {
+    lemma_str_strip_prefix_char,
+    lemma_str_strip_prefix_closure,
+    lemma_str_strip_prefix_chars,
+    lemma_str_strip_prefix_string,
+}
+
+/// Broadcast group for all `str::strip_suffix` pattern linking lemmas.
+pub broadcast group group_str_strip_suffix {
+    lemma_str_strip_suffix_char,
+    lemma_str_strip_suffix_closure,
+    lemma_str_strip_suffix_chars,
+    lemma_str_strip_suffix_string,
+}
 
 }

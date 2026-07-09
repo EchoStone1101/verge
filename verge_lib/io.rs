@@ -721,7 +721,7 @@ pub assume_specification<R: ?Sized>[ BufReader::capacity ](r: &BufReader<R>) -> 
         ret == spec_slice_len(r.buf()),
 ;
 
-// XXX: this is a workaround for an issue of `assume_specification` when the trait bound is `Sized + ?Sized`.
+// XXX(Verus): this is a workaround for an issue of `assume_specification` when the trait bound is `Sized + ?Sized`.
 pub trait BufReaderIntoInnerFns<R: Read + Sized> {
     fn into_inner(self) -> R;
 }

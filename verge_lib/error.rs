@@ -16,7 +16,7 @@ use std::fmt::{Display, Debug};
 
 verus! {
 
-// XXX: `std::error::Error` cannot be introduced due to a Verus bug
+// XXX(Verus): `std::error::Error` cannot be introduced due to a Verus bug
 
 /// Extends types with error semantics.
 /// 

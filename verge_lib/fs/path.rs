@@ -3,6 +3,8 @@
 //! Verge models paths lexically with `PathView`; see the documentation of `PathView` 
 //! for details.
 
+// XXX: there is soundness concern in the specs here
+
 use super::*;
 use crate::VergeView;
 use crate::iter::*;
@@ -394,14 +396,14 @@ pub assume_specification [ Path::parent ] (p: &Path) -> (ret: Option<&Path>)
 impl_iterator!(
     [ Ancestors['a] as VergeAncestors['_] :: Item = &'a Path ]
     [ [Path as VergeView<V=PathView>] :: ancestors_iter via ancestors ] 
-    (&self,) -> |seq| {
+    (&self,) -> |iter| {
         let norm = self@.normalize();
-        &&& seq.len() == norm.path.len() + 1
-        &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
+        &&& iter.seq().len() == norm.path.len() + 1
+        &&& forall|i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len()
             ==> {
-                &&& seq[i]@.is_normalized()
-                &&& seq[i]@.abs == self@.abs
-                &&& seq[i]@.path == norm.path.take(norm.path.len() - i)
+                &&& iter.seq()[i]@.is_normalized()
+                &&& iter.seq()[i]@.abs == self@.abs
+                &&& iter.seq()[i]@.path == norm.path.take(norm.path.len() - i)
             }
     }
 );
@@ -412,18 +414,18 @@ impl_iterator!(
     [ Iter['a] as VergeIter['_] :: Item = &'a str ]
     [ [Path as VergeView<V=PathView>] :: iterate via iter ] 
     #[custom_next]
-    (&self,) -> |seq| {
+    (&self,) -> |iter| {
         let norm = self@.normalize();
         &&& !norm.abs ==> {
-            &&& seq.len() == norm.path.len()
-            &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
-                ==> seq[i]@ == norm.path[i].drop_last()
+            &&& iter.seq().len() == norm.path.len()
+            &&& forall|i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len()
+                ==> iter.seq()[i]@ == norm.path[i].drop_last()
         }
         &&& norm.abs ==> {
-            &&& seq.len() == norm.path.len() + 1
-            &&& seq[0]@ == seq![MAIN_SEPARATOR]
-            &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
-                ==> seq[i+1]@ == norm.path[i].drop_last()
+            &&& iter.seq().len() == norm.path.len() + 1
+            &&& iter.seq()[0]@ == seq![MAIN_SEPARATOR]
+            &&& forall|i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len()
+                ==> iter.seq()[i+1]@ == norm.path[i].drop_last()
         }
     }
 );

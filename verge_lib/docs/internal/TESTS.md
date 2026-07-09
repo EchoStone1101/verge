@@ -1,5 +1,7 @@
 # Verge Testing Scheme
 
+<!-- TODO: this is deprecated -->
+
 Verge tests are downstream-style Verus integration tests. They live in the separate `verge_tests/` workspace crate, not inside `verge_lib`, so they exercise the same public API surface, visibility rules, and default broadcast behavior that a user sees after importing `verge`.
 
 ## Goals

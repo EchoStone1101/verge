@@ -141,7 +141,7 @@ pub fn iter_min_by<I: Iterator, F>(iter: I, compare: F) -> (ret: Option<I::Item>
         }
     { iter.min_by(compare) }
 
-// XXX: could have the `cmp` methods, once we have specs for generic lexicographical ordering
+// TODO: could have the `cmp` methods, once we have specs for generic lexicographical ordering
 
 /// Enables `Iterator::is_sorted`, which consumes the iterator.
 #[verifier::external_body]
@@ -858,23 +858,23 @@ macro_rules! impl_iterator {
     (
         $(#[$attr:meta])*
         [ $type:path [$($gen:tt)*] as $vtype:path [$($retgen:tt)*] :: Item = $ity:ty $(where $($where:tt)*)? ]
-        [ $($constructor:tt)+ ] $(#[$custom:meta])? ($($params:tt)*) -> |$seq:ident| $($exp:tt)+
+        [ $($constructor:tt)+ ] $(#[$custom:meta])? ($($params:tt)*) -> |$iter:ident| $($exp:tt)+
     ) => {
         impl_iterator!(
             @step1 $(#[$attr])* 
             [ $type [$($gen)*] as $vtype [$($retgen)*] :: Item = $ity $(where $($where)*)? ]
-            [ $($constructor)+ ] $(#[$custom])? ($($params)*) () -> |$seq| $($exp)+
+            [ $($constructor)+ ] $(#[$custom])? ($($params)*) () -> |$iter| $($exp)+
         );
     };
     (
         $(#[$attr:meta])*
         [ $type:path [$($gen:tt)*] as $vtype:path [$($retgen:tt)*] :: Item = $ity:ty $(where $($where:tt)*)? ]
-        [ $($constructor:tt)+ ] $(#[$custom:meta])? ($($params:tt)*) requires($($requires:tt)*) -> |$seq:ident| $($exp:tt)+
+        [ $($constructor:tt)+ ] $(#[$custom:meta])? ($($params:tt)*) requires($($requires:tt)*) -> |$iter:ident| $($exp:tt)+
     ) => {
         impl_iterator!(
             @step1 $(#[$attr])* 
             [ $type [$($gen)*] as $vtype [$($retgen)*] :: Item = $ity $(where $($where)*)? ]
-            [ $($constructor)+ ] $(#[$custom])? ($($params)*) (requires $($requires)*) -> |$seq| $($exp)+
+            [ $($constructor)+ ] $(#[$custom])? ($($params)*) (requires $($requires)*) -> |$iter| $($exp)+
         );
     };
 
@@ -883,7 +883,7 @@ macro_rules! impl_iterator {
         @step1 $(#[$attr:meta])* 
         [ $type:path [$($gen:tt)*] as $vtype:path [$($retgen:tt)*] :: Item = $ity:ty $(where $($where:tt)*)? ]
         [ $method:ident via $implfn:ident $(where $($wherecon:tt)*)? ] $(#[$custom:meta])?
-        ($($arg:ident: $aty:ty),*) ($($requires:tt)*) -> |$seq:ident| $($exp:tt)+
+        ($($arg:ident: $aty:ty),*) ($($requires:tt)*) -> |$iter:ident| $($exp:tt)+
     ) => {
         impl_iterator!(
             $(#[$custom])? @step2 $(#[$attr])* 
@@ -897,9 +897,9 @@ macro_rules! impl_iterator {
                 $($requires)*
                 ensures
                     ({
-                        let $seq = iter.seq();
+                        let $iter = iter;
                         &&& iter.idx() == 0
-                        &&& iter.ridx() == $seq.len()
+                        &&& iter.ridx() == $iter.seq().len()
                         &&& $($exp)+
                     }),
                 no_unwind
@@ -911,7 +911,7 @@ macro_rules! impl_iterator {
         @step1 $(#[$attr:meta])* 
         [ $type:path [$($gen:tt)*] as $vtype:path [$($retgen:tt)*] :: Item = $ity:ty $(where $($where:tt)*)? ]
         [ [$hty:path as $($hbound:tt)+] :: $method:ident via $implfn:ident $(where $($wherecon:tt)*)? ] $(#[$custom:meta])?
-        (&$self:ident, $($arg:ident: $aty:ty),*) ($($requires:tt)*) -> |$seq:ident| $($exp:tt)+
+        (&$self:ident, $($arg:ident: $aty:ty),*) ($($requires:tt)*) -> |$iter:ident| $($exp:tt)+
     ) => {
         impl_iterator!(
             $(#[$custom])? @step2 $(#[$attr])* 
@@ -925,9 +925,9 @@ macro_rules! impl_iterator {
                     $($requires)*
                     ensures
                         ({
-                            let $seq = iter.seq();
+                            let $iter = iter;
                             &&& iter.idx() == 0
-                            &&& iter.ridx() == $seq.len()
+                            &&& iter.ridx() == $iter.seq().len()
                             &&& $($exp)+
                         }),
                     no_unwind;
@@ -1003,7 +1003,7 @@ macro_rules! _impl_iterator_next {
     // custom impl
     (#[custom_next] $($rest:tt)*) => {};
     // specialized impl
-    // XXX: the whole point of this case is a workaround of Verus's Trait Conflict Checker, 
+    // XXX(Verus): the whole point of this case is a workaround of Verus's Trait Conflict Checker, 
     // which doesn't handle certain trait bounds.
     (#[specialized_next($($wherenext:tt)*)] $vtype:path [$($gen:tt)*] $($where:tt)*) => {
         verus! {

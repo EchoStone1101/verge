@@ -271,7 +271,7 @@ impl Fs {
 
     /// This axiom asserts that a relative path "**" is equivalent to "./**".
     /// 
-    /// XXX: by the normalization standard, "**" and "./**" should really be the same;
+    /// XXX: By the normalization standard, "**" and "./**" should really be the same;
     /// however the Rust standard library treats them differently, so our specification 
     /// also does. This axiom exists to bridge the gap.
     #[verifier::external_body]
@@ -863,7 +863,6 @@ impl Fs {
                             ||| Fs::file_not_a_directory(old(self).epoch(), path)
                         }
                         &&& e.kind() != ErrorKind::IsADirectory
-                        // XXX: is this sound according to https://man7.org/linux/man-pages/man2/rmdir.2.html?
                         &&& e.kind() == ErrorKind::DirectoryNotEmpty ==>
                             !Fs::files_in_dir(old(self).epoch(), path).is_empty()
                     },

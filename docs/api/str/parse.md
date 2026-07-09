@@ -2,8 +2,9 @@
 
 Specifications and lemmas for parsing values from a string.
 
-To avoid name conflicts with existing `vstd` functionality, the `FromStr` trait is
-not directly specified.
+This module specifies `std::str::FromStr` directly via `FromStrSpec`.
+Implement `FromStrSpecImpl` for custom `FromStr` types to define the
+validity predicate and value/error postconditions of `from_str()`.
 
 
 ## Structs
@@ -30,28 +31,83 @@ pub struct ExIntErrorKind(IntErrorKind);
 ```
 
 
-## Functions
+## Traits
 
 
-### `spec_from_str`
+### `ExFromStr`
 
-This function defines the result of parsing a `T` from the string `s`, with the potential
-error type `E`.
+Specification extension for `FromStr` implementations.
+
+`from_str_recommends(s)` is the complete validity predicate for parsing
+`s`; successful parses imply it, and failed parses imply its negation.
+`from_str_ok_ensures` should fully characterize the parsed value. Error
+postconditions may be intentionally looser, because parse error kinds often
+expose only partial information about the failed input.
 
 ```rust
-pub uninterp spec fn spec_from_str<T, E>(s: Seq<char>) -> Result<T, E>;
+pub trait ExFromStr: Sized
 ```
 
 
-### `bool::from_str`
-
-Enable `bool::from_str`.
+#### `Err`
 
 ```rust
-pub assume_specification [ bool::from_str ] (s: &str) -> (ret: Result<bool, ParseBoolError>)
-    returns
-        spec_from_str::<bool, ParseBoolError>(s@),
-    no_unwind
+type Err;
+```
+
+
+#### `from_str_recommends`
+
+```rust
+spec fn from_str_recommends(s: Seq<char>) -> bool;
+```
+
+
+#### `from_str_ok_ensures`
+
+```rust
+spec fn from_str_ok_ensures(s: Seq<char>, value: Self) -> bool
+    recommends
+        Self::from_str_recommends(s),
+        ;
+```
+
+
+#### `from_str_err_ensures`
+
+```rust
+spec fn from_str_err_ensures(s: Seq<char>, err: Self::Err) -> bool
+    recommends
+        !Self::from_str_recommends(s),
+        ;
+```
+
+
+#### `from_str`
+
+```rust
+fn from_str(s: &str) -> (res: Result<Self, Self::Err>)
+    ensures
+        res.is_ok() ==> Self::from_str_recommends(s@) && Self::from_str_ok_ensures(s@, res->Ok_0),
+        res.is_err() ==> !Self::from_str_recommends(s@) && Self::from_str_err_ensures(s@, res->Err_0),
+        ;
+```
+
+
+## Functions
+
+
+### `<bool as FromStr>::from_str`
+
+Enable `<bool as FromStr>::from_str`.
+
+```rust
+pub assume_specification [ <bool as FromStr>::from_str ] (s: &str) -> (res: Result<bool, ParseBoolError>)
+    ensures
+        res.is_ok() ==> (s@ == seq!['t', 'r', 'u', 'e'] || s@ == seq!['f', 'a', 'l', 's', 'e'])
+            && (res->Ok_0 <==> s@ == seq!['t', 'r', 'u', 'e']),
+        res.is_err() ==> !(s@ == seq!['t', 'r', 'u', 'e'] || s@ == seq!['f', 'a', 'l', 's', 'e'])
+            && res->Err_0.is_str_parse_error(),
         ;
 ```
 
@@ -73,6 +129,111 @@ pub assume_specification[ParseIntError::kind](e: &ParseIntError) -> (kind: &IntE
 ```
 
 
+### `spec_char_digit_value`
+
+Encodes the numeric value of an ASCII radix digit.
+
+Non-digits map to `-1`; use `char_is_digit_radix` when checking validity.
+
+```rust
+pub open spec fn spec_char_digit_value(c: char) -> int {
+    if (CHAR_ZERO as int) <= (c as u32) < (CHAR_NINE as int) + 1 {
+    (c as u32) as int - (CHAR_ZERO as int)
+    } else if (CHAR_LOWER_A as int) <= (c as u32) < (CHAR_LOWER_Z as int) + 1 {
+    (c as u32) as int - (CHAR_LOWER_A as int) + 10
+    } else if (CHAR_UPPER_A as int) <= (c as u32) < (CHAR_UPPER_Z as int) + 1 {
+    (c as u32) as int - (CHAR_UPPER_A as int) + 10
+    } else {
+    -1
+    }
+    }
+```
+
+
+### `char_is_digit_radix`
+
+Encodes whether `c` is an ASCII digit in the supplied radix.
+
+```rust
+pub open spec fn char_is_digit_radix(c: char, radix: int) -> bool
+    recommends
+        2 <= radix,
+        {
+        0 <= spec_char_digit_value(c) < radix
+        }
+```
+
+
+### `spec_int_from_str_radix_rec`
+
+This function encodes parsing an unsigned digit sequence as an arbitrarily
+large `int` in the supplied radix.
+
+```rust
+pub open spec fn spec_int_from_str_radix_rec(s: Seq<char>, n: int, radix: int) -> int
+    recommends
+        2 <= radix,
+        forall|i: int| 0 <= i < s.len() ==> #[trigger] char_is_digit_radix(s[i], radix),
+    decreases
+        s.len(),
+        {
+        if s.len() == 0 {
+        n
+        } else {
+        spec_int_from_str_radix_rec(
+            s.drop_first(),
+            radix * n + spec_char_digit_value(s.first()),
+            radix,
+        )
+        }
+        }
+```
+
+
+### `spec_int_from_str_radix`
+
+This function encodes parsing an arbitrarily large `int` from a string in
+the supplied radix. A leading `+` or `-` sign is handled separately from the
+digit sequence.
+
+```rust
+pub open spec fn spec_int_from_str_radix(s: Seq<char>, radix: int) -> int
+    recommends
+        2 <= radix,
+        str_is_valid_int_radix(s, radix),
+        {
+        if s.first() == '+' {
+        spec_int_from_str_radix_rec(s.drop_first(), 0, radix)
+        } else if s.first() == '-' {
+        -spec_int_from_str_radix_rec(s.drop_first(), 0, radix)
+        } else {
+        spec_int_from_str_radix_rec(s, 0, radix)
+        }
+        }
+```
+
+
+### `str_is_valid_int_radix`
+
+This function encodes whether a string can be parsed as an arbitrarily large
+signed `int` in the supplied radix, ignoring machine-integer bounds.
+
+```rust
+pub open spec fn str_is_valid_int_radix(s: Seq<char>, radix: int) -> bool
+    recommends
+        2 <= radix,
+        {
+        &&& s.len() > 0
+        &&& if s.first() == '+' || s.first() == '-' {
+        &&& s.len() > 1
+        &&& forall|i: int| 1 <= i < s.len() ==> #[trigger] char_is_digit_radix(s[i], radix)
+        } else {
+        forall|i: int| 0 <= i < s.len() ==> #[trigger] char_is_digit_radix(s[i], radix)
+        }
+        }
+```
+
+
 ### `spec_int_from_str`
 
 This function encodes parsing an (arbitrarily large) decimal `int` from a string.
@@ -82,13 +243,7 @@ pub open spec fn spec_int_from_str(s: Seq<char>) -> int
     recommends
         str_is_valid_int(s),
         {
-        if s.first() == '+' {
-        spec_int_from_str_rec(s.drop_first(), 0)
-        } else if s.first() == '-' {
-        -spec_int_from_str_rec(s.drop_first(), 0)
-        } else {
-        spec_int_from_str_rec(s, 0)
-        }
+        spec_int_from_str_radix(s, 10)
         }
 ```
 
@@ -102,11 +257,7 @@ pub open spec fn spec_int_from_str_rec(s: Seq<char>, n: int) -> int
     decreases
         s.len(),
         {
-        if s.len() == 0 {
-        n
-        } else {
-        spec_int_from_str_rec(s.drop_first(), 10 * n + (s.first() as u8 - 0x30u8))
-        }
+        spec_int_from_str_radix_rec(s, n, 10)
         }
 ```
 
@@ -117,11 +268,7 @@ This function encodes whether a string can be parsed as a decimal `int`.
 
 ```rust
 pub open spec fn str_is_valid_int(s: Seq<char>) -> bool {
-    &&& s.len() > 0
-    &&& forall|i: int| 1 <= i < s.len()
-    ==> #[trigger] s[i].is_ascii_digit()
-    &&& s.first().is_ascii_digit()
-    || ((s.first() == '+' || s.first() == '-') && s.len() > 1)
+    str_is_valid_int_radix(s, 10)
     }
 ```
 
@@ -135,13 +282,7 @@ pub open spec fn spec_int_from_str_hex(s: Seq<char>) -> int
     recommends
         str_is_valid_int_hex(s),
         {
-        if s.first() == '+' {
-        spec_int_from_str_hex_rec(s.drop_first(), 0)
-        } else if s.first() == '-' {
-        -spec_int_from_str_hex_rec(s.drop_first(), 0)
-        } else {
-        spec_int_from_str_hex_rec(s, 0)
-        }
+        spec_int_from_str_radix(s, 16)
         }
 ```
 
@@ -155,15 +296,7 @@ pub open spec fn spec_int_from_str_hex_rec(s: Seq<char>, n: int) -> int
     decreases
         s.len(),
         {
-        if s.len() == 0 {
-        n
-        } else if s.first().is_ascii_digit() {
-        spec_int_from_str_rec(s.drop_first(), 16 * n + (s.first() as u8 - 0x30u8))
-        } else if s.first().is_ascii_lowercase() {
-        spec_int_from_str_rec(s.drop_first(), 16 * n + (s.first() as u8 - 0x61u8 + 10u8))
-        } else {
-        spec_int_from_str_rec(s.drop_first(), 16 * n + (s.first() as u8 - 0x41u8 + 10u8))
-        }
+        spec_int_from_str_radix_rec(s, n, 16)
         }
 ```
 
@@ -174,12 +307,85 @@ This function encodes whether a string can be parsed as a hexadecimal `int`.
 
 ```rust
 pub open spec fn str_is_valid_int_hex(s: Seq<char>) -> bool {
-    &&& s.len() > 0
-    &&& forall|i: int| 1 <= i < s.len()
-    ==> #[trigger] s[i].is_ascii_hexdigit()
-    &&& s.first().is_ascii_hexdigit()
-    || ((s.first() == '+' || s.first() == '-') && s.len() > 1)
+    str_is_valid_int_radix(s, 16)
     }
+```
+
+
+### `spec_signed_int_from_str_radix_recommends`
+
+Validity predicate for signed machine-integer parsing in an arbitrary radix.
+
+```rust
+pub open spec fn spec_signed_int_from_str_radix_recommends<T: Ord + Integer + Debug>(
+    s: Seq<char>, radix: int, min: T, max: T,
+    ) -> bool
+    recommends
+        2 <= radix <= 36,
+        {
+        &&& str_is_valid_int_radix(s, radix)
+        &&& (min as int) <= spec_int_from_str_radix(s, radix) <= (max as int)
+        }
+```
+
+
+### `spec_signed_int_from_str_radix_ok_ensures`
+
+Successful-value postcondition for signed machine-integer parsing in an arbitrary radix.
+
+```rust
+pub open spec fn spec_signed_int_from_str_radix_ok_ensures<T: Ord + Integer + Debug>(
+    s: Seq<char>, radix: int, value: T, min: T, max: T,
+    ) -> bool
+    recommends
+        spec_signed_int_from_str_radix_recommends(s, radix, min, max),
+        {
+        value as int == spec_int_from_str_radix(s, radix)
+        }
+```
+
+
+### `spec_signed_int_from_str_radix_err_ensures`
+
+Error postcondition for signed machine-integer parsing in an arbitrary radix.
+
+```rust
+pub open spec fn spec_signed_int_from_str_radix_err_ensures<T: Ord + Integer + Debug>(
+    s: Seq<char>, radix: int, err: ParseIntError, min: T, max: T,
+    ) -> bool
+    recommends
+        2 <= radix <= 36,
+        !spec_signed_int_from_str_radix_recommends(s, radix, min, max),
+        {
+        &&& err.is_str_parse_error()
+        &&& (err.kind() == &IntErrorKind::Empty <==> s.len() == 0)
+        // caveat: i8::from_str("128n") may be `Err(PosOverflow)`.
+        &&& (err.kind() == &IntErrorKind::InvalidDigit ==> s.len() > 0 && !str_is_valid_int_radix(s, radix))
+        &&& (str_is_valid_int_radix(s, radix) && spec_int_from_str_radix(s, radix) > (max as int)
+        ==> err.kind() == &IntErrorKind::PosOverflow)
+        &&& (str_is_valid_int_radix(s, radix) && spec_int_from_str_radix(s, radix) < (min as int)
+        ==> err.kind() == &IntErrorKind::NegOverflow)
+        &&& err.kind() != &IntErrorKind::Zero
+        }
+```
+
+
+### `spec_signed_int_from_str_radix`
+
+Common specification for `iN::from_str_radix`.
+
+```rust
+pub open spec fn spec_signed_int_from_str_radix<T: Ord + Integer + Debug>(
+    s: Seq<char>, radix: int, res: Result<T, ParseIntError>, min: T, max: T,
+    ) -> bool
+    recommends
+        2 <= radix <= 36,
+        {
+        &&& (res.is_ok() ==> spec_signed_int_from_str_radix_recommends(s, radix, min, max)
+        && spec_signed_int_from_str_radix_ok_ensures(s, radix, spec_unwrap(res), min, max))
+        &&& (res.is_err() ==> !spec_signed_int_from_str_radix_recommends(s, radix, min, max)
+        && spec_signed_int_from_str_radix_err_ensures(s, radix, spec_unwrap_err(res), min, max))
+        }
 ```
 
 
@@ -191,400 +397,127 @@ Common specification for `iN::from_str()`.
 pub open spec fn spec_signed_int_from_str<T: Ord + Integer + Debug>(
     s: Seq<char>, res: Result<T, ParseIntError>, min: T, max: T,
     ) -> bool {
-    &&& res.is_ok() && spec_unwrap(res) as int == spec_int_from_str(s)
-    <==> str_is_valid_int(s) && (min as int) <= spec_int_from_str(s) <= (max as int)
-    &&& res.is_err() ==> spec_unwrap_err(res).is_str_parse_error()
-    &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::Empty
-    <==> s.len() == 0
-    // caveat: i8::from_str("128n") might be `Err(PosOverflow)`
-    &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::InvalidDigit
-    ==> s.len() > 0 && !str_is_valid_int(s)
-    &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::PosOverflow
-    <== str_is_valid_int(s) && spec_int_from_str(s) > (max as int)
-    &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::NegOverflow
-    <== str_is_valid_int(s) && spec_int_from_str(s) < (min as int)
-    &&& res.is_err() ==> spec_unwrap_err(res).kind() != &IntErrorKind::Zero
+    spec_signed_int_from_str_radix(s, 10, res, min, max)
     }
 
     /// Common specification for `iN::from_str_radix(_, 16)`.
     pub open spec fn spec_signed_int_from_str_hex<T: Ord + Integer + Debug>(
     s: Seq<char>, res: Result<T, ParseIntError>, min: T, max: T,
     ) -> bool {
-    &&& res.is_ok() && spec_unwrap(res) as int == spec_int_from_str_hex(s)
-    <==> str_is_valid_int_hex(s) && (min as int) <= spec_int_from_str_hex(s) <= (max as int)
-    &&& res.is_err() ==> spec_unwrap_err(res).is_str_parse_error()
-    &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::Empty
-    <==> s.len() == 0
-    &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::InvalidDigit
-    ==> s.len() > 0 && !str_is_valid_int_hex(s)
-    &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::PosOverflow
-    <== str_is_valid_int_hex(s) && spec_int_from_str_hex(s) > (max as int)
-    &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::NegOverflow
-    <== str_is_valid_int_hex(s) && spec_int_from_str_hex(s) < (min as int)
-    &&& res.is_err() ==> spec_unwrap_err(res).kind() != &IntErrorKind::Zero
+    spec_signed_int_from_str_radix(s, 16, res, min, max)
     }
 
-    /// Common specification for `uN::from_str()`.
-    pub open spec fn spec_unsigned_int_from_str<T: Ord + Integer + Debug>(
+    /// Validity predicate for unsigned machine-integer parsing in an arbitrary radix.
+    pub open spec fn spec_unsigned_int_from_str_radix_recommends<T: Ord + Integer + Debug>(
+    s: Seq<char>, radix: int, max: T,
+    ) -> bool
+    recommends
+        2 <= radix <= 36,
+        {
+        &&& str_is_valid_int_radix(s, radix)
+        &&& s.first() != '-'
+        &&& 0int <= spec_int_from_str_radix(s, radix) <= (max as int)
+        }
+```
+
+
+### `spec_unsigned_int_from_str_radix_ok_ensures`
+
+Successful-value postcondition for unsigned machine-integer parsing in an arbitrary radix.
+
+```rust
+pub open spec fn spec_unsigned_int_from_str_radix_ok_ensures<T: Ord + Integer + Debug>(
+    s: Seq<char>, radix: int, value: T, max: T,
+    ) -> bool
+    recommends
+        spec_unsigned_int_from_str_radix_recommends(s, radix, max),
+        {
+        value as int == spec_int_from_str_radix(s, radix)
+        }
+```
+
+
+### `spec_unsigned_int_from_str_radix_err_ensures`
+
+Error postcondition for unsigned machine-integer parsing in an arbitrary radix.
+
+```rust
+pub open spec fn spec_unsigned_int_from_str_radix_err_ensures<T: Ord + Integer + Debug>(
+    s: Seq<char>, radix: int, err: ParseIntError, max: T,
+    ) -> bool
+    recommends
+        2 <= radix <= 36,
+        !spec_unsigned_int_from_str_radix_recommends(s, radix, max),
+        {
+        &&& err.is_str_parse_error()
+        &&& (err.kind() == &IntErrorKind::Empty <==> s.len() == 0)
+        &&& (err.kind() == &IntErrorKind::InvalidDigit
+        ==> s.len() > 0 && (!str_is_valid_int_radix(s, radix) || s.first() == '-'))
+        &&& (str_is_valid_int_radix(s, radix) && s.first() != '-' && spec_int_from_str_radix(s, radix) > (max as int)
+        ==> err.kind() == &IntErrorKind::PosOverflow)
+        &&& err.kind() != &IntErrorKind::NegOverflow
+        &&& err.kind() != &IntErrorKind::Zero
+        }
+```
+
+
+### `spec_unsigned_int_from_str_radix`
+
+Common specification for `uN::from_str_radix`.
+
+```rust
+pub open spec fn spec_unsigned_int_from_str_radix<T: Ord + Integer + Debug>(
+    s: Seq<char>, radix: int, res: Result<T, ParseIntError>, max: T,
+    ) -> bool
+    recommends
+        2 <= radix <= 36,
+        {
+        &&& (res.is_ok() ==> spec_unsigned_int_from_str_radix_recommends(s, radix, max)
+        && spec_unsigned_int_from_str_radix_ok_ensures(s, radix, spec_unwrap(res), max))
+        &&& (res.is_err() ==> !spec_unsigned_int_from_str_radix_recommends(s, radix, max)
+        && spec_unsigned_int_from_str_radix_err_ensures(s, radix, spec_unwrap_err(res), max))
+        }
+```
+
+
+### `spec_unsigned_int_from_str`
+
+Common specification for `uN::from_str()`.
+
+```rust
+pub open spec fn spec_unsigned_int_from_str<T: Ord + Integer + Debug>(
     s: Seq<char>, res: Result<T, ParseIntError>, max: T,
     ) -> bool {
-    &&& res.is_ok() && spec_unwrap(res) as int == spec_int_from_str(s)
-    <==> str_is_valid_int(s) && s.first() != '-' && 0int <= spec_int_from_str(s) <= (max as int)
-    &&& res.is_err() ==> spec_unwrap_err(res).is_str_parse_error()
-    &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::Empty
-    <==> s.len() == 0
-    &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::InvalidDigit
-    ==> s.len() > 0 && (!str_is_valid_int(s) || s.first() == '-')
-    &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::PosOverflow
-    <== str_is_valid_int(s) && s.first() != '-' && spec_int_from_str(s) > (max as int)
-    &&& res.is_err() ==> spec_unwrap_err(res).kind() != &IntErrorKind::NegOverflow
-    &&& res.is_err() ==> spec_unwrap_err(res).kind() != &IntErrorKind::Zero
+    spec_unsigned_int_from_str_radix(s, 10, res, max)
     }
 
     /// Common specification for `uN::from_str_radix(_, 16)`.
     pub open spec fn spec_unsigned_int_from_str_hex<T: Ord + Integer + Debug>(
     s: Seq<char>, res: Result<T, ParseIntError>, max: T,
     ) -> bool {
-    &&& res.is_ok() && spec_unwrap(res) as int == spec_int_from_str_hex(s)
-    <==> str_is_valid_int_hex(s) && s.first() != '-' && 0int <= spec_int_from_str_hex(s) <= (max as int)
-    &&& res.is_err() ==> spec_unwrap_err(res).is_str_parse_error()
-    &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::Empty
-    <==> s.len() == 0
-    &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::InvalidDigit
-    ==> s.len() > 0 && (!str_is_valid_int_hex(s) || s.first() == '-')
-    &&& res.is_err() && spec_unwrap_err(res).kind() == &IntErrorKind::PosOverflow
-    <== str_is_valid_int_hex(s) && s.first() != '-' && spec_int_from_str_hex(s) > (max as int)
-    &&& res.is_err() ==> spec_unwrap_err(res).kind() != &IntErrorKind::NegOverflow
-    &&& res.is_err() ==> spec_unwrap_err(res).kind() != &IntErrorKind::Zero
+    spec_unsigned_int_from_str_radix(s, 16, res, max)
     }
 
-    /// Enable `i8::from_str`.
-    pub assume_specification [ i8::from_str ] (s: &str) -> (ret: Result<i8, ParseIntError>)
-    returns
-        spec_from_str::<i8, ParseIntError>(s@),
-    no_unwind
-        ;
-```
-
-
-### `i8::from_str_radix`
-
-Enable `i8::from_str_radix` (hex-only).
-
-```rust
-pub assume_specification [ i8::from_str_radix ] (s: &str, radix: u32) -> (ret: Result<i8, ParseIntError>)
-    requires
-        radix == 16,
-    ensures
-        spec_signed_int_from_str_hex::<i8>(s@, ret, i8::MIN, i8::MAX),
-    no_unwind
-        ;
-```
-
-
-### `i16::from_str`
-
-Enable `i16::from_str`.
-
-```rust
-pub assume_specification [ i16::from_str ] (s: &str) -> (ret: Result<i16, ParseIntError>)
-    returns
-        spec_from_str::<i16, ParseIntError>(s@),
-    no_unwind
-        ;
-```
-
-
-### `i16::from_str_radix`
-
-Enable `i16::from_str_radix` (hex-only).
-
-```rust
-pub assume_specification [ i16::from_str_radix ] (s: &str, radix: u32) -> (ret: Result<i16, ParseIntError>)
-    requires
-        radix == 16,
-    ensures
-        spec_signed_int_from_str_hex::<i16>(s@, ret, i16::MIN, i16::MAX),
-    no_unwind
-        ;
-```
-
-
-### `i32::from_str`
-
-Enable `i32::from_str`.
-
-```rust
-pub assume_specification [ i32::from_str ] (s: &str) -> (ret: Result<i32, ParseIntError>)
-    returns
-        spec_from_str::<i32, ParseIntError>(s@),
-    no_unwind
-        ;
-```
-
-
-### `i32::from_str_radix`
-
-Enable `i32::from_str_radix` (hex-only).
-
-```rust
-pub assume_specification [ i32::from_str_radix ] (s: &str, radix: u32) -> (ret: Result<i32, ParseIntError>)
-    requires
-        radix == 16,
-    ensures
-        spec_signed_int_from_str_hex::<i32>(s@, ret, i32::MIN, i32::MAX),
-    no_unwind
-        ;
-```
-
-
-### `i64::from_str`
-
-Enable `i64::from_str`.
-
-```rust
-pub assume_specification [ i64::from_str ] (s: &str) -> (ret: Result<i64, ParseIntError>)
-    returns
-        spec_from_str::<i64, ParseIntError>(s@),
-    no_unwind
-        ;
-```
-
-
-### `i64::from_str_radix`
-
-Enable `i64::from_str_radix` (hex-only).
-
-```rust
-pub assume_specification [ i64::from_str_radix ] (s: &str, radix: u32) -> (ret: Result<i64, ParseIntError>)
-    requires
-        radix == 16,
-    ensures
-        spec_signed_int_from_str_hex::<i64>(s@, ret, i64::MIN, i64::MAX),
-    no_unwind
-        ;
-```
-
-
-### `i128::from_str`
-
-Enable `i128::from_str`.
-
-```rust
-pub assume_specification [ i128::from_str ] (s: &str) -> (ret: Result<i128, ParseIntError>)
-    returns
-        spec_from_str::<i128, ParseIntError>(s@),
-    no_unwind
-        ;
-```
-
-
-### `i128::from_str_radix`
-
-Enable `i128::from_str_radix` (hex-only).
-
-```rust
-pub assume_specification [ i128::from_str_radix ] (s: &str, radix: u32) -> (ret: Result<i128, ParseIntError>)
-    requires
-        radix == 16,
-    ensures
-        spec_signed_int_from_str_hex::<i128>(s@, ret, i128::MIN, i128::MAX),
-    no_unwind
-        ;
-```
-
-
-### `isize::from_str`
-
-Enable `isize::from_str`.
-
-```rust
-pub assume_specification [ isize::from_str ] (s: &str) -> (ret: Result<isize, ParseIntError>)
-    returns
-        spec_from_str::<isize, ParseIntError>(s@),
-    no_unwind
-        ;
-```
-
-
-### `isize::from_str_radix`
-
-Enable `isize::from_str_radix` (hex-only).
-
-```rust
-pub assume_specification [ isize::from_str_radix ] (s: &str, radix: u32) -> (ret: Result<isize, ParseIntError>)
-    requires
-        radix == 16,
-    ensures
-        spec_signed_int_from_str_hex::<isize>(s@, ret, isize::MIN, isize::MAX),
-    no_unwind
-        ;
-```
-
-
-### `u8::from_str`
-
-Enable `u8::from_str`.
-
-```rust
-pub assume_specification [ u8::from_str ] (s: &str) -> (ret: Result<u8, ParseIntError>)
-    returns
-        spec_from_str::<u8, ParseIntError>(s@),
-    no_unwind
-        ;
-```
-
-
-### `u8::from_str_radix`
-
-Enable `u8::from_str_radix` (hex-only).
-
-```rust
-pub assume_specification [ u8::from_str_radix ] (s: &str, radix: u32) -> (ret: Result<u8, ParseIntError>)
-    requires
-        radix == 16,
-    ensures
-        spec_unsigned_int_from_str_hex::<u8>(s@, ret, u8::MAX),
-    no_unwind
-        ;
-```
-
-
-### `u16::from_str`
-
-Enable `u16::from_str`.
-
-```rust
-pub assume_specification [ u16::from_str ] (s: &str) -> (ret: Result<u16, ParseIntError>)
-    returns
-        spec_from_str::<u16, ParseIntError>(s@),
-    no_unwind
-        ;
-```
-
-
-### `u16::from_str_radix`
-
-Enable `u16::from_str_radix` (hex-only).
-
-```rust
-pub assume_specification [ u16::from_str_radix ] (s: &str, radix: u32) -> (ret: Result<u16, ParseIntError>)
-    requires
-        radix == 16,
-    ensures
-        spec_unsigned_int_from_str_hex::<u16>(s@, ret, u16::MAX),
-    no_unwind
-        ;
-```
-
-
-### `u32::from_str`
-
-Enable `u32::from_str`.
-
-```rust
-pub assume_specification [ u32::from_str ] (s: &str) -> (ret: Result<u32, ParseIntError>)
-    returns
-        spec_from_str::<u32, ParseIntError>(s@),
-    no_unwind
-        ;
-```
-
-
-### `u32::from_str_radix`
-
-Enable `u32::from_str_radix` (hex-only).
-
-```rust
-pub assume_specification [ u32::from_str_radix ] (s: &str, radix: u32) -> (ret: Result<u32, ParseIntError>)
-    requires
-        radix == 16,
-    ensures
-        spec_unsigned_int_from_str_hex::<u32>(s@, ret, u32::MAX),
-    no_unwind
-        ;
-```
-
-
-### `u64::from_str`
-
-Enable `u64::from_str`.
-
-```rust
-pub assume_specification [ u64::from_str ] (s: &str) -> (ret: Result<u64, ParseIntError>)
-    returns
-        spec_from_str::<u64, ParseIntError>(s@),
-    no_unwind
-        ;
-```
-
-
-### `u64::from_str_radix`
-
-Enable `u64::from_str_radix` (hex-only).
-
-```rust
-pub assume_specification [ u64::from_str_radix ] (s: &str, radix: u32) -> (ret: Result<u64, ParseIntError>)
-    requires
-        radix == 16,
-    ensures
-        spec_unsigned_int_from_str_hex::<u64>(s@, ret, u64::MAX),
-    no_unwind
-        ;
-```
-
-
-### `u128::from_str`
-
-Enable `u128::from_str`.
-
-```rust
-pub assume_specification [ u128::from_str ] (s: &str) -> (ret: Result<u128, ParseIntError>)
-    returns
-        spec_from_str::<u128, ParseIntError>(s@),
-    no_unwind
-        ;
-```
-
-
-### `u128::from_str_radix`
-
-Enable `u128::from_str_radix` (hex-only).
-
-```rust
-pub assume_specification [ u128::from_str_radix ] (s: &str, radix: u32) -> (ret: Result<u128, ParseIntError>)
-    requires
-        radix == 16,
-    ensures
-        spec_unsigned_int_from_str_hex::<u128>(s@, ret, u128::MAX),
-    no_unwind
-        ;
-```
-
-
-### `usize::from_str`
-
-Enable `usize::from_str`.
-
-```rust
-pub assume_specification [ usize::from_str ] (s: &str) -> (ret: Result<usize, ParseIntError>)
-    returns
-        spec_from_str::<usize, ParseIntError>(s@),
-    no_unwind
-        ;
-```
-
-
-### `usize::from_str_radix`
-
-Enable `usize::from_str_radix` (hex-only).
-
-```rust
-pub assume_specification [ usize::from_str_radix ] (s: &str, radix: u32) -> (ret: Result<usize, ParseIntError>)
-    requires
-        radix == 16,
-    ensures
-        spec_unsigned_int_from_str_hex::<usize>(s@, ret, usize::MAX),
-    no_unwind
-        ;
+    } // verus!
+
+    macro_rules! impl_from_str_spec_signed_int {
+    ($($ty:ident),+) => {
+    verus! {
+    $(
+    impl FromStrSpecImpl for $ty {
+    open spec fn from_str_recommends(s: Seq<char>) -> bool {
+    spec_signed_int_from_str_radix_recommends::<$ty>(s, 10, $ty::MIN, $ty::MAX)
+    }
+
+    open spec fn from_str_ok_ensures(s: Seq<char>, value: $ty) -> bool {
+    spec_signed_int_from_str_radix_ok_ensures::<$ty>(s, 10, value, $ty::MIN, $ty::MAX)
+    }
+
+    open spec fn from_str_err_ensures(s: Seq<char>, err: Self::Err) -> bool {
+    spec_signed_int_from_str_radix_err_ensures::<$ty>(s, 10, err, $ty::MIN, $ty::MAX)
+    }
+    }
+    )+
+    }
+    }
 ```

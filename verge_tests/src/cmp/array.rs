@@ -73,12 +73,9 @@ fn test_verified_bridge_lemmas_for_array() {
     assert(<[u32; 2] as OrdSpec>::cmp_spec(&a, &b) == Ordering::Less);
 }
 
-// TODO(issue): `PartialEq::ne` and `PartialOrd::{lt,le,gt,ge}` are provided
+// TODO(Verus): `PartialEq::ne` and `PartialOrd::{lt,le,gt,ge}` are provided
 // trait methods for arrays; Verus currently rejects `assume_specification` for
 // provided trait methods, so direct `!=`, `<`, `<=`, `>`, `>=`, `.ne`, `.lt`,
 // `.le`, `.gt`, and `.ge` calls are intentionally not enabled here.
-// TODO(issue): Rust arrays implement comparison only for equal lengths, so the
-// executable prefix case `[1] < [1, 2]` is not type-correct for arrays. The
-// same prefix shape is covered by the slice, `Vec<T>`, and `VecDeque<T>` tests.
 
 } // verus!

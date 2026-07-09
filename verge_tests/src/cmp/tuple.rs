@@ -88,7 +88,7 @@ fn test_unit_tuple_comparison_methods_are_callable() {
     assert(clamp == ());
 }
 
-// XXX(issue): Tuple `PartialOrd::partial_cmp`, `le`, and `ge` are currently not
+// TODO(Verus): Tuple `PartialOrd::partial_cmp`, `le`, and `ge` are currently not
 // directly callable from Verus. Adding the suggested `assume_specification` items
 // creates a cyclic self-reference through `vstd::laws_cmp` tuple broadcasts.
 // fn test_tuple_cyclic_partial_ord_methods_are_callable() {

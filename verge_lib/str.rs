@@ -357,8 +357,6 @@ pub uninterp spec fn str_index_ensures<'a, I>(s: &'a str, i: I, r: &'a <I as Sli
 pub uninterp spec fn str_index_mut_ensures<'a, I>(s: &'a mut str, i: I, r: &'a mut <I as SliceIndex<str>>::Output) -> bool
     where I: SliceIndex<str>;
 
-// XXX: these proofs are workarounds because Verge cannot implement `SliceIndexSpec` and `IndexSpec`
-
 /// Proof that links `str_range_index_requires` with `IndexSpec::index_req`.
 #[verifier::external_body]
 pub broadcast axiom fn lemma_str_range_index_requires(s: &str, i: Range<usize>)

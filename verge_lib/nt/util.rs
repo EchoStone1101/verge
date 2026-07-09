@@ -78,7 +78,6 @@ pub(crate) proof fn lemma_bezout_identity_epilogue2(a1: int, b1: int, d: int)
     ensures
         exists|x: int, y: int| 0 <= x < b1 && #[trigger] (a1 * d * x + b1 * d * y) == d,
 {
-    // XXX: somehow lemma_mul_unary_negation blows up verification in `nt`...
     let (x, y) = choose|x: int, y: int| 0 <= x < b1 && #[trigger] (a1 * d * x - b1 * d * y) == d;
     assert(-(b1 * d * y) == b1 * d * (-y)) by { broadcast use lemma_mul_unary_negation; }
     assert(a1 * d * x + b1 * d * (-y) == d);

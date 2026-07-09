@@ -24,8 +24,8 @@ verus! {
 impl_iterator!(
     [ Bytes['a] as VergeBytes['_] :: Item = u8 ]
     [ [str as View<V=Seq<char>>] :: bytes_iter via bytes ] 
-    (&self,) -> |seq| {
-        seq == self@.as_bytes()
+    (&self,) -> |iter| {
+        iter.seq() == self@.as_bytes()
     } 
 );
 
@@ -39,8 +39,8 @@ impl_double_ended_iterator!(
 impl_iterator!(
     [ CharIndices['a] as VergeCharIndices['_] :: Item = (usize, char) ]
     [ [str as View<V=Seq<char>>] :: char_indices_iter via char_indices ] 
-    (&self,) -> |seq| {
-        seq == self@.map(|i: int, c: char| (self@.take(i).as_bytes().len() as usize, c))
+    (&self,) -> |iter| {
+        iter.seq() == self@.map(|i: int, c: char| (self@.take(i).as_bytes().len() as usize, c))
     } 
 );
 
@@ -54,21 +54,21 @@ impl_double_ended_iterator!(
 impl_iterator!(
     [ Lines['a] as VergeLines['_] :: Item = &'a str ]
     [ [str as View<V=Seq<char>>] :: lines_iter via lines ] 
-    (&self,) -> |seq| {
+    (&self,) -> |iter| {
         // lines cannot have `\n`
-        &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() ==> 
-                forall |j: int| #![trigger seq[i]@[j]] 0 <= j < seq[i]@.len() ==> 
-                    !(seq[i]@[j] == '\n')
+        &&& forall |i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len() ==> 
+                forall |j: int| #![trigger iter.seq()[i]@[j]] 0 <= j < iter.seq()[i]@.len() ==> 
+                    !(iter.seq()[i]@[j] == '\n')
         &&& exists |nls: Seq<Seq<char>>| #![trigger nls.len()] {
-            &&& nls.len() == seq.len() || nls.len() + 1 == seq.len()
-            &&& nls.len() + 1 == seq.len() ==> seq.last()@.len() > 0
+            &&& nls.len() == iter.seq().len() || nls.len() + 1 == iter.seq().len()
+            &&& nls.len() + 1 == iter.seq().len() ==> iter.seq().last()@.len() > 0
             // delimeters are all `\n` or `\r\n`
             &&& forall |j: int| #![trigger nls[j]] 0 <= j < nls.len() ==> {
                 &&& nls[j] == seq!['\n'] || nls[j] == seq!['\r', '\n'] || (j == nls.len() - 1 && nls[j].len() == 0 )
-                &&& nls[j] == seq!['\n'] ==> !seq!['\r'].is_suffix_of(seq[j]@)
+                &&& nls[j] == seq!['\n'] ==> !seq!['\r'].is_suffix_of(iter.seq()[j]@)
             }
             // delimeters and lines make up the original string
-            &&& self@ =~= join(Seq::new(seq.len(), |j: int| seq[j]@) + seq![Seq::<char>::empty()], nls) 
+            &&& self@ =~= join(Seq::new(iter.seq().len(), |j: int| iter.seq()[j]@) + seq![Seq::<char>::empty()], nls) 
         }
     }
 );
@@ -86,7 +86,7 @@ impl_iterator!(
         where P: Pattern, 
     ] [ [str as View<V=Seq<char>>] :: split_iter via split ] 
     (&self, pat: P) -> |iter| {
-        str_split_iter_post(self@, pat, iter)
+        str_split_iter_post(self@, pat, iter.seq())
     }
 );
 
@@ -105,7 +105,7 @@ impl_iterator!(
         where P: Pattern,
     ] [ [str as View<V=Seq<char>>] :: split_inclusive_iter via split_inclusive
     ] (&self, pat: P) -> |iter| {
-        str_split_inclusive_iter_post(self@, pat, iter)
+        str_split_inclusive_iter_post(self@, pat, iter.seq())
     }
 );
 
@@ -127,7 +127,7 @@ impl_iterator!(
     ] 
     #[specialized_next(<P as Pattern>::Searcher<'a>: ReverseSearcher<'a>)]
     (&self, pat: P) -> |iter| {
-        str_rsplit_iter_post(self@, pat, iter)
+        str_rsplit_iter_post(self@, pat, iter.seq())
     }
 );
 
@@ -146,7 +146,7 @@ impl_iterator!(
         where P: Pattern, 
     ] [ [str as View<V=Seq<char>>] :: split_terminator_iter via split_terminator
     ] (&self, pat: P) -> |iter| {
-        str_split_terminator_iter_post(self@, pat, iter)
+        str_split_terminator_iter_post(self@, pat, iter.seq())
     }
 );
 
@@ -168,7 +168,7 @@ impl_iterator!(
     ] 
     #[specialized_next(<P as Pattern>::Searcher<'a>: ReverseSearcher<'a>)]
     (&self, pat: P) -> |iter| {
-        str_rsplit_terminator_iter_post(self@, pat, iter)
+        str_rsplit_terminator_iter_post(self@, pat, iter.seq())
     }
 );
 
@@ -187,7 +187,7 @@ impl_iterator!(
         where P: Pattern, 
     ] [ [str as View<V=Seq<char>>] :: splitn_iter via splitn
     ] (&self, n: usize, pat: P) -> |iter| {
-        str_splitn_iter_post(self@, n, pat, iter)
+        str_splitn_iter_post(self@, n, pat, iter.seq())
     }
 );
 
@@ -202,7 +202,7 @@ impl_iterator!(
     ] 
     #[specialized_next(<P as Pattern>::Searcher<'a>: ReverseSearcher<'a>)]
     (&self, n: usize, pat: P) -> |iter| {
-        str_rsplitn_iter_post(self@, n, pat, iter)
+        str_rsplitn_iter_post(self@, n, pat, iter.seq())
     }
 );
 
@@ -214,7 +214,7 @@ impl_iterator!(
         where P: Pattern, 
     ] [ [str as View<V=Seq<char>>] :: matches_iter via matches ] 
     (&self, pat: P) -> |iter| {
-        str_matches_iter_post(self@, pat, iter)
+        str_matches_iter_post(self@, pat, iter.seq())
     }
 );
 
@@ -236,7 +236,7 @@ impl_iterator!(
     ] 
     #[specialized_next(<P as Pattern>::Searcher<'a>: ReverseSearcher<'a>)]
     (&self, pat: P) -> |iter| {
-        str_rmatches_iter_post(self@, pat, iter)
+        str_rmatches_iter_post(self@, pat, iter.seq())
     }
 );
 
@@ -255,7 +255,7 @@ impl_iterator!(
         where P: Pattern, 
     ] [ [str as View<V=Seq<char>>] :: match_indices_iter via match_indices ] 
     (&self, pat: P) -> |iter| {
-        str_match_indices_iter_post(self@, pat, iter)
+        str_match_indices_iter_post(self@, pat, iter.seq())
     }
 );
 
@@ -277,7 +277,7 @@ impl_iterator!(
     ] 
     #[specialized_next(<P as Pattern>::Searcher<'a>: ReverseSearcher<'a>)]
     (&self, pat: P) -> |iter| {
-        str_rmatch_indices_iter_post(self@, pat, iter)
+        str_rmatch_indices_iter_post(self@, pat, iter.seq())
     }
 );
 
@@ -294,7 +294,7 @@ impl_iterator!(
     [ SplitWhitespace['a] as VergeSplitWhitespace['_] :: Item = &'a str ]
     [ [str as View<V=Seq<char>>] :: split_whitespace_iter via split_whitespace ] 
     (&self,) -> |iter| {
-        str_split_whitespace_iter_post(self@, iter)
+        str_split_whitespace_iter_post(self@, iter.seq())
     }
 );
 
@@ -309,7 +309,7 @@ impl_iterator!(
     [ SplitAsciiWhitespace['a] as VergeSplitAsciiWhitespace['_] :: Item = &'a str ]
     [ [str as View<V=Seq<char>>] :: split_ascii_whitespace_iter via split_ascii_whitespace ] 
     (&self,) -> |iter| {
-        str_split_ascii_whitespace_iter_post(self@, iter)
+        str_split_ascii_whitespace_iter_post(self@, iter.seq())
     }
 );
 

@@ -111,7 +111,7 @@ fn test_verified_bridge_lemmas_for_vec_deque() {
     assert(<VecDeque<u32> as OrdSpec>::cmp_spec(&a, &b) == Ordering::Less);
 }
 
-// TODO(issue): `PartialEq::ne` and `PartialOrd::{lt,le,gt,ge}` are provided
+// XXX(Verus): `PartialEq::ne` and `PartialOrd::{lt,le,gt,ge}` are provided
 // trait methods for `VecDeque<T>`; Verus currently rejects `assume_specification`
 // for provided trait methods, so direct `!=`, `<`, `<=`, `>`, `>=`, `.ne`,
 // `.lt`, `.le`, `.gt`, and `.ge` calls are intentionally not enabled here.

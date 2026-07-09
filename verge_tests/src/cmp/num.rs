@@ -54,16 +54,6 @@ fn test_numeric_comparison_methods_are_callable() {
     assert(min == a);
 }
 
-// XXX(issue): Primitive `Ord::clamp` is a provided trait method and is not
-// directly callable from Verus without an `assume_specification`, but Verus
-// rejects `assume_specification` on provided trait methods.
-// fn test_numeric_clamp_is_callable() {
-//     let a: i32 = 3;
-//     let b: i32 = 5;
-//     let clamp = 4i32.clamp(a, b);
-//     assert(clamp == 4);
-// }
-
 fn test_all_numeric_verified_families() {
     let u8_a: u8 = 3;
     let u8_b: u8 = 5;
