@@ -68,8 +68,8 @@ pub broadcast axiom fn lemma_result_partial_cmp_spec<T: PartialOrdSpec, E: Parti
         #![trigger <Result<T, E> as PartialOrdSpec>::partial_cmp_spec(a, b)]
         <Result<T, E> as PartialOrdSpec>::partial_cmp_spec(a, b) == match (a, b) {
             (Ok(x), Ok(y)) => x.partial_cmp_spec(y),
-            (Ok(_), Err(_)) => Some(Ordering::Greater),
-            (Err(_), Ok(_)) => Some(Ordering::Less),
+            (Ok(_), Err(_)) => Some(Ordering::Less),
+            (Err(_), Ok(_)) => Some(Ordering::Greater),
             (Err(x), Err(y)) => x.partial_cmp_spec(y),
         };
 ```
@@ -109,8 +109,8 @@ pub broadcast axiom fn lemma_result_cmp_spec<T: OrdSpec, E: OrdSpec>(a: &Result<
         #![trigger <Result<T, E> as OrdSpec>::cmp_spec(a, b)]
         <Result<T, E> as OrdSpec>::cmp_spec(a, b) == match (a, b) {
             (Ok(x), Ok(y)) => x.cmp_spec(y),
-            (Ok(_), Err(_)) => Ordering::Greater,
-            (Err(_), Ok(_)) => Ordering::Less,
+            (Ok(_), Err(_)) => Ordering::Less,
+            (Err(_), Ok(_)) => Ordering::Greater,
             (Err(x), Err(y)) => x.cmp_spec(y),
         };
 ```

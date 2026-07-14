@@ -74,6 +74,7 @@ pub mod str;
 
 #[verifier::broadcast_use_by_default_when_this_crate_is_imported]
 pub broadcast group group_verge_lemmas {
+    cmp::group_ordering_eq, // mostly for testing
     str::group_str_axioms,
     seq::group_seq_additional_lemmas,
 }

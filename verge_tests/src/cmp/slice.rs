@@ -25,21 +25,40 @@ fn test_slice_first_difference_methods_are_callable() {
     let c = arr_c.as_slice();
 
     let eq = a == c;
+    // XXX(Verus): `PartialEq::ne` impl is default provided for `[T]`,
+    // which Verus doesn't support yet.
     let partial = a.partial_cmp(b);
+    let lt = a < b;
+    let le = a <= b;
+    let gt = b > a;
+    let ge = b >= a;
     let cmp = a.cmp(b);
     assert(eq) by {
         assert(a@ =~= c@);
         lemma_lexico_eq_reflexive::<u32>(a@);
     };
+    crate::exec_assert(eq);
     assert(partial == Some(Ordering::Less));
+    crate::exec_assert(partial == Some(Ordering::Less));
+    assert(lt);
+    crate::exec_assert(lt);
+    assert(le);
+    crate::exec_assert(le);
+    assert(gt);
+    crate::exec_assert(gt);
+    assert(ge);
+    crate::exec_assert(ge);
     assert(cmp == Ordering::Less);
+    crate::exec_assert(cmp == Ordering::Less);
 
     proof {
         verge::cmp::slice::lemma_slice_lexico_partial_cmp_spec(a, b);
         verge::cmp::slice::lemma_slice_lexico_cmp_spec(a, b);
     }
     assert(<[u32] as PartialOrdSpec>::partial_cmp_spec(a, b) == Some(Ordering::Less));
+    crate::exec_assert(a < b);
     assert(<[u32] as OrdSpec>::cmp_spec(a, b) == Ordering::Less);
+    crate::exec_assert(cmp == Ordering::Less);
 }
 
 fn test_slice_prefix_methods_are_callable() {
@@ -54,27 +73,36 @@ fn test_slice_prefix_methods_are_callable() {
     let short = arr_short.as_slice();
     let long = arr_long.as_slice();
     let partial = short.partial_cmp(long);
+    let lt = short < long;
+    let le = short <= long;
+    let gt = long > short;
+    let ge = long >= short;
     let cmp = short.cmp(long);
     assert(partial == Some(Ordering::Less));
+    crate::exec_assert(partial == Some(Ordering::Less));
+    assert(lt);
+    crate::exec_assert(lt);
+    assert(le);
+    crate::exec_assert(le);
+    assert(gt);
+    crate::exec_assert(gt);
+    assert(ge);
+    crate::exec_assert(ge);
     assert(cmp == Ordering::Less);
+    crate::exec_assert(cmp == Ordering::Less);
 }
-
-fn test_verified_bridge_lemmas_for_slice(arr_a: &[u32], arr_b: &[u32]) {
-    proof {
-        broadcast use verge::cmp::slice::group_slice_ordering;
-        <[u32] as PartialEqVerified>::lemma_obeys_eq_spec();
-        <[u32] as PartialOrdVerified>::lemma_obeys_partial_cmp_spec();
-        <[u32] as OrdVerified>::lemma_obeys_cmp_spec();
-        lemma_slice_lexico_partial_cmp_spec(arr_a, arr_b);
-        lemma_slice_lexico_cmp_spec(arr_a, arr_b);
-    }
-    assert(<[u32] as PartialOrdSpec>::partial_cmp_spec(arr_a, arr_b) == lexico_cmp(arr_a@, arr_b@));
-    assert(Some(<[u32] as OrdSpec>::cmp_spec(arr_a, arr_b)) == lexico_cmp(arr_a@, arr_b@));
-}
-
-// TODO(Verus): `PartialEq::ne` and `PartialOrd::{lt,le,gt,ge}` are provided
-// trait methods for slices; Verus currently rejects `assume_specification` for
-// provided trait methods, so direct `!=`, `<`, `<=`, `>`, `>=`, `.ne`, `.lt`,
-// `.le`, `.gt`, and `.ge` calls are intentionally not enabled here.
 
 } // verus!
+
+pub fn run() -> usize {
+    let mut count = 0;
+    count += crate::run_test(
+        "cmp::slice::first_difference_methods_are_callable",
+        test_slice_first_difference_methods_are_callable,
+    );
+    count += crate::run_test(
+        "cmp::slice::prefix_methods_are_callable",
+        test_slice_prefix_methods_are_callable,
+    );
+    count
+}

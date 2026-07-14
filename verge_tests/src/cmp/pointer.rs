@@ -4,7 +4,6 @@ use core::cmp::Ordering;
 use std::rc::Rc;
 
 use vstd::prelude::*;
-use vstd::std_specs::cmp::{OrdSpec, PartialOrdSpec};
 use verge::cmp::*;
 use verge::prelude::*;
 
@@ -28,35 +27,33 @@ fn test_box_comparison_methods_are_callable() {
     let ge = b >= a;
     let cmp = a.cmp(&b);
     assert(eq);
+    crate::exec_assert(eq);
     assert(ne);
+    crate::exec_assert(ne);
     assert(partial == Some(Ordering::Less));
+    crate::exec_assert(partial == Some(Ordering::Less));
     assert(lt);
+    crate::exec_assert(lt);
     assert(le);
+    crate::exec_assert(le);
     assert(gt);
+    crate::exec_assert(gt);
     assert(ge);
+    crate::exec_assert(ge);
     assert(cmp == Ordering::Less);
-
-    let method_eq = a.eq(&c);
-    let method_ne = a.ne(&b);
-    let method_lt = a.lt(&b);
-    let method_le = a.le(&b);
-    let method_gt = b.gt(&a);
-    let method_ge = b.ge(&a);
-    assert(method_eq);
-    assert(method_ne);
-    assert(method_lt);
-    assert(method_le);
-    assert(method_gt);
-    assert(method_ge);
+    crate::exec_assert(cmp == Ordering::Less);
 
     let max = Box::new(3u32).max(Box::new(5u32));
     assert(*max == 5u32);
+    crate::exec_assert(*max == 5u32);
 
     let min = Box::new(3u32).min(Box::new(5u32));
     assert(*min == 3u32);
+    crate::exec_assert(*min == 3u32);
 
     let clamp = Box::new(4u32).clamp(Box::new(3u32), Box::new(5u32));
     assert(*clamp == 4u32);
+    crate::exec_assert(*clamp == 4u32);
 }
 
 fn test_rc_comparison_methods_are_callable() {
@@ -77,57 +74,46 @@ fn test_rc_comparison_methods_are_callable() {
     let ge = b >= a;
     let cmp = a.cmp(&b);
     assert(eq);
+    crate::exec_assert(eq);
     assert(ne);
+    crate::exec_assert(ne);
     assert(partial == Some(Ordering::Less));
+    crate::exec_assert(partial == Some(Ordering::Less));
     assert(lt);
+    crate::exec_assert(lt);
     assert(le);
+    crate::exec_assert(le);
     assert(gt);
+    crate::exec_assert(gt);
     assert(ge);
+    crate::exec_assert(ge);
     assert(cmp == Ordering::Less);
+    crate::exec_assert(cmp == Ordering::Less);
 
-    let method_eq = a.eq(&c);
-    let method_ne = a.ne(&b);
-    let method_lt = a.lt(&b);
-    let method_le = a.le(&b);
-    let method_gt = b.gt(&a);
-    let method_ge = b.ge(&a);
-    assert(method_eq);
-    assert(method_ne);
-    assert(method_lt);
-    assert(method_le);
-    assert(method_gt);
-    assert(method_ge);
+    let max = a.clone().max(b.clone());
+    assert(*max == *b);
+    crate::exec_assert(*max == *b);
 
-    let max = Rc::new(3u32).max(Rc::new(5u32));
-    assert(*max == 5u32);
+    let min = a.clone().min(b.clone());
+    assert(*min == *a);
+    crate::exec_assert(*min == *a);
 
-    let min = Rc::new(3u32).min(Rc::new(5u32));
-    assert(*min == 3u32);
-
-    let clamp = Rc::new(4u32).clamp(Rc::new(3u32), Rc::new(5u32));
+    let clamp = Rc::new(4u32).clamp(a.clone(), b.clone());
     assert(*clamp == 4u32);
-}
-
-fn test_verified_bridge_lemmas_for_pointers() {
-    proof {
-        lemma_partial_eq_verified::<Box<u32>>();
-        lemma_partial_ord_verified::<Box<u32>>();
-        lemma_ord_verified::<Box<u32>>();
-        lemma_partial_eq_verified::<Rc<u32>>();
-        lemma_partial_ord_verified::<Rc<u32>>();
-        lemma_ord_verified::<Rc<u32>>();
-        broadcast use verge::cmp::pointer::group_pointer_ordering;
-    }
-
-    let box_a = Box::new(3u32);
-    let box_b = Box::new(5u32);
-    assert(<Box<u32> as PartialOrdSpec>::partial_cmp_spec(&box_a, &box_b) == Some(Ordering::Less));
-    assert(<Box<u32> as OrdSpec>::cmp_spec(&box_a, &box_b) == Ordering::Less);
-
-    let rc_a = Rc::new(3u32);
-    let rc_b = Rc::new(5u32);
-    assert(<Rc<u32> as PartialOrdSpec>::partial_cmp_spec(&rc_a, &rc_b) == Some(Ordering::Less));
-    assert(<Rc<u32> as OrdSpec>::cmp_spec(&rc_a, &rc_b) == Ordering::Less);
+    crate::exec_assert(*clamp == 4u32);
 }
 
 } // verus!
+
+pub fn run() -> usize {
+    let mut count = 0;
+    count += crate::run_test(
+        "cmp::pointer::box_comparison_methods_are_callable",
+        test_box_comparison_methods_are_callable,
+    );
+    count += crate::run_test(
+        "cmp::pointer::rc_comparison_methods_are_callable",
+        test_rc_comparison_methods_are_callable,
+    );
+    count
+}

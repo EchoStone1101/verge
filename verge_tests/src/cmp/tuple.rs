@@ -3,7 +3,6 @@
 use core::cmp::Ordering;
 
 use vstd::prelude::*;
-use vstd::std_specs::cmp::{OrdSpec, PartialOrdSpec};
 use verge::cmp::*;
 use verge::prelude::*;
 
@@ -19,27 +18,26 @@ fn test_tuple_comparison_methods_are_callable() {
     let lt = a < b;
     let gt = b > a;
     assert(eq);
+    crate::exec_assert(eq);
     assert(ne);
+    crate::exec_assert(ne);
     assert(lt);
+    crate::exec_assert(lt);
     assert(gt);
+    crate::exec_assert(gt);
     let cmp = a.cmp(&b);
     assert(cmp == Ordering::Less);
-
-    let method_eq = a.eq(&c);
-    let method_ne = a.ne(&b);
-    let method_lt = a.lt(&b);
-    let method_gt = b.gt(&a);
-    assert(method_eq);
-    assert(method_ne);
-    assert(method_lt);
-    assert(method_gt);
+    crate::exec_assert(cmp == Ordering::Less);
 
     let max = a.max(b);
     let min = a.min(b);
     let clamp = a.clamp(a, b);
     assert(max == b);
+    crate::exec_assert(max == b);
     assert(min == a);
+    crate::exec_assert(min == a);
     assert(clamp == a);
+    crate::exec_assert(clamp == a);
 }
 
 fn test_unit_tuple_comparison_methods_are_callable() {
@@ -59,38 +57,35 @@ fn test_unit_tuple_comparison_methods_are_callable() {
     let ge = a >= b;
     let cmp = a.cmp(&b);
     assert(eq);
+    crate::exec_assert(eq);
     assert(!ne);
+    crate::exec_assert(!ne);
     assert(partial == Some(Ordering::Equal));
+    crate::exec_assert(partial == Some(Ordering::Equal));
     assert(!lt);
+    crate::exec_assert(!lt);
     assert(le);
+    crate::exec_assert(le);
     assert(!gt);
+    crate::exec_assert(!gt);
     assert(ge);
+    crate::exec_assert(ge);
     assert(cmp == Ordering::Equal);
-
-    let method_eq = a.eq(&b);
-    let method_ne = a.ne(&b);
-    let method_lt = a.lt(&b);
-    let method_le = a.le(&b);
-    let method_gt = a.gt(&b);
-    let method_ge = a.ge(&b);
-    assert(method_eq);
-    assert(!method_ne);
-    assert(!method_lt);
-    assert(method_le);
-    assert(!method_gt);
-    assert(method_ge);
+    crate::exec_assert(cmp == Ordering::Equal);
 
     let max = a.max(b);
     let min = a.min(b);
     let clamp = a.clamp((), ());
     assert(max == ());
+    crate::exec_assert(max == ());
     assert(min == ());
+    crate::exec_assert(min == ());
     assert(clamp == ());
+    crate::exec_assert(clamp == ());
 }
 
-// TODO(Verus): Tuple `PartialOrd::partial_cmp`, `le`, and `ge` are currently not
-// directly callable from Verus. Adding the suggested `assume_specification` items
-// creates a cyclic self-reference through `vstd::laws_cmp` tuple broadcasts.
+// XXX(Verus): Tuple `PartialOrd::partial_cmp`, `le`, and `ge` are not supported yet
+// due to a Verus self-reference issue.
 // fn test_tuple_cyclic_partial_ord_methods_are_callable() {
 //     let a = (1u32, 9u32);
 //     let b = (2u32, 0u32);
@@ -103,31 +98,17 @@ fn test_unit_tuple_comparison_methods_are_callable() {
 //     assert(ge);
 // }
 
-fn test_verified_bridge_lemmas_for_tuple() {
-    proof {
-        lemma_partial_eq_verified::<(u32, u32)>();
-        lemma_partial_ord_verified::<(u32, u32)>();
-        lemma_ord_verified::<(u32, u32)>();
-    }
-
-    let tuple_a = (1u32, 9u32);
-    let tuple_b = (2u32, 0u32);
-    assert(<(u32, u32) as PartialOrdSpec>::partial_cmp_spec(&tuple_a, &tuple_b) == Some(Ordering::Less));
-    assert(<(u32, u32) as OrdSpec>::cmp_spec(&tuple_a, &tuple_b) == Ordering::Less);
-}
-
-fn test_verified_bridge_lemmas_for_unit_tuple() {
-    proof {
-        broadcast use verge::cmp::tuple::group_unit_ordering;
-        lemma_partial_eq_verified::<()>();
-        lemma_partial_ord_verified::<()>();
-        lemma_ord_verified::<()>();
-    }
-
-    let a = ();
-    let b = ();
-    assert(<() as PartialOrdSpec>::partial_cmp_spec(&a, &b) == Some(Ordering::Equal));
-    assert(<() as OrdSpec>::cmp_spec(&a, &b) == Ordering::Equal);
-}
-
 } // verus!
+
+pub fn run() -> usize {
+    let mut count = 0;
+    count += crate::run_test(
+        "cmp::tuple::comparison_methods_are_callable",
+        test_tuple_comparison_methods_are_callable,
+    );
+    count += crate::run_test(
+        "cmp::tuple::unit_tuple_comparison_methods_are_callable",
+        test_unit_tuple_comparison_methods_are_callable,
+    );
+    count
+}

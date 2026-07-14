@@ -27,7 +27,10 @@ verus-release/cargo-verus focus -p verge -- --verify-module nt --expand-errors
 verus-release/cargo-verus build -p verge -- --expand-errors
 
 # Verify external API tests
-verus-release/cargo-verus focus -p verge_tests -- --expand-errors
+verus-release/cargo-verus focus -p verge_tests --lib -- --expand-errors
+
+# Build and run migrated external API tests executably
+verus-release/cargo-verus build -p verge_tests -- --expand-errors && ./target/debug/verge_tests
 ```
 
 Using `verus` directly (legacy):

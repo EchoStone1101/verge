@@ -154,9 +154,49 @@ pub trait OrdVerified: Ord + EqVerified + PartialOrdVerified {
             a.partial_cmp_spec(b) == Some(a.cmp_spec(b));
 }
 
-} // verus!
+/// Broadcast lemmas that link `core::cmp::Ordering` equality specs to Rust's
+/// concrete `Ordering` equality.
+pub broadcast group group_ordering_eq {
+    lemma_ordering_obeys_eq_spec,
+    lemma_ordering_eq_spec,
+}
 
-verus! {
+/// Proof that `Ordering` obeys its `PartialEqSpec` contract.
+pub broadcast axiom fn lemma_ordering_obeys_eq_spec()
+    ensures
+        #[trigger] <Ordering as PartialEqSpec>::obeys_eq_spec();
+
+/// Link `Ordering::eq_spec` to concrete equality between `Ordering` variants.
+pub broadcast axiom fn lemma_ordering_eq_spec(a: &Ordering, b: &Ordering)
+    ensures
+        #![trigger <Ordering as PartialEqSpec>::eq_spec(a, b)]
+        <Ordering as PartialEqSpec>::eq_spec(a, b) == (*a == *b);
+
+/// Enable direct `Ordering` equality calls in verified code.
+pub assume_specification[ <Ordering as PartialEq<Ordering>>::eq ](
+    a: &Ordering,
+    b: &Ordering,
+) -> bool;
+
+impl PartialEqVerified for Ordering {
+    proof fn lemma_obeys_eq_spec() {
+        broadcast use group_ordering_eq;
+    }
+
+    proof fn lemma_eq_symmetric(a: &Ordering, b: &Ordering) {
+        broadcast use group_ordering_eq;
+    }
+
+    proof fn lemma_eq_transitive(a: &Ordering, b: &Ordering, c: &Ordering) {
+        broadcast use group_ordering_eq;
+    }
+}
+
+impl EqVerified for Ordering {
+    proof fn lemma_eq_reflexive(a: &Ordering) {
+        broadcast use group_ordering_eq;
+    }
+}
 
 // --- Bridging lemmas ---
 

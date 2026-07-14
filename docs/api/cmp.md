@@ -208,6 +208,41 @@ proof fn lemma_cmp_consistent(a: &Self, b: &Self)
 ## Functions
 
 
+### `lemma_ordering_obeys_eq_spec`
+
+Proof that `Ordering` obeys its `PartialEqSpec` contract.
+
+```rust
+pub broadcast axiom fn lemma_ordering_obeys_eq_spec()
+    ensures
+        #[trigger] <Ordering as PartialEqSpec>::obeys_eq_spec();
+```
+
+
+### `lemma_ordering_eq_spec`
+
+Link `Ordering::eq_spec` to concrete equality between `Ordering` variants.
+
+```rust
+pub broadcast axiom fn lemma_ordering_eq_spec(a: &Ordering, b: &Ordering)
+    ensures
+        #![trigger <Ordering as PartialEqSpec>::eq_spec(a, b)]
+        <Ordering as PartialEqSpec>::eq_spec(a, b) == (*a == *b);
+```
+
+
+### `<Ordering as PartialEq<Ordering>>::eq`
+
+Enable direct `Ordering` equality calls in verified code.
+
+```rust
+pub assume_specification[ <Ordering as PartialEq<Ordering>>::eq ](
+    a: &Ordering,
+    b: &Ordering,
+    ) -> bool;
+```
+
+
 ### `lemma_partial_eq_verified`
 
 For any type implementing `PartialEqVerified`, the full `laws_eq::obeys_eq_spec`

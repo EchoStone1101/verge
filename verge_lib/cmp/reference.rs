@@ -1,4 +1,4 @@
-//! Verified comparison impls for shared references.
+//! Verified comparison impls for immutable references.
 
 use super::*;
 

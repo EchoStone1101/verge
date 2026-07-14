@@ -34,6 +34,54 @@ pub assume_specification<T: PartialOrd>[ <[T] as PartialOrd>::partial_cmp ](
 ```
 
 
+### `<[T] as PartialOrd>::lt`
+
+Enable `<` for slices.
+
+```rust
+pub assume_specification<T: PartialOrd>[ <[T] as PartialOrd>::lt ](
+    a: &[T],
+    b: &[T],
+    ) -> bool;
+```
+
+
+### `<[T] as PartialOrd>::le`
+
+Enable `<=` for slices.
+
+```rust
+pub assume_specification<T: PartialOrd>[ <[T] as PartialOrd>::le ](
+    a: &[T],
+    b: &[T],
+    ) -> bool;
+```
+
+
+### `<[T] as PartialOrd>::gt`
+
+Enable `>` for slices.
+
+```rust
+pub assume_specification<T: PartialOrd>[ <[T] as PartialOrd>::gt ](
+    a: &[T],
+    b: &[T],
+    ) -> bool;
+```
+
+
+### `<[T] as PartialOrd>::ge`
+
+Enable `>=` for slices.
+
+```rust
+pub assume_specification<T: PartialOrd>[ <[T] as PartialOrd>::ge ](
+    a: &[T],
+    b: &[T],
+    ) -> bool;
+```
+
+
 ### `<[T] as Ord>::cmp`
 
 Enable slice total comparison.

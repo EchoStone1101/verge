@@ -18,6 +18,18 @@ pub assume_specification<T: PartialEq<U>, U, const N: usize>[ <[T; N] as Partial
 ```
 
 
+### `<[T; N] as PartialEq<[U; N]>>::ne`
+
+Enable array inequality.
+
+```rust
+pub assume_specification<T: PartialEq<U>, U, const N: usize>[ <[T; N] as PartialEq<[U; N]>>::ne ](
+    a: &[T; N],
+    b: &[U; N],
+    ) -> bool;
+```
+
+
 ### `<[T; N] as PartialOrd>::partial_cmp`
 
 Enable array partial comparison.
@@ -27,6 +39,54 @@ pub assume_specification<T: PartialOrd, const N: usize>[ <[T; N] as PartialOrd>:
     a: &[T; N],
     b: &[T; N],
     ) -> Option<Ordering>;
+```
+
+
+### `<[T; N] as PartialOrd>::lt`
+
+Enable array less-than comparison.
+
+```rust
+pub assume_specification<T: PartialOrd, const N: usize>[ <[T; N] as PartialOrd>::lt ](
+    a: &[T; N],
+    b: &[T; N],
+    ) -> bool;
+```
+
+
+### `<[T; N] as PartialOrd>::le`
+
+Enable arrays less-than-or-equal comparison.
+
+```rust
+pub assume_specification<T: PartialOrd, const N: usize>[ <[T; N] as PartialOrd>::le ](
+    a: &[T; N],
+    b: &[T; N],
+    ) -> bool;
+```
+
+
+### `<[T; N] as PartialOrd>::gt`
+
+Enable arrays greater-than comparison.
+
+```rust
+pub assume_specification<T: PartialOrd, const N: usize>[ <[T; N] as PartialOrd>::gt ](
+    a: &[T; N],
+    b: &[T; N],
+    ) -> bool;
+```
+
+
+### `<[T; N] as PartialOrd>::ge`
+
+Enable arrays greater-than-or-equal comparison.
+
+```rust
+pub assume_specification<T: PartialOrd, const N: usize>[ <[T; N] as PartialOrd>::ge ](
+    a: &[T; N],
+    b: &[T; N],
+    ) -> bool;
 ```
 
 

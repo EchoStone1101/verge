@@ -22,17 +22,50 @@ pub assume_specification<T: PartialEq<U>, U, const N: usize>[ <[T; N] as Partial
     b: &[U; N],
 ) -> bool;
 
+/// Enable array inequality.
+pub assume_specification<T: PartialEq<U>, U, const N: usize>[ <[T; N] as PartialEq<[U; N]>>::ne ](
+    a: &[T; N],
+    b: &[U; N],
+) -> bool;
+
 /// Enable array partial comparison.
 pub assume_specification<T: PartialOrd, const N: usize>[ <[T; N] as PartialOrd>::partial_cmp ](
     a: &[T; N],
     b: &[T; N],
 ) -> Option<Ordering>;
 
+/// Enable array less-than comparison.
+pub assume_specification<T: PartialOrd, const N: usize>[ <[T; N] as PartialOrd>::lt ](
+    a: &[T; N],
+    b: &[T; N],
+) -> bool;
+
+/// Enable arrays less-than-or-equal comparison.
+pub assume_specification<T: PartialOrd, const N: usize>[ <[T; N] as PartialOrd>::le ](
+    a: &[T; N],
+    b: &[T; N],
+) -> bool;
+
+/// Enable arrays greater-than comparison.
+pub assume_specification<T: PartialOrd, const N: usize>[ <[T; N] as PartialOrd>::gt ](
+    a: &[T; N],
+    b: &[T; N],
+) -> bool;
+
+/// Enable arrays greater-than-or-equal comparison.
+pub assume_specification<T: PartialOrd, const N: usize>[ <[T; N] as PartialOrd>::ge ](
+    a: &[T; N],
+    b: &[T; N],
+) -> bool;
+
 /// Enable array total comparison.
 pub assume_specification<T: Ord, const N: usize>[ <[T; N] as Ord>::cmp ](
     a: &[T; N],
     b: &[T; N],
 ) -> Ordering;
+
+// XXX(Verus): the array `Ord` impl does not explicitly override `clamp`, `min`,
+// or `max`, so Verus cannot assume-specify those impl-default methods.
 
 /// Proof that asserts array equality obeys the element equality spec.
 pub broadcast axiom fn lemma_array_obeys_eq_spec<T: PartialEq, const N: usize>()

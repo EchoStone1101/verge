@@ -32,6 +32,30 @@ pub assume_specification<T: PartialOrd>[ <[T] as PartialOrd>::partial_cmp ](
     b: &[T],
 ) -> Option<Ordering>;
 
+/// Enable `<` for slices.
+pub assume_specification<T: PartialOrd>[ <[T] as PartialOrd>::lt ](
+    a: &[T],
+    b: &[T],
+) -> bool;
+
+/// Enable `<=` for slices.
+pub assume_specification<T: PartialOrd>[ <[T] as PartialOrd>::le ](
+    a: &[T],
+    b: &[T],
+) -> bool;
+
+/// Enable `>` for slices.
+pub assume_specification<T: PartialOrd>[ <[T] as PartialOrd>::gt ](
+    a: &[T],
+    b: &[T],
+) -> bool;
+
+/// Enable `>=` for slices.
+pub assume_specification<T: PartialOrd>[ <[T] as PartialOrd>::ge ](
+    a: &[T],
+    b: &[T],
+) -> bool;
+
 /// Enable slice total comparison.
 pub assume_specification<T: Ord>[ <[T] as Ord>::cmp ](a: &[T], b: &[T]) -> Ordering;
 
