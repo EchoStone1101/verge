@@ -33,14 +33,6 @@ Mirror the `verge_lib` module layout in `verge_tests/src/`:
 New test files should follow the same pattern. The goal is that a path in
 `verge_tests/src/` makes it obvious which library module it exercises.
 
-Each migrated module directory must also contain a `COVERAGE.md` file. Record every
-API or API family attempted there, including:
-
-- **Availability:** whether the exec API was called naturally.
-- **Usability:** good, mediocre, or WIP, with notes on proof hints or missing lemmas.
-- **Soundness:** validated by representative executable checks, or blocked by a
-  documented proof/API issue.
-
 ## Test Structure
 
 Tests are private `exec fn`s inside `verus! { ... }` blocks. They should look like
@@ -118,13 +110,11 @@ When a problem appears to be a Verge API/spec/proof-support issue:
 - Leave the attempted test in place, commented out.
 - Prefix it with `TODO(issue):` and explain the suspected Verge issue briefly.
 - Keep the rest of the module verifying.
-- Record the status in the module's `COVERAGE.md`.
 
 When a problem appears to be a Verus limitation or bug:
 
 - Leave the attempted test in place, commented out.
 - Prefix it with `XXX(Verus):` and explain the limitation briefly.
-- Record the status in the module's `COVERAGE.md`.
 
 Do not linger on a spec issue or fix the library spec while writing tests unless the
 task explicitly asks for a spec fix. The test suite should preserve the issue as a

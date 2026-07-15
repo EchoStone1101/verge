@@ -275,3 +275,9 @@ fn test_collect() {
 }
 
 } // verus!
+
+pub fn run() -> usize {
+    let mut count = 0;
+    count += crate::run_suite("str::chars", chars::run);
+    count
+}

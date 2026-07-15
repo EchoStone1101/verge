@@ -63,7 +63,9 @@ pub mod clone;
 pub mod cmp;
 pub mod env;
 pub mod error;
+// pub mod function
 pub mod fs;
+// pub mod index;
 pub mod io;
 pub mod iter;
 pub mod mem;
@@ -74,7 +76,7 @@ pub mod str;
 
 #[verifier::broadcast_use_by_default_when_this_crate_is_imported]
 pub broadcast group group_verge_lemmas {
-    cmp::group_ordering_eq, // mostly for testing
+    cmp::group_ordering_eq, // for `verge_tests`
     str::group_str_axioms,
     seq::group_seq_additional_lemmas,
 }
@@ -110,23 +112,6 @@ where
 {
     forall |args: Args| #[trigger] call_requires(f, args)
 }
-
-// use vstd::assert_by_contradiction;
-// fn test_is_deterministic() {
-//     let f1 = |x: i32| -> (ret: bool)
-//         ensures ret == (x > 0)
-//     { x > 0 };
-//     assert(is_deterministic(f1));
-
-//     let f2 = |x: &mut i32| -> (ret: bool)
-//         ensures ret == (*old(x) > 0)
-//     { 
-//         let ret = *x > 0;
-//         *x = 0;
-//         ret
-//     };
-//     assert(is_deterministic(f2));
-// }
 
 /// Used for a dummy one-term trigger.
 pub uninterp spec fn dummy<A>(a: A) -> ();

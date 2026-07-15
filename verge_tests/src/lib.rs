@@ -38,7 +38,9 @@ fn exec_assert(cond: bool)
 /// Entry point for running all executable tests.
 pub fn run() {
     println!("{}", style::bold("Verge executable tests"));
-    let count = run_suite("cmp", cmp::run);
+    let mut count = 0;
+    count += run_suite("cmp", cmp::run);
+    count += run_suite("str", str::run);
     println!(
         "\n{} {} passed; 0 failed",
         style::green("test result: ok."),

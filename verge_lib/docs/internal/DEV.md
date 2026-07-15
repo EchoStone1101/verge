@@ -34,8 +34,6 @@ This principle is to be followed even at the cost of completeness and expressive
 
 ## Key Specification Patterns
 
-<!-- TODO: this needs updating -->
-
 See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 
 **Wrapping external types/functions:**
@@ -49,22 +47,8 @@ See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 
 **Opacity:** `#[verifier::opaque]` + `reveal(...)` is used to control when spec functions unfold.
 
-**Iterator specs:** Use `impl_iterator!` for concrete iterator wrapper types and `impl_iterator_method!` for generic `Iterator` adapter methods; iterators are tracked as `(index: int, sequence: Seq<T>)`.
-
-**String model:** Strings are viewed as `Seq<char>`; byte-level reasoning uses `Seq<u8>` via `vstd::utf8` conversion.
-
-**Comparison specs:** `cmp` defines `PartialEqVerified`, `EqVerified`, `PartialOrdVerified`, and `OrdVerified` proof traits. Generic `lexico_cmp`/`lexico_eq` specs and lemmas live in `cmp::lexico` and are re-exported from `cmp`; private helper proofs live in `cmp::internal`. Type-family impls live under focused submodules such as `cmp::num`, `cmp::option`, `cmp::reference`, `cmp::tuple` (including `()`), `cmp::pointer`, `cmp::result`, `cmp::string`, and lexicographic container modules for slices, arrays, `Vec`, and `VecDeque`, with their public items re-exported from `cmp`. `cmp` also links `Ordering` equality specs directly and includes that small group in the default Verge broadcast group, so downstream code can compare `Ordering` and `Option<Ordering>` results naturally. `lexico_cmp` is recursive; `lemma_lexico_cmp_by_prefix` links it to the first-non-`Equal` prefix formulation used by tuple-style proofs. Some external std trait impls need direct `assume_specification` entries for executable methods Verus accepts; for provided trait methods, such an entry is viable only when the concrete Rust impl explicitly overrides that method, while impl-default methods remain unsupported.
-
-**String comparison specs:** `cmp::string` links `str`/`String` `PartialEq`, `PartialOrd`, and `Ord` spec methods to byte-sequence `cmp::lexico_eq`/`cmp::lexico_cmp` via broadcast lemmas because Rust orphan rules prevent implementing vstd's spec traits directly for those standard types. `str` re-exports these string comparison items so `group_str_axioms` still includes `group_str_ordering`.
-
-**String pattern proofs:** Large `str::pattern` broadcast lemmas live in internal submodules organized by API (for example, `str::pattern::split` and `str::pattern::rmatch_indices`) and are re-exported from `str::pattern` to preserve the public API while reducing per-module proof burden; shared private helper lemmas live in `str::pattern::internal`. Pattern linking lemmas are grouped into opt-in per-API broadcast groups such as `group_str_split_iter` and `group_str_match_indices_iter`, but are intentionally not added to the default string axiom group to avoid broad trigger load.
-
-**Formatting specs:** `str::fmt::ToStringSpec` extends `ToString`; custom `ToString` impls provide `ToStringSpecImpl::to_string_ensures`, while `Display`-backed impls delegate to vstd's `to_string_from_display_ensures`.
-
-**Parsing specs:** `str::parse::FromStrSpec` extends `FromStr` with `from_str_recommends`, `from_str_ok_ensures`, and `from_str_err_ensures`; integer parsing shares `spec_int_from_str_radix` for `int` radices ≥ 2, while std `from_str_radix` bridges constrain executable calls to radix 2–36.
-
 **File system model:** Uses epochs to model external interference — specs are parameterized by an `Fs` struct tracking epoch, operation history, and read_dir count.
 
 ## Tests
 
-See `docs/internal/TESTS.md` for the testing scheme. In short, Verge API tests live in the separate `verge_tests/` crate as private `exec fn`s organized to mirror the `verge_lib` module layout; each migrated module exposes a `run()` hook for the executable driver and tracks progress in a local `COVERAGE.md`. Verifying and running that crate exercises public visibility, downstream imports, runtime/spec agreement, and `broadcast_use_by_default_when_this_crate_is_imported` behavior instead of relying on `verge_lib` internals.
+See `docs/internal/TESTS.md` for the testing scheme. In short, Verge API tests live in the separate `verge_tests/` crate as private `exec fn`s organized to mirror the `verge_lib` module layout; each migrated module exposes a `run()` hook for the executable driver. Verifying and running that crate exercises public visibility, downstream imports, runtime/spec agreement, and `broadcast_use_by_default_when_this_crate_is_imported` behavior instead of relying on `verge_lib` internals.
