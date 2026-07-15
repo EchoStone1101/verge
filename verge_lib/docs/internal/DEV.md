@@ -47,6 +47,8 @@ See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 
 **Opacity:** `#[verifier::opaque]` + `reveal(...)` is used to control when spec functions unfold.
 
+**Panic-bearing std APIs:** When Verge turns panicking string APIs into preconditioned calls, the preconditions should only exclude actual panic cases. For example, `String::truncate` accepts either a valid character boundary or a `new_len` past the end, matching Rust's no-op behavior for the latter.
+
 **File system model:** Uses epochs to model external interference — specs are parameterized by an `Fs` struct tracking epoch, operation history, and read_dir count.
 
 ## Tests

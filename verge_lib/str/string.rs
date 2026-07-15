@@ -159,12 +159,13 @@ pub assume_specification [ String::split_off ] (s: &mut String, at: usize) -> (r
 /// Enable `String::truncate`. 
 ///
 /// Note that this function no longer panics, but requires proving that `new_len` 
-/// falls between code points.
+/// either falls between code points or is past the end of the string.
 pub assume_specification [ String::truncate ] (s: &mut String, new_len: usize) 
     requires
-        is_char_boundary(s@.as_bytes(), new_len as int),
+        new_len > s@.as_bytes().len() || is_char_boundary(s@.as_bytes(), new_len as int),
     ensures
-        final(s)@.as_bytes() =~= old(s)@.as_bytes().take(new_len as int),
+        new_len <= old(s)@.as_bytes().len() ==> final(s)@.as_bytes() =~= old(s)@.as_bytes().take(new_len as int),
+        new_len > old(s)@.as_bytes().len() ==> final(s)@.as_bytes() =~= old(s)@.as_bytes(),
     no_unwind
 ;
 

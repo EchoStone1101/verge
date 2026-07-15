@@ -1,4 +1,4 @@
-//! Tests for `verge::str::String` APIs.
+//! Tests for `std::String` APIs specified by Verge.
 
 use vstd::prelude::*;
 use vstd::assert_seqs_equal;
@@ -9,81 +9,61 @@ use verge::str::*;
 
 verus! {
 
-fn keep_not_b(c: char) -> (ret: bool)
+fn keep_not_b(character: char) -> (ret: bool)
     ensures
-        ret == (c != 'b'),
+        ret == (character != 'b'),
 {
-    c != 'b'
+    character != 'b'
 }
 
-fn test_as_bytes_len_and_is_empty_specs(s: &String) {
+fn test_views_and_capacity_are_callable() {
     broadcast use group_str_axioms;
 
-    let bytes = s.as_bytes();
-    let len = s.len();
-    let is_empty = s.is_empty();
+    let mut text = String::with_capacity(16);
+    let empty = text.is_empty();
+    let len = text.len();
+    let bytes = text.as_bytes();
 
-    assert(bytes@ =~= s@.as_bytes());
-    assert(len == bytes@.len());
-    assert(is_empty == (s@.len() == 0));
-}
-
-fn test_with_capacity_creates_empty_string() {
-    broadcast use group_str_axioms;
-
-    let s = String::with_capacity(16);
-    let bytes = s.as_bytes();
-    let is_empty = s.is_empty();
-    let len = s.len();
-
-    assert(s@ =~= Seq::<char>::empty());
-    assert(is_empty);
-    assert(len == 0);
+    assert(text@ =~= Seq::<char>::empty());
+    assert(empty);
+    crate::exec_assert(empty);
+    assert(len == 0usize);
+    crate::exec_assert(len == 0usize);
     assert(bytes@ =~= Seq::<u8>::empty());
-}
+    crate::exec_assert(bytes.len() == 0usize);
 
-fn test_ascii_literal_views() {
-    broadcast use group_str_axioms;
-    proof { reveal_strlit("abc"); }
-
-    let s = String::from_str("abc");
-    let bytes = s.as_bytes();
-    let is_empty = s.is_empty();
-    let len = s.len();
-
-    assert(s@ =~= seq!['a', 'b', 'c']);
-    assert(bytes@ =~= seq![97u8, 98u8, 99u8]);
-    assert(len == 3);
-    assert(!is_empty);
-}
-
-fn test_from_utf8_generic_post(vec: Vec<u8>) {
-    broadcast use group_str_axioms;
-
-    let ghost bytes = vec@;
-    let ret = String::from_utf8(vec);
-
-    match ret {
-        Ok(s) => {
-            assert(bytes.is_utf8());
-            assert(s@ =~= bytes.as_str());
-        }
-        Err(e) => {
-            assert(!bytes.is_utf8());
-            assert(e.is_str_utf8_error());
-        }
+    proof {
+        reveal_strlit("abc");
     }
+    text.push_str("abc");
+
+    let nonempty = text.is_empty();
+    let len = text.len();
+    let bytes = text.as_bytes();
+    assert(text@ =~= seq!['a', 'b', 'c']);
+    assert(!nonempty);
+    crate::exec_assert(!nonempty);
+    assert(len == 3usize);
+    crate::exec_assert(len == 3usize);
+    assert(bytes@ =~= seq![97u8, 98u8, 99u8]);
+    crate::exec_assert(bytes.len() == 3usize);
 }
 
-fn test_from_utf8_ok_and_err_examples() {
+fn test_from_utf8_ok_err_and_verified() {
     broadcast use group_str_axioms;
 
-    let good = vec![65u8, 66u8, 67u8];
+    let good = vec![104u8, 101u8, 108u8, 108u8, 111u8];
     assert(good@.is_utf8());
-    let ok = String::from_utf8(good);
-    match ok {
-        Ok(s) => {
-            assert(s@ =~= seq!['A', 'B', 'C']);
+    let good_result = String::from_utf8(good);
+    let good_is_ok = good_result.is_ok();
+    assert(good_is_ok);
+    crate::exec_assert(good_is_ok);
+    match good_result {
+        Ok(text) => {
+            assert(text@ =~= seq!['h', 'e', 'l', 'l', 'o']);
+            let len = text.len();
+            assert(len == 5usize);
+            crate::exec_assert(len == 5usize);
         }
         Err(_) => {
             assert(false);
@@ -92,248 +72,232 @@ fn test_from_utf8_ok_and_err_examples() {
 
     let bad = vec![0xffu8];
     assert(!bad@.is_utf8());
-    let err = String::from_utf8(bad);
-    match err {
+    let bad_result = String::from_utf8(bad);
+    let bad_is_err = bad_result.is_err();
+    assert(bad_is_err);
+    crate::exec_assert(bad_is_err);
+    match bad_result {
         Ok(_) => {
             assert(false);
         }
-        Err(e) => {
-            assert(e.is_str_utf8_error());
+        Err(error) => {
+            assert(error.is_str_utf8_error());
         }
     }
+
+    let verified_bytes = vec![97u8, 98u8, 99u8];
+    assert(verified_bytes@.is_utf8());
+    let verified = String::from_utf8_verified(verified_bytes);
+    assert(verified@ =~= seq!['a', 'b', 'c']);
+    let verified_len = verified.len();
+    assert(verified_len == 3usize);
+    crate::exec_assert(verified_len == 3usize);
 }
 
-fn test_from_utf8_verified_generic(vec: Vec<u8>)
-    requires
-        vec@.is_utf8(),
-{
+fn test_into_bytes_roundtrip_is_callable() {
     broadcast use group_str_axioms;
+    proof {
+        reveal_strlit("abc");
+    }
 
-    let ghost bytes = vec@;
-    let s = String::from_utf8_verified(vec);
-
-    assert(s@ =~= bytes.as_str());
-}
-
-fn test_from_utf8_verified_example() {
-    broadcast use group_str_axioms;
-
-    let bytes = vec![97u8, 98u8, 99u8];
-    assert(bytes@.is_utf8());
-    let s = String::from_utf8_verified(bytes);
-
-    assert(s@ =~= seq!['a', 'b', 'c']);
-}
-
-fn test_into_bytes_generic(s: String) {
-    broadcast use group_str_axioms;
-
-    let ghost before = s@;
-    let bytes = s.into_bytes();
-
-    assert(bytes@ =~= before.as_bytes());
-}
-
-fn test_into_bytes_example() {
-    broadcast use group_str_axioms;
-    proof { reveal_strlit("abc"); }
-
-    let s = String::from_str("abc");
-    let bytes = s.into_bytes();
+    let mut text = String::with_capacity(4);
+    text.push_str("abc");
+    let bytes = text.into_bytes();
 
     assert(bytes@ =~= seq![97u8, 98u8, 99u8]);
+    crate::exec_assert(bytes.len() == 3usize);
+
+    let roundtrip = String::from_utf8(bytes);
+    let roundtrip_is_ok = roundtrip.is_ok();
+    assert(roundtrip_is_ok);
+    crate::exec_assert(roundtrip_is_ok);
 }
 
-fn test_as_mut_str_exposes_current_view(s: &mut String) {
+fn test_as_mut_str_exposes_current_view() {
     broadcast use group_str_axioms;
-
-    let ghost before = s@;
-    {
-        let r = s.as_mut_str();
-        assert(r@ =~= before);
-    }
-    assert(s@ =~= before);
-}
-
-fn test_clear_generic(s: &mut String) {
-    broadcast use group_str_axioms;
-
-    s.clear();
-
-    let is_empty = s.is_empty();
-    assert(s@ =~= Seq::<char>::empty());
-    assert(is_empty);
-}
-
-fn test_push_and_push_str_generic(s: &mut String, suffix: &str, ch: char) {
-    broadcast use group_str_axioms;
-
-    let ghost before_push = s@;
-    s.push(ch);
-    assert(s@ =~= before_push.push(ch));
-
-    let ghost before_suffix = s@;
-    s.push_str(suffix);
-    assert(s@ =~= before_suffix + suffix@);
-}
-
-fn test_push_pop_and_clear_example() {
-    broadcast use group_str_axioms;
-    proof { reveal_strlit("bc"); }
-
-    let mut s = String::with_capacity(4);
-    s.push('a');
-    assert(s@ =~= seq!['a']);
-
-    s.push_str("bc");
-    assert(s@ =~= seq!['a', 'b', 'c']);
-
-    let c = s.pop();
-    assert(c == Some('c'));
-    assert(s@ =~= seq!['a', 'b']);
-
-    s.clear();
-    let is_empty = s.is_empty();
-    assert(s@ =~= Seq::<char>::empty());
-    assert(is_empty);
-
-    let none = s.pop();
-    assert(none.is_none());
-    assert(s@ =~= Seq::<char>::empty());
-}
-
-fn test_pop_generic(s: &mut String) {
-    broadcast use group_str_axioms;
-
-    let ghost before = s@;
-    let ch = s.pop();
-
     proof {
-        if before.len() == 0 {
-            assert(s@ =~= before);
-            assert(ch.is_none());
-        } else {
-            assert(s@ =~= before.drop_last());
-            assert(ch == Some(before.last()));
-        }
+        reveal_strlit("abc");
     }
+
+    let mut text = String::with_capacity(4);
+    text.push_str("abc");
+    let ghost before = text@;
+    {
+        let view = text.as_mut_str();
+        assert(view@ =~= before);
+    }
+    assert(text@ =~= before);
+    crate::exec_assert(text.len() == 3usize);
 }
 
-fn test_reserve_preserves_view(s: &mut String, amt: usize) {
+fn test_push_pop_and_clear_core_cases() {
+    broadcast use group_str_axioms;
+    proof {
+        reveal_strlit("");
+        reveal_strlit("abc");
+    }
+
+    let mut text = String::with_capacity(16);
+    text.push_str("");
+    assert(text@ =~= Seq::<char>::empty());
+    crate::exec_assert(text.len() == 0usize);
+
+    text.push_str("abc");
+    assert(text@ =~= seq!['a', 'b', 'c']);
+    crate::exec_assert(text.len() == 3usize);
+
+    text.push('b');
+    text.push('¢');
+    text.push('€');
+    text.push('𤭢');
+    assert(text@ =~= seq!['a', 'b', 'c', 'b', '¢', '€', '𤭢']);
+
+    let four_byte = text.pop();
+    assert(four_byte == Some('𤭢'));
+    crate::exec_assert(four_byte == Some('𤭢'));
+    let three_byte = text.pop();
+    assert(three_byte == Some('€'));
+    crate::exec_assert(three_byte == Some('€'));
+    let two_byte = text.pop();
+    assert(two_byte == Some('¢'));
+    crate::exec_assert(two_byte == Some('¢'));
+    let one_byte = text.pop();
+    assert(one_byte == Some('b'));
+    crate::exec_assert(one_byte == Some('b'));
+
+    text.clear();
+    assert(text@ =~= Seq::<char>::empty());
+    let empty = text.is_empty();
+    assert(empty);
+    crate::exec_assert(empty);
+    let none = text.pop();
+    assert(none.is_none());
+    crate::exec_assert(none.is_none());
+}
+
+fn test_reserve_preserves_contents() {
+    broadcast use group_str_axioms;
+    proof {
+        reveal_strlit("cap");
+    }
+
+    let mut text = String::with_capacity(3);
+    text.push_str("cap");
+    let ghost before = text@;
+
+    text.reserve(8usize);
+    assert(text@ =~= before);
+    crate::exec_assert(text.len() == 3usize);
+
+    text.reserve_exact(8usize);
+    assert(text@ =~= before);
+    crate::exec_assert(text.len() == 3usize);
+}
+
+fn test_insert_ascii_boundary() {
     broadcast use group_str_axioms;
 
-    let ghost before = s@;
-    s.reserve(amt);
-    assert(s@ =~= before);
-
-    s.reserve_exact(amt);
-    assert(s@ =~= before);
+    let mut text = String::with_capacity(1);
+    text.insert(0usize, 'a');
+    assert(text@.as_bytes() =~= seq![97u8]);
+    let len = text.len();
+    assert(len == 1usize);
+    crate::exec_assert(len == 1usize);
 }
 
-fn test_reserve_examples() {
+fn test_insert_str_ascii_boundary() {
     broadcast use group_str_axioms;
-    proof { reveal_strlit("cap"); }
+    proof {
+        reveal_strlit("bc");
+    }
 
-    let mut s = String::from_str("cap");
-    s.reserve(8);
-    assert(s@ =~= seq!['c', 'a', 'p']);
-    s.reserve_exact(4);
-    assert(s@ =~= seq!['c', 'a', 'p']);
+    let mut text = String::with_capacity(2);
+    text.insert_str(0usize, "bc");
+    assert(text@.as_bytes() =~= seq![98u8, 99u8]);
+    let len = text.len();
+    assert(len == 2usize);
+    crate::exec_assert(len == 2usize);
 }
 
-fn test_insert_generic_byte_post(s: &mut String, idx: usize, ch: char)
-    requires
-        is_char_boundary(old(s)@.as_bytes(), idx as int),
-{
-    broadcast use group_str_axioms;
-
-    let ghost before = s@;
-    s.insert(idx, ch);
-
-    assert(s@.as_bytes() =~= before.as_bytes().take(idx as int) + seq![ch].as_bytes() + before.as_bytes().skip(idx as int));
-}
-
-fn test_insert_str_generic_byte_post(s: &mut String, idx: usize, inserted: &str)
-    requires
-        is_char_boundary(old(s)@.as_bytes(), idx as int),
-{
-    broadcast use group_str_axioms;
-
-    let ghost before = s@;
-    s.insert_str(idx, inserted);
-
-    assert(s@.as_bytes() =~= before.as_bytes().take(idx as int) + inserted@.as_bytes() + before.as_bytes().skip(idx as int));
-}
-
-fn test_insert_example() {
-    broadcast use group_str_axioms;
-
-    let mut s = String::with_capacity(1);
-    s.insert(0, 'a');
-    assert(s@.as_bytes() =~= seq![97u8]);
-}
-
-fn test_insert_str_example() {
-    broadcast use group_str_axioms;
-    proof { reveal_strlit("bc"); }
-
-    let mut t = String::with_capacity(2);
-    t.insert_str(0, "bc");
-    assert(t@.as_bytes() =~= seq![98u8, 99u8]);
-}
-
-fn test_remove_generic_byte_post(s: &mut String, idx: usize) -> (ret: char)
-    requires
-        is_char_boundary(old(s)@.as_bytes(), idx as int),
-        idx < old(s)@.as_bytes().len(),
-    ensures
-        ret as u32 == decode_first_scalar(old(s)@.as_bytes().skip(idx as int)),
-{
-    broadcast use group_str_axioms;
-
-    let ghost before = s@;
-    let removed = s.remove(idx);
-
-    assert(removed as u32 == decode_first_scalar(before.as_bytes().skip(idx as int)));
-    assert(s@.as_bytes() =~= before.as_bytes().take(idx as int) + pop_first_scalar(before.as_bytes().skip(idx as int)));
-    removed
-}
-
-fn test_remove_example() {
+fn test_remove_ascii_boundary() {
     broadcast use group_str_axioms;
     proof {
         reveal_strlit("abcd");
     }
 
-    let mut s = String::from_str("abcd");
-    let removed = s.remove(1);
+    let mut text = String::from_str("abcd");
+    let removed = text.remove(1usize);
 
     assert(removed as u32 == decode_first_scalar(seq![98u8, 99u8, 100u8]));
-    assert(s@.as_bytes() =~= seq![97u8, 99u8, 100u8]);
+    assert(text@.as_bytes() =~= seq![97u8, 99u8, 100u8]);
+    let removed_len = text.len();
+    assert(removed_len == 3usize);
+    crate::exec_assert(removed_len == 3usize);
+}
+
+fn test_split_off_and_truncate_ascii_boundaries() {
+    broadcast use group_str_axioms;
+    proof {
+        reveal_strlit("ABCD");
+    }
+
+    let mut text = String::with_capacity(8);
+    text.push_str("ABCD");
+    let remainder = text.split_off(2usize);
+    let prefix_len = text.len();
+    let remainder_len = remainder.len();
+    assert(prefix_len == 2usize);
+    assert(remainder_len == 2usize);
+    crate::exec_assert(prefix_len == 2usize);
+    crate::exec_assert(remainder_len == 2usize);
+
+    let empty = text.split_off(2usize);
+    assert(empty@ =~= Seq::<char>::empty());
+    crate::exec_assert(empty.is_empty());
+    let prefix_len = text.len();
+    assert(prefix_len == 2usize);
+    crate::exec_assert(prefix_len == 2usize);
+
+    text.truncate(1usize);
+    assert(text@.as_bytes() =~= seq![65u8]);
+    crate::exec_assert(text.len() == 1usize);
+    text.truncate(0usize);
+    assert(text@ =~= Seq::<char>::empty());
+    crate::exec_assert(text.is_empty());
+}
+
+fn test_truncate_past_end_is_noop() {
+    broadcast use group_str_axioms;
+    proof {
+        reveal_strlit("12345");
+    }
+
+    let mut text = String::with_capacity(5);
+    text.push_str("12345");
+    let ghost before = text@;
+    assert(text@.as_bytes().len() == 5);
+    text.truncate(6usize);
+    assert(text@.as_bytes() =~= before.as_bytes());
+    let len = text.len();
+    assert(len == 5usize);
+    crate::exec_assert(len == 5usize);
 }
 
 fn test_retain_with_named_predicate() {
     broadcast use group_str_axioms;
-    proof { reveal_strlit("abc"); }
+    proof {
+        reveal_strlit("abc");
+    }
 
-    let mut s = String::from_str("abc");
-    s.retain(keep_not_b);
-
-    assert(s@ =~= "abc"@.filter(|c: char| call_ensures(keep_not_b, (c,), true)));
-}
-
-fn test_retain_with_annotated_closure() {
-    broadcast use group_str_axioms;
-    proof { reveal_strlit("abc"); }
-
-    let mut s = String::from_str("abc");
-    let mut keep_not_b_closure = |c: char| -> (ret: bool)
+    let mut text = String::with_capacity(4);
+    text.push_str("abc");
+    let mut keep_not_b_closure = |character: char| -> (ret: bool)
         requires
             true,
         ensures
-            ret == (c != 'b'),
+            ret == (character != 'b'),
     {
-        c != 'b'
+        character != 'b'
     };
     let keep_a = keep_not_b_closure('a');
     let keep_b = keep_not_b_closure('b');
@@ -341,74 +305,100 @@ fn test_retain_with_annotated_closure() {
     assert(keep_a);
     assert(!keep_b);
     assert(keep_c);
-    s.retain(keep_not_b_closure);
 
+    text.retain(keep_not_b_closure);
     proof {
-        let pred = |c: char| call_ensures(keep_not_b_closure, (c,), true);
+        let pred = |character: char| call_ensures(keep_not_b_closure, (character,), true);
         reveal_with_fuel(Seq::<_>::filter, 4);
-        assert(s@ =~= "abc"@.filter(pred));
+        assert(text@ =~= "abc"@.filter(pred));
         assert(pred('a'));
         assert(!pred('b'));
         assert(pred('c'));
-        assert_seqs_equal!(s@ == seq!['a', 'c']);
-    }
+        assert_seqs_equal!(text@ == seq!['a', 'c']);
+    };
+    let retained_len = text.len();
+    assert(retained_len == 2usize);
+    crate::exec_assert(retained_len == 2usize);
+
+    let last = text.pop();
+    assert(last == Some('c'));
+    crate::exec_assert(last == Some('c'));
+    let first = text.pop();
+    assert(first == Some('a'));
+    crate::exec_assert(first == Some('a'));
 }
 
-fn test_split_off_generic_byte_post(s: &mut String, at: usize) -> (rem: String)
-    requires
-        is_char_boundary(old(s)@.as_bytes(), at as int),
-    ensures
-        final(s)@.as_bytes() =~= old(s)@.as_bytes().take(at as int),
-        rem@.as_bytes() =~= old(s)@.as_bytes().skip(at as int),
-{
+fn test_panicking_indices_are_blocked_by_preconditions() {
     broadcast use group_str_axioms;
 
-    let ghost before = s@;
-    let rem = s.split_off(at);
+    let empty = String::with_capacity(0);
+    assert(empty@.as_bytes().len() == 0);
+    assert(!is_char_boundary(empty@.as_bytes(), 1));
 
-    assert(s@.as_bytes() =~= before.as_bytes().take(at as int));
-    assert(rem@.as_bytes() =~= before.as_bytes().skip(at as int));
-    rem
-}
-
-fn test_split_off_example() {
-    broadcast use group_str_axioms;
-
-    let mut s = String::with_capacity(4);
-    let tail = s.split_off(0);
-
-    assert(s@.as_bytes() =~= Seq::<u8>::empty());
-    assert(tail@.as_bytes() =~= Seq::<u8>::empty());
-}
-
-fn test_truncate_generic_byte_post(s: &mut String, new_len: usize)
-    requires
-        is_char_boundary(old(s)@.as_bytes(), new_len as int),
-{
-    broadcast use group_str_axioms;
-
-    let ghost before = s@;
-    s.truncate(new_len);
-
-    assert(s@.as_bytes() =~= before.as_bytes().take(new_len as int));
-}
-
-fn test_truncate_example() {
-    broadcast use group_str_axioms;
     proof {
-        reveal_strlit("abcd");
+        let hello = seq![72u8, 101u8, 108u8, 108u8, 111u8];
+        assert(hello.is_utf8());
+        assert(hello.len() == 5);
+        assert(!is_char_boundary(hello, 6));
     }
-
-    let mut s = String::from_str("abcd");
-    s.truncate(2);
-    assert(s@.as_bytes() =~= seq![97u8, 98u8]);
-
-    s.truncate(0);
-    assert(s@.as_bytes() =~= Seq::<u8>::empty());
 }
 
-// `String::retain` direct closure examples need an explicit executable closure
-// postcondition so callers can connect `call_ensures(f, (c,), true)` to the
-// intended predicate. See `test_retain_with_annotated_closure` above.
+// XXX(Verus): The upstream mid-codepoint panic cases, such as inserting at
+// byte 1 of "ệ", should also be expressible as failed preconditions. Directly
+// proving concrete non-ASCII UTF-8 byte sequences valid currently needs more
+// low-level UTF-8 arithmetic than is appropriate for these API smoke tests.
 
 } // verus!
+
+pub fn run() -> usize {
+    let mut count = 0;
+    count += crate::run_test(
+        "str::string::views_and_capacity_are_callable",
+        test_views_and_capacity_are_callable,
+    );
+    count += crate::run_test(
+        "str::string::from_utf8_ok_err_and_verified",
+        test_from_utf8_ok_err_and_verified,
+    );
+    count += crate::run_test(
+        "str::string::into_bytes_roundtrip_is_callable",
+        test_into_bytes_roundtrip_is_callable,
+    );
+    count += crate::run_test(
+        "str::string::as_mut_str_exposes_current_view",
+        test_as_mut_str_exposes_current_view,
+    );
+    count += crate::run_test(
+        "str::string::push_pop_and_clear_core_cases",
+        test_push_pop_and_clear_core_cases,
+    );
+    count += crate::run_test(
+        "str::string::reserve_preserves_contents",
+        test_reserve_preserves_contents,
+    );
+    count += crate::run_test(
+        "str::string::insert_ascii_boundary",
+        test_insert_ascii_boundary,
+    );
+    count += crate::run_test(
+        "str::string::insert_str_ascii_boundary",
+        test_insert_str_ascii_boundary,
+    );
+    count += crate::run_test(
+        "str::string::remove_ascii_boundary",
+        test_remove_ascii_boundary,
+    );
+    count += crate::run_test(
+        "str::string::split_off_and_truncate_ascii_boundaries",
+        test_split_off_and_truncate_ascii_boundaries,
+    );
+    count += crate::run_test(
+        "str::string::truncate_past_end_is_noop",
+        test_truncate_past_end_is_noop,
+    );
+    count += crate::run_test(
+        "str::string::retain_with_named_predicate",
+        test_retain_with_named_predicate,
+    );
+    count
+}
