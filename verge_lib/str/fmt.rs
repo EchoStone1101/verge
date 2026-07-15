@@ -54,9 +54,9 @@ impl<T: Display + ?Sized> ToStringSpecImpl for T {
 
 /// This lemma fully interprets `<bool as ToString>::to_string`. 
 #[verifier::external_body]
-pub axiom fn lemma_bool_to_string(b: &bool, s: String) 
+pub broadcast axiom fn lemma_bool_to_string(b: &bool, s: String) 
     ensures
-        to_string_from_display_ensures(b, s) == {
+        #[trigger] to_string_from_display_ensures(b, s) == {
             &&& *b <==> s@ == seq!['t', 'r', 'u', 'e']
             &&& !*b <==> s@ == seq!['f', 'a', 'l', 's', 'e']
         },
@@ -64,27 +64,27 @@ pub axiom fn lemma_bool_to_string(b: &bool, s: String)
 
 /// This lemma fully interprets `<char as ToString>::to_string`.
 #[verifier::external_body]
-pub axiom fn lemma_char_to_string(c: &char, s: String) 
+pub broadcast axiom fn lemma_char_to_string(c: &char, s: String) 
     ensures
-        to_string_from_display_ensures(c, s) == {
+        #[trigger] to_string_from_display_ensures(c, s) == {
             s@ == seq![*c]
         },
 ;
 
 /// This lemma fully interprets `<iN|uN as ToString>::to_string`.
 #[verifier::external_body]
-pub axiom fn lemma_int_to_string<I: AsInt>(n: &I, s: String) 
+pub broadcast axiom fn lemma_int_to_string<I: AsInt>(n: &I, s: String) 
     ensures
-        to_string_from_display_ensures(n, s) == {
+        #[trigger] to_string_from_display_ensures(n, s) == {
             s@ == spec_int_to_str(n.as_int())
         },
 ;
 
 /// This lemma fully interprets `<String as ToString>::to_string`.
 #[verifier::external_body]
-pub axiom fn lemma_string_to_string(this: &String, s: String) 
+pub broadcast axiom fn lemma_string_to_string(this: &String, s: String) 
     ensures
-        to_string_from_display_ensures(this, s) == {
+        #[trigger] to_string_from_display_ensures(this, s) == {
             this@ == s@
         },
 ;
@@ -92,34 +92,34 @@ pub axiom fn lemma_string_to_string(this: &String, s: String)
 /// This lemma fully interprets `<&T as ToString>::to_string`, where `T: Display + ?Sized` 
 /// (blanket impl from `std`).
 #[verifier::external_body]
-pub axiom fn lemma_ref_to_string<T: Display + ?Sized>(t: &&T, s: String) 
+pub broadcast axiom fn lemma_ref_to_string<T: Display + ?Sized>(t: &&T, s: String) 
     ensures
-        to_string_from_display_ensures::<&T>(t, s) == to_string_from_display_ensures::<T>(&**t, s)
+        #[trigger] to_string_from_display_ensures::<&T>(t, s) == to_string_from_display_ensures::<T>(&**t, s)
 ;
 
 /// This lemma fully interprets `<&mut T as ToString>::to_string`, where `T: Display + ?Sized` 
 /// (blanket impl from `std`).
 #[verifier::external_body]
-pub axiom fn lemma_mut_ref_to_string<T: Display + ?Sized>(t: &&mut T, s: String) 
+pub broadcast axiom fn lemma_mut_ref_to_string<T: Display + ?Sized>(t: &&mut T, s: String) 
     ensures
         &*final(*t) == &*old(*t),
-        to_string_from_display_ensures::<&mut T>(t, s) == to_string_from_display_ensures::<T>(&*final(*t), s)
+        #[trigger] to_string_from_display_ensures::<&mut T>(t, s) == to_string_from_display_ensures::<T>(&*final(*t), s)
 ;
 
 /// This lemma fully interprets `<Box<T> as ToString>::to_string`, where `T: Display + ?Sized` 
 /// (blanket impl from `std`).
 #[verifier::external_body]
-pub axiom fn lemma_box_to_string<T: Display + ?Sized>(t: &Box<T>, s: String) 
+pub broadcast axiom fn lemma_box_to_string<T: Display + ?Sized>(t: &Box<T>, s: String) 
     ensures
-        to_string_from_display_ensures::<Box<T>>(t, s) == to_string_from_display_ensures::<T>(&*t, s)
+        #[trigger] to_string_from_display_ensures::<Box<T>>(t, s) == to_string_from_display_ensures::<T>(&*t, s)
 ;
 
 /// This lemma fully interprets `<Rc<T> as ToString>::to_string`, where `T: Display + ?Sized` 
 /// (blanket impl from `std`).
 #[verifier::external_body]
-pub axiom fn lemma_rc_to_string<T: Display + ?Sized>(t: &Rc<T>, s: String) 
+pub broadcast axiom fn lemma_rc_to_string<T: Display + ?Sized>(t: &Rc<T>, s: String) 
     ensures
-        to_string_from_display_ensures::<Rc<T>>(t, s) == to_string_from_display_ensures::<T>(&*t, s)
+        #[trigger] to_string_from_display_ensures::<Rc<T>>(t, s) == to_string_from_display_ensures::<T>(&*t, s)
 ;
 
 /// Helper trait for integer types that can be casted into `int` via `as`.
