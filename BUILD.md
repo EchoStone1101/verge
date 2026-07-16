@@ -1,82 +1,44 @@
-### Verus Binary
+# Build and Verification
 
-The Verus binary is bundled locally at `verus-release/verus` (not git-tracked).
-Current installed version is in `verus-release/version.txt`.
+The Verus binary is bundled locally at `verus-release/verus` (not git-tracked). The installed version is recorded in `verus-release/version.txt`.
 
-To update to the latest release:
+## Verify Before Commits
+
+Run all three workspace crates before committing changes:
+
+```bash
+# 1. Main Verge library
+verus-release/cargo-verus verify -p verge -- --expand-errors
+verus-release/cargo-verus build -p verge -- --expand-errors
+
+# 2. Procedural macros and macro integration tests
+bash verge_macros/run_tests.sh
+
+# 3. External API verification tests
+verus-release/cargo-verus verify -p verge_tests -- --expand-errors
+verus-release/cargo-verus build -p verge_tests -- --expand-errors && ./target/debug/verge_tests
+```
+
+For faster iteration while editing a single library module:
+
+```bash
+verus-release/cargo-verus focus -p verge -- --verify-module <module> --expand-errors
+```
+
+## Update Verus
 
 ```bash
 bash tools/update-verus.sh
 ```
 
-This fetches the latest release from GitHub, installs the required Rust toolchain if needed,
-and verifies the library before replacing the old binary.
+This fetches the latest release, installs the required Rust toolchain if needed, and verifies the library before replacing the old binary.
 
-### Verification
+## API Documentation
 
-Using `cargo-verus` (recommended):
-
-```bash
-# Verify all modules
-verus-release/cargo-verus verify -p verge -- --expand-errors
-
-# Verify a single module (faster iteration)
-verus-release/cargo-verus focus -p verge -- --verify-module nt --expand-errors
-
-# Verify and compile
-verus-release/cargo-verus build -p verge -- --expand-errors
-
-# Verify external API tests
-verus-release/cargo-verus focus -p verge_tests --lib -- --expand-errors
-
-# Build and run migrated external API tests executably
-verus-release/cargo-verus build -p verge_tests -- --expand-errors && ./target/debug/verge_tests
-```
-
-Using `verus` directly (legacy):
+Regenerate docs after changing public Verge APIs:
 
 ```bash
-verus-release/verus --crate-type=lib --expand-errors verge_lib/verge.rs
+python3 tools/generate_verge_docs.py
 ```
 
-### Compilation
-
-```bash
-verus-release/cargo-verus build -p verge -- --expand-errors
-```
-
-### Macro Integration Tests
-
-```bash
-bash verge_macros/run_tests.sh
-```
-
-### API Documentation
-
-Generate markdown API docs from source:
-
-```bash
-python3 tools/generate_verge_docs.py [--output docs/api]
-```
-
-This parses `verge_lib/` source files, extracts doc comments and public item signatures, and writes per-module markdown files. Warns on undocumented public items (exit code 1 unless `--no-warn`).
-
-### Downstream Usage
-
-Projects using Verge add these dependencies:
-
-```toml
-[dependencies]
-vstd = "=0.0.0-2026-04-12-0118"
-verge = { path = "path/to/verge_lib" }
-verge_macros = { path = "path/to/verge_macros" }  # only if using hash_key macro
-
-[package.metadata.verus]
-verify = true
-```
-
-Then verify with:
-
-```bash
-verus-release/cargo-verus verify -- --expand-errors
-```
+Use `--no-warn` when intentionally regenerating despite existing undocumented public items.

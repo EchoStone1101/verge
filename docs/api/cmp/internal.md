@@ -11,10 +11,10 @@ Private proof helpers for `cmp`.
 ```rust
 pub(super) proof fn lemma_lexico_cons_equal(s: Seq<Option<Ordering>>)
     ensures
-        lexico_less(seq![Some(Ordering::Equal)] + s) <==> lexico_less(s),
-        lexico_greater(seq![Some(Ordering::Equal)] + s) <==> lexico_greater(s),
-        lexico_incomparable(seq![Some(Ordering::Equal)] + s) <==> lexico_incomparable(s),
-        lexico_equal(seq![Some(Ordering::Equal)] + s) <==> lexico_equal(s),
+        lexico_is_less(seq![Some(Ordering::Equal)] + s) <==> lexico_is_less(s),
+        lexico_is_greater(seq![Some(Ordering::Equal)] + s) <==> lexico_is_greater(s),
+        lexico_is_incomparable(seq![Some(Ordering::Equal)] + s) <==> lexico_is_incomparable(s),
+        lexico_is_equal(seq![Some(Ordering::Equal)] + s) <==> lexico_is_equal(s),
 ```
 
 

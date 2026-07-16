@@ -4,7 +4,7 @@
 
 The workspace has three crates:
 - **`verge_lib/`** — the main library (`verge_lib/verge.rs` is the root)
-- **`verge_macros/`** — procedural macros (currently: `hash_key` attribute for `obeys_key_model`)
+- **`verge_macros/`** — procedural macros for verified derives and `hash_key`/`hash_key_with_clone` helpers
 - **`verge_tests/`** — external Verus integration tests that import `verge` like a downstream crate
 
 ## Modules

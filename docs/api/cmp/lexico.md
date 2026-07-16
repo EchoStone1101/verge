@@ -101,11 +101,11 @@ pub open spec fn lexico_cmp_by_prefix<T: PartialOrd>(s1: Seq<T>, s2: Seq<T>) -> 
     min(s1.len() as int, s2.len() as int) as nat,
     |i: int| PartialOrdSpec::partial_cmp_spec(&s1[i], &s2[i])
     );
-    if lexico_less(head) {
+    if lexico_is_less(head) {
     Some(Ordering::Less)
-    } else if lexico_greater(head) {
+    } else if lexico_is_greater(head) {
     Some(Ordering::Greater)
-    } else if lexico_incomparable(head) {
+    } else if lexico_is_incomparable(head) {
     None
     } else {
     if s1.len() < s2.len() {
@@ -120,12 +120,12 @@ pub open spec fn lexico_cmp_by_prefix<T: PartialOrd>(s1: Seq<T>, s2: Seq<T>) -> 
 ```
 
 
-### `lexico_less`
+### `lexico_is_less`
 
 This function encodes the lexicographic Less: the first non-Equal entry is Less.
 
 ```rust
-pub open spec fn lexico_less(s: Seq<Option<Ordering>>) -> bool {
+pub open spec fn lexico_is_less(s: Seq<Option<Ordering>>) -> bool {
     exists|i: int| 0 <= i < s.len()
     && s[i] == Some(Ordering::Less)
     && forall|j: int| 0 <= j < i ==> s[j] == Some(Ordering::Equal)
@@ -133,12 +133,12 @@ pub open spec fn lexico_less(s: Seq<Option<Ordering>>) -> bool {
 ```
 
 
-### `lexico_greater`
+### `lexico_is_greater`
 
 This function encodes the lexicographic Greater: the first non-Equal entry is Greater.
 
 ```rust
-pub open spec fn lexico_greater(s: Seq<Option<Ordering>>) -> bool {
+pub open spec fn lexico_is_greater(s: Seq<Option<Ordering>>) -> bool {
     exists|i: int| 0 <= i < s.len()
     && s[i] == Some(Ordering::Greater)
     && forall|j: int| 0 <= j < i ==> s[j] == Some(Ordering::Equal)
@@ -146,12 +146,12 @@ pub open spec fn lexico_greater(s: Seq<Option<Ordering>>) -> bool {
 ```
 
 
-### `lexico_incomparable`
+### `lexico_is_incomparable`
 
 This function encodes the lexicographic Incomparable: the first non-Equal entry is None.
 
 ```rust
-pub open spec fn lexico_incomparable(s: Seq<Option<Ordering>>) -> bool {
+pub open spec fn lexico_is_incomparable(s: Seq<Option<Ordering>>) -> bool {
     exists|i: int| 0 <= i < s.len()
     && s[i] == None
     && forall|j: int| 0 <= j < i ==> s[j] == Some(Ordering::Equal)
@@ -159,12 +159,12 @@ pub open spec fn lexico_incomparable(s: Seq<Option<Ordering>>) -> bool {
 ```
 
 
-### `lexico_equal`
+### `lexico_is_equal`
 
 This function encodes the lexicographic Equal: all entries are Equal.
 
 ```rust
-pub open spec fn lexico_equal(s: Seq<Option<Ordering>>) -> bool {
+pub open spec fn lexico_is_equal(s: Seq<Option<Ordering>>) -> bool {
     forall|i: int| 0 <= i < s.len() ==> s[i] == Some(Ordering::Equal)
     }
 ```
@@ -172,18 +172,18 @@ pub open spec fn lexico_equal(s: Seq<Option<Ordering>>) -> bool {
 
 ### `lemma_lexico_cmp_tetrachotomy`
 
-Proof that exactly one of `lexico_less(s)`, `lexico_greater(s)`, `lexico_incomparable(s)`, and
-`lexico_equal(s)` holds.
+Proof that exactly one of `lexico_is_less(s)`, `lexico_is_greater(s)`,
+`lexico_is_incomparable(s)`, and `lexico_is_equal(s)` holds.
 
 ```rust
 pub proof fn lemma_lexico_cmp_tetrachotomy(s: Seq<Option<Ordering>>)
     ensures
         ({
             match (
-                lexico_less(s),
-                lexico_greater(s),
-                lexico_incomparable(s),
-                lexico_equal(s),
+                lexico_is_less(s),
+                lexico_is_greater(s),
+                lexico_is_incomparable(s),
+                lexico_is_equal(s),
             ) {
                 (true, false, false, false)
                 | (false, true, false, false)

@@ -44,6 +44,7 @@ impl PartialEqSpecImpl for Coord {
     }
 }
 impl PartialEqVerified for Coord {
+    proof fn lemma_obeys_eq_spec() {}
     proof fn lemma_eq_symmetric(a: &Self, b: &Self) {}
     proof fn lemma_eq_transitive(a: &Self, b: &Self, c: &Self) {}
 }

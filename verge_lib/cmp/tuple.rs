@@ -161,10 +161,10 @@ macro_rules! tuple_cmp_impl {
                 let s_ac: Seq<Option<core::cmp::Ordering>> = seq![$(<$T as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&a.$idx, &c.$idx)),+];
                 let n = s_ab.len() as int;
                 if <Self as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(a, b) == Some(core::cmp::Ordering::Less) {
-                    assert(lexico_less(s_ab)) by {
+                    assert(lexico_is_less(s_ab)) by {
                         $(if s_ab[$idx as int] != Some(core::cmp::Ordering::Equal) { assert(s_ab[$idx as int] == Some(core::cmp::Ordering::Less)); } else)+ {}
                     }
-                    assert(lexico_less(s_bc)) by {
+                    assert(lexico_is_less(s_bc)) by {
                         $(if s_bc[$idx as int] != Some(core::cmp::Ordering::Equal) { assert(s_bc[$idx as int] == Some(core::cmp::Ordering::Less)); } else)+ {}
                     }
                     // Per-element substitutivity
@@ -186,7 +186,7 @@ macro_rules! tuple_cmp_impl {
                         } else)+
                         {}
                     };
-                    assert(lexico_less(s_ac)) by {
+                    assert(lexico_is_less(s_ac)) by {
                         let i1 = choose|i: int| 0 <= i < s_ab.len()
                             && s_ab[i] == Some(core::cmp::Ordering::Less)
                             && forall|j: int| 0 <= j < i ==> s_ab[j] == Some(core::cmp::Ordering::Equal);
@@ -198,10 +198,10 @@ macro_rules! tuple_cmp_impl {
                         assert forall |j: int| 0 <= j < k implies s_ac[j] == Some(core::cmp::Ordering::Equal) by {}
                     }
                 } else {
-                    assert(lexico_greater(s_ab)) by {
+                    assert(lexico_is_greater(s_ab)) by {
                         $(if s_ab[$idx as int] != Some(core::cmp::Ordering::Equal) { assert(s_ab[$idx as int] == Some(core::cmp::Ordering::Greater)); } else)+ {}
                     }
-                    assert(lexico_greater(s_bc)) by {
+                    assert(lexico_is_greater(s_bc)) by {
                         $(if s_bc[$idx as int] != Some(core::cmp::Ordering::Equal) { assert(s_bc[$idx as int] == Some(core::cmp::Ordering::Greater)); } else)+ {}
                     }
                     // Per-element substitutivity
@@ -223,7 +223,7 @@ macro_rules! tuple_cmp_impl {
                         } else)+
                         {}
                     };
-                    assert(lexico_greater(s_ac)) by {
+                    assert(lexico_is_greater(s_ac)) by {
                         let i1 = choose|i: int| 0 <= i < s_ab.len()
                             && s_ab[i] == Some(core::cmp::Ordering::Greater)
                             && forall|j: int| 0 <= j < i ==> s_ab[j] == Some(core::cmp::Ordering::Equal);

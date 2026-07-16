@@ -133,7 +133,7 @@ fn gen_struct(input: ItemStruct) -> TokenStream {
                 proof fn lemma_cmp_eq_consistent(a: &Self, b: &Self) { #eq_con_calls }
                 proof fn lemma_cmp_dual(a: &Self, b: &Self) { #dual_calls }
                 proof fn lemma_cmp_transitive(a: &Self, b: &Self, c: &Self) {
-                    if a.partial_cmp_spec(b) == Some(core::cmp::Ordering::Less) {
+                    if vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(a, b) == Some(core::cmp::Ordering::Less) {
                         Self::__less_trans(a, b, c);
                     } else {
                         Self::__greater_trans(a, b, c);
@@ -201,13 +201,63 @@ pub(crate) fn pub_build_trans_proof_fn(fields: &[FieldInfo], type_name: &str, n:
     lines.push("Self::lemma_partial_cmp_spec_equiv(a, b);".to_string());
     lines.push("Self::lemma_partial_cmp_spec_equiv(b, c);".to_string());
     lines.push("Self::lemma_partial_cmp_spec_equiv(a, c);".to_string());
-    // Assert per-element transitivity property (the forall precondition of the generic lemma)
-    let combos = [("Equal", "Equal", "Equal"), (dir, "Equal", dir), ("Equal", dir, dir), (dir, dir, dir)];
-    for (ab, bc, ac) in &combos {
-        lines.push(format!("assert forall|j: int| 0 <= j < {n} && s_ab[j] == Some(core::cmp::Ordering::{ab}) && s_bc[j] == Some(core::cmp::Ordering::{bc}) implies s_ac[j] == Some(core::cmp::Ordering::{ac}) by {{}};"));
+    lines.push(format!("assert(verge::cmp::lexico_is_{dir_lower}(s_ab));"));
+    lines.push(format!("assert(verge::cmp::lexico_is_{dir_lower}(s_bc));"));
+
+    let mut forall_body = String::new();
+    for (i, f) in fields.iter().enumerate() {
+        if i == 0 {
+            forall_body.push_str(&format!("if j == {i} {{"));
+        } else {
+            forall_body.push_str(&format!(" else if j == {i} {{"));
+        }
+        forall_body.push_str(&format!(
+            "<{ty} as verge::cmp::PartialOrdVerified>::lemma_cmp_eq_consistent(&{a}, &{b});\n\
+             <{ty} as verge::cmp::PartialOrdVerified>::lemma_cmp_eq_consistent(&{b}, &{c});\n\
+             <{ty} as verge::cmp::PartialOrdVerified>::lemma_cmp_dual(&{b}, &{a});\n\
+             <{ty} as verge::cmp::PartialOrdVerified>::lemma_cmp_dual(&{c}, &{a});\n\
+             if <{ty} as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&{a}, &{b}) == Some(core::cmp::Ordering::{dir})\n\
+                && <{ty} as vstd::std_specs::cmp::PartialOrdSpec>::partial_cmp_spec(&{b}, &{c}) == Some(core::cmp::Ordering::{dir}) {{\n\
+                 <{ty} as verge::cmp::PartialOrdVerified>::lemma_cmp_transitive(&{a}, &{b}, &{c});\n\
+             }}",
+            ty = f.ty_str,
+            a = f.a_acc,
+            b = f.b_acc,
+            c = f.c_acc,
+            dir = dir,
+        ));
+        forall_body.push('}');
     }
-    // Call generic lexico transitivity lemma
-    lines.push(format!("verge::cmp::lemma_lexico_{dir_lower}_transitive(s_ab, s_bc, s_ac);"));
+    forall_body.push_str(" else {}");
+
+    lines.push(format!(
+        "assert forall|j: int| 0 <= j < {n} implies {{\n\
+             &&& (s_ab[j] == Some(core::cmp::Ordering::Equal) && s_bc[j] == Some(core::cmp::Ordering::Equal) ==> s_ac[j] == Some(core::cmp::Ordering::Equal))\n\
+             &&& (s_ab[j] == Some(core::cmp::Ordering::{dir}) && s_bc[j] == Some(core::cmp::Ordering::Equal) ==> s_ac[j] == Some(core::cmp::Ordering::{dir}))\n\
+             &&& (s_ab[j] == Some(core::cmp::Ordering::Equal) && s_bc[j] == Some(core::cmp::Ordering::{dir}) ==> s_ac[j] == Some(core::cmp::Ordering::{dir}))\n\
+             &&& (s_ab[j] == Some(core::cmp::Ordering::{dir}) && s_bc[j] == Some(core::cmp::Ordering::{dir}) ==> s_ac[j] == Some(core::cmp::Ordering::{dir}))\n\
+         }} by {{ {forall_body} }};",
+        n = n,
+        dir = dir,
+        forall_body = forall_body,
+    ));
+
+    lines.push(format!(
+        "assert(verge::cmp::lexico_is_{dir_lower}(s_ac)) by {{\n\
+             let i1 = choose|i: int| 0 <= i < s_ab.len()\n\
+                 && s_ab[i] == Some(core::cmp::Ordering::{dir})\n\
+                 && forall|j: int| 0 <= j < i ==> s_ab[j] == Some(core::cmp::Ordering::Equal);\n\
+             let i2 = choose|i: int| 0 <= i < s_bc.len()\n\
+                 && s_bc[i] == Some(core::cmp::Ordering::{dir})\n\
+                 && forall|j: int| 0 <= j < i ==> s_bc[j] == Some(core::cmp::Ordering::Equal);\n\
+             let k = vstd::math::min(i1, i2);\n\
+             assert(s_ac[k] == Some(core::cmp::Ordering::{dir}));\n\
+             assert forall |j: int| 0 <= j < k implies s_ac[j] == Some(core::cmp::Ordering::Equal) by {{}}\n\
+         }};",
+        dir_lower = dir_lower,
+        dir = dir,
+    ));
+    lines.push(format!("assert(vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(a, c) == Some(core::cmp::Ordering::{dir}));"));
 
     let body = lines.join("\n");
     let code = format!(
@@ -241,9 +291,9 @@ pub(crate) fn pub_build_equiv_lemma(name: &str, vis: &str, n: usize) -> TokenStr
     let code = format!(
         "{vis} proof fn lemma_partial_cmp_spec_equiv(a: &{name}, b: &{name}) \
             ensures \
-                verge::cmp::lexico_less({seq_fn}(a, b)) <==> vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(a, b) == Some(core::cmp::Ordering::Less), \
-                verge::cmp::lexico_greater({seq_fn}(a, b)) <==> vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(a, b) == Some(core::cmp::Ordering::Greater), \
-                verge::cmp::lexico_equal({seq_fn}(a, b)) <==> vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(a, b) == Some(core::cmp::Ordering::Equal), \
+                verge::cmp::lexico_is_less({seq_fn}(a, b)) <==> vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(a, b) == Some(core::cmp::Ordering::Less), \
+                verge::cmp::lexico_is_greater({seq_fn}(a, b)) <==> vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(a, b) == Some(core::cmp::Ordering::Greater), \
+                verge::cmp::lexico_is_equal({seq_fn}(a, b)) <==> vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(a, b) == Some(core::cmp::Ordering::Equal), \
         {{ {body} }}", vis = vis, name = name, seq_fn = seq_fn, body = body);
     let parsed_fn = pub_parse_verus_fn(&code);
     let ty_ident: proc_macro2::TokenStream = name.parse().unwrap();

@@ -76,6 +76,7 @@ impl OrdSpecImpl for CachedResult {
 // Verified proofs
 
 impl PartialEqVerified for CachedResult {
+    proof fn lemma_obeys_eq_spec() {}
     proof fn lemma_eq_symmetric(a: &Self, b: &Self) {}
     proof fn lemma_eq_transitive(a: &Self, b: &Self, c: &Self) {}
 }
@@ -85,6 +86,7 @@ impl EqVerified for CachedResult {
 }
 
 impl PartialOrdVerified for CachedResult {
+    proof fn lemma_obeys_partial_cmp_spec() {}
     proof fn lemma_cmp_eq_consistent(a: &Self, b: &Self) {
         <u32 as PartialOrdVerified>::lemma_cmp_eq_consistent(&a.key, &b.key);
     }
@@ -97,6 +99,7 @@ impl PartialOrdVerified for CachedResult {
 }
 
 impl OrdVerified for CachedResult {
+    proof fn lemma_obeys_cmp_spec() {}
     proof fn lemma_cmp_consistent(a: &Self, b: &Self) {
         <u32 as OrdVerified>::lemma_cmp_consistent(&a.key, &b.key);
     }

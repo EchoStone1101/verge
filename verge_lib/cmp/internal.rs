@@ -9,14 +9,14 @@ verus! {
 //~doc-skip
 pub(super) proof fn lemma_lexico_cons_equal(s: Seq<Option<Ordering>>)
     ensures
-        lexico_less(seq![Some(Ordering::Equal)] + s) <==> lexico_less(s),
-        lexico_greater(seq![Some(Ordering::Equal)] + s) <==> lexico_greater(s),
-        lexico_incomparable(seq![Some(Ordering::Equal)] + s) <==> lexico_incomparable(s),
-        lexico_equal(seq![Some(Ordering::Equal)] + s) <==> lexico_equal(s),
+        lexico_is_less(seq![Some(Ordering::Equal)] + s) <==> lexico_is_less(s),
+        lexico_is_greater(seq![Some(Ordering::Equal)] + s) <==> lexico_is_greater(s),
+        lexico_is_incomparable(seq![Some(Ordering::Equal)] + s) <==> lexico_is_incomparable(s),
+        lexico_is_equal(seq![Some(Ordering::Equal)] + s) <==> lexico_is_equal(s),
 {
     let prefixed = seq![Some(Ordering::Equal)] + s;
-    assert(lexico_less(prefixed) ==> lexico_less(s)) by {
-        if lexico_less(prefixed) {
+    assert(lexico_is_less(prefixed) ==> lexico_is_less(s)) by {
+        if lexico_is_less(prefixed) {
             let i = choose|i: int| 0 <= i < prefixed.len()
                 && prefixed[i] == Some(Ordering::Less)
                 && forall|j: int| 0 <= j < i ==> prefixed[j] == Some(Ordering::Equal);
@@ -27,8 +27,8 @@ pub(super) proof fn lemma_lexico_cons_equal(s: Seq<Option<Ordering>>)
             }
         }
     };
-    assert(lexico_less(s) ==> lexico_less(prefixed)) by {
-        if lexico_less(s) {
+    assert(lexico_is_less(s) ==> lexico_is_less(prefixed)) by {
+        if lexico_is_less(s) {
             let i = choose|i: int| 0 <= i < s.len()
                 && s[i] == Some(Ordering::Less)
                 && forall|j: int| 0 <= j < i ==> s[j] == Some(Ordering::Equal);
@@ -40,8 +40,8 @@ pub(super) proof fn lemma_lexico_cons_equal(s: Seq<Option<Ordering>>)
             }
         }
     };
-    assert(lexico_greater(prefixed) ==> lexico_greater(s)) by {
-        if lexico_greater(prefixed) {
+    assert(lexico_is_greater(prefixed) ==> lexico_is_greater(s)) by {
+        if lexico_is_greater(prefixed) {
             let i = choose|i: int| 0 <= i < prefixed.len()
                 && prefixed[i] == Some(Ordering::Greater)
                 && forall|j: int| 0 <= j < i ==> prefixed[j] == Some(Ordering::Equal);
@@ -52,8 +52,8 @@ pub(super) proof fn lemma_lexico_cons_equal(s: Seq<Option<Ordering>>)
             }
         }
     };
-    assert(lexico_greater(s) ==> lexico_greater(prefixed)) by {
-        if lexico_greater(s) {
+    assert(lexico_is_greater(s) ==> lexico_is_greater(prefixed)) by {
+        if lexico_is_greater(s) {
             let i = choose|i: int| 0 <= i < s.len()
                 && s[i] == Some(Ordering::Greater)
                 && forall|j: int| 0 <= j < i ==> s[j] == Some(Ordering::Equal);
@@ -65,8 +65,8 @@ pub(super) proof fn lemma_lexico_cons_equal(s: Seq<Option<Ordering>>)
             }
         }
     };
-    assert(lexico_incomparable(prefixed) ==> lexico_incomparable(s)) by {
-        if lexico_incomparable(prefixed) {
+    assert(lexico_is_incomparable(prefixed) ==> lexico_is_incomparable(s)) by {
+        if lexico_is_incomparable(prefixed) {
             let i = choose|i: int| 0 <= i < prefixed.len()
                 && prefixed[i] == None
                 && forall|j: int| 0 <= j < i ==> prefixed[j] == Some(Ordering::Equal);
@@ -77,8 +77,8 @@ pub(super) proof fn lemma_lexico_cons_equal(s: Seq<Option<Ordering>>)
             }
         }
     };
-    assert(lexico_incomparable(s) ==> lexico_incomparable(prefixed)) by {
-        if lexico_incomparable(s) {
+    assert(lexico_is_incomparable(s) ==> lexico_is_incomparable(prefixed)) by {
+        if lexico_is_incomparable(s) {
             let i = choose|i: int| 0 <= i < s.len()
                 && s[i] == None
                 && forall|j: int| 0 <= j < i ==> s[j] == Some(Ordering::Equal);
@@ -90,15 +90,15 @@ pub(super) proof fn lemma_lexico_cons_equal(s: Seq<Option<Ordering>>)
             }
         }
     };
-    assert(lexico_equal(prefixed) ==> lexico_equal(s)) by {
-        if lexico_equal(prefixed) {
+    assert(lexico_is_equal(prefixed) ==> lexico_is_equal(s)) by {
+        if lexico_is_equal(prefixed) {
             assert forall|i: int| 0 <= i < s.len() implies s[i] == Some(Ordering::Equal) by {
                 assert(prefixed[i + 1] == s[i]);
             }
         }
     };
-    assert(lexico_equal(s) ==> lexico_equal(prefixed)) by {
-        if lexico_equal(s) {
+    assert(lexico_is_equal(s) ==> lexico_is_equal(prefixed)) by {
+        if lexico_is_equal(s) {
             assert forall|i: int| 0 <= i < prefixed.len() implies prefixed[i] == Some(Ordering::Equal) by {
                 if i > 0 {
                     assert(prefixed[i] == s[i - 1]);
@@ -120,7 +120,7 @@ pub(super) proof fn lemma_lexico_cmp_by_prefix_empty<T: PartialOrd>(s1: Seq<T>, 
         |i: int| PartialOrdSpec::partial_cmp_spec(&s1[i], &s2[i])
     );
     assert(head.len() == 0);
-    assert(lexico_equal(head));
+    assert(lexico_is_equal(head));
     lemma_lexico_cmp_tetrachotomy(head);
 }
 
@@ -166,7 +166,7 @@ pub(super) proof fn lemma_lexico_cmp_by_prefix_less_head<T: PartialOrd>(s1: Seq<
         min(s1.len() as int, s2.len() as int) as nat,
         |i: int| PartialOrdSpec::partial_cmp_spec(&s1[i], &s2[i])
     );
-    assert(lexico_less(head)) by {
+    assert(lexico_is_less(head)) by {
         assert(head[0] == Some(Ordering::Less));
     }
 }
@@ -184,7 +184,7 @@ pub(super) proof fn lemma_lexico_cmp_by_prefix_greater_head<T: PartialOrd>(s1: S
         min(s1.len() as int, s2.len() as int) as nat,
         |i: int| PartialOrdSpec::partial_cmp_spec(&s1[i], &s2[i])
     );
-    assert(lexico_greater(head)) by {
+    assert(lexico_is_greater(head)) by {
         assert(head[0] == Some(Ordering::Greater));
     }
 }
@@ -202,7 +202,7 @@ pub(super) proof fn lemma_lexico_cmp_by_prefix_none_head<T: PartialOrd>(s1: Seq<
         min(s1.len() as int, s2.len() as int) as nat,
         |i: int| PartialOrdSpec::partial_cmp_spec(&s1[i], &s2[i])
     );
-    assert(lexico_incomparable(head)) by {
+    assert(lexico_is_incomparable(head)) by {
         assert(head[0] == None);
     }
 }

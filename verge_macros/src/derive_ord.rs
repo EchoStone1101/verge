@@ -149,7 +149,7 @@ fn gen_struct(input: ItemStruct) -> TokenStream {
                 proof fn lemma_cmp_eq_consistent(a: &Self, b: &Self) { #eq_con_calls }
                 proof fn lemma_cmp_dual(a: &Self, b: &Self) { #dual_calls }
                 proof fn lemma_cmp_transitive(a: &Self, b: &Self, c: &Self) {
-                    if a.partial_cmp_spec(b) == Some(core::cmp::Ordering::Less) { Self::__less_trans(a, b, c); }
+                    if vstd::std_specs::cmp::PartialOrdSpec::partial_cmp_spec(a, b) == Some(core::cmp::Ordering::Less) { Self::__less_trans(a, b, c); }
                     else { Self::__greater_trans(a, b, c); }
                 }
             }

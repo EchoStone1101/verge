@@ -4,7 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-vstd = "=0.0.0-2026-04-12-0118"
+vstd = "=0.0.0-2026-05-31-0205"
 verge = { path = "../../../verge_lib" }
 verge_macros = { path = "../.." }
 
