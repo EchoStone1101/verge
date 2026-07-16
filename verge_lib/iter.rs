@@ -50,6 +50,8 @@ pub trait VergeIteratorSpec {
     spec fn ridx(&self) -> int;
 }
 
+// TODO: does the `by_ref` pattern work?
+
 /// Enables `Iterator::count`, which consumes the iterator.
 #[verifier::external_body]
 pub fn iter_count<I: Iterator>(iter: I) -> (ret: usize) 
@@ -141,7 +143,107 @@ pub fn iter_min_by<I: Iterator, F>(iter: I, compare: F) -> (ret: Option<I::Item>
         }
     { iter.min_by(compare) }
 
-// TODO: could have the `cmp` methods, once we have specs for generic lexicographical ordering
+/// Enables `Iterator::cmp`.
+#[verifier::external_body]
+pub fn iter_cmp<I: Iterator>(this: I, other: I) -> (ret: Ordering) 
+    where
+        I::Item: OrdVerified,
+    requires
+        this.obeys_prophetic_iter_laws() && this.will_return_none(),
+        other.obeys_prophetic_iter_laws() && other.will_return_none(),
+    ensures
+        Some(ret) == lexico_cmp(this.remaining(), other.remaining()),
+    { this.cmp(other) }
+
+/// Enables `Iterator::partial_cmp`.
+#[verifier::external_body]
+pub fn iter_partial_cmp<I: Iterator>(this: I, other: I) -> (ret: Option<Ordering>) 
+    where
+        I::Item: PartialOrdVerified,
+    requires
+        this.obeys_prophetic_iter_laws() && this.will_return_none(),
+        other.obeys_prophetic_iter_laws() && other.will_return_none(),
+    ensures
+        ret == lexico_cmp(this.remaining(), other.remaining()),
+    { this.partial_cmp(other) }
+
+/// Enables `Iterator::eq`.
+#[verifier::external_body]
+pub fn iter_eq<I: Iterator>(this: I, other: I) -> (ret: bool) 
+    where
+        I::Item: PartialEqVerified,
+    requires
+        this.obeys_prophetic_iter_laws() && this.will_return_none(),
+        other.obeys_prophetic_iter_laws() && other.will_return_none(),
+    ensures
+        ret == lexico_eq(this.remaining(), other.remaining()),
+    { this.eq(other) }
+
+/// Enables `Iterator::ne`.
+#[verifier::external_body]
+pub fn iter_ne<I: Iterator>(this: I, other: I) -> (ret: bool) 
+    where
+        I::Item: PartialEqVerified,
+    requires
+        this.obeys_prophetic_iter_laws() && this.will_return_none(),
+        other.obeys_prophetic_iter_laws() && other.will_return_none(),
+    ensures
+        ret == !lexico_eq(this.remaining(), other.remaining()),
+    { this.ne(other) }
+
+/// Enables `Iterator::lt`.
+#[verifier::external_body]
+pub fn iter_lt<I: Iterator>(this: I, other: I) -> (ret: bool) 
+    where
+        I::Item: PartialOrdVerified,
+    requires
+        this.obeys_prophetic_iter_laws() && this.will_return_none(),
+        other.obeys_prophetic_iter_laws() && other.will_return_none(),
+    ensures
+        ret <==> (lexico_cmp(this.remaining(), other.remaining()) == Some(Ordering::Less)),
+    { this.lt(other) }
+
+/// Enables `Iterator::gt`.
+#[verifier::external_body]
+pub fn iter_gt<I: Iterator>(this: I, other: I) -> (ret: bool) 
+    where
+        I::Item: PartialOrdVerified,
+    requires
+        this.obeys_prophetic_iter_laws() && this.will_return_none(),
+        other.obeys_prophetic_iter_laws() && other.will_return_none(),
+    ensures
+        ret <==> (lexico_cmp(this.remaining(), other.remaining()) == Some(Ordering::Greater)),
+    { this.gt(other) }
+
+/// Enables `Iterator::le`.
+#[verifier::external_body]
+pub fn iter_le<I: Iterator>(this: I, other: I) -> (ret: bool) 
+    where
+        I::Item: PartialOrdVerified,
+    requires
+        this.obeys_prophetic_iter_laws() && this.will_return_none(),
+        other.obeys_prophetic_iter_laws() && other.will_return_none(),
+    ensures
+        ret <==> (
+            lexico_cmp(this.remaining(), other.remaining()) == Some(Ordering::Less)
+            || lexico_cmp(this.remaining(), other.remaining()) == Some(Ordering::Equal)
+        ),
+    { this.le(other) }
+
+/// Enables `Iterator::ge`.
+#[verifier::external_body]
+pub fn iter_ge<I: Iterator>(this: I, other: I) -> (ret: bool) 
+    where
+        I::Item: PartialOrdVerified,
+    requires
+        this.obeys_prophetic_iter_laws() && this.will_return_none(),
+        other.obeys_prophetic_iter_laws() && other.will_return_none(),
+    ensures
+        ret <==> (
+            lexico_cmp(this.remaining(), other.remaining()) == Some(Ordering::Greater)
+            || lexico_cmp(this.remaining(), other.remaining()) == Some(Ordering::Equal)
+        ),
+    { this.ge(other) }
 
 /// Enables `Iterator::is_sorted`, which consumes the iterator.
 #[verifier::external_body]
