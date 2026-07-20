@@ -11,10 +11,12 @@
 //! That is, Verge allows for:
 //! - using `#[derive(Debug)]` to introduce new `Debug` types
 //! - formatting `Debug` types (via the `debug_format()` function in Verge), where the result
-//!   is uninterpreted
+//!   is left uninterpreted
 //! - implementing `ToString` for custom types
 //! - formatting `Display` types (by calling `to_string()`), where the result 
-//!   is fully interpreted for a selection of types (via `to_string_from_display_ensures()`)
+//!   is fully interpreted for a selection of types (via `to_string_from_display_ensures()`); 
+//!   `Display` types not in that list can still be formatted, but the result 
+//!   (`to_string_from_display_ensures`) is left uninterpreted
 use super::*;
 use crate::str::chars::CHAR_ZERO;
 use std::fmt::{Display, Debug};

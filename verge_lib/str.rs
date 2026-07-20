@@ -31,7 +31,7 @@ use crate::seq::*;
 use crate::error::ErrorSpec;
 
 use std::str::{
-    Utf8Error, pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher},
+    Utf8Error, FromStr, pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher},
 };
 use std::slice::SliceIndex;
 use std::ops::{Range, Index, IndexMut};
@@ -606,6 +606,14 @@ pub assume_specification<P>[ str::strip_suffix ](s: &str, pat: P) -> (ret: Optio
         for<'x> <P as Pattern>::Searcher<'x>: ReverseSearcher<'x>,
     ensures
         str_strip_suffix_post(s@, pat, ret),
+;
+
+/// Enables `str::parse`.
+pub assume_specification<F: FromStr> [ str::parse ](s: &str) -> (ret: Result<F, <F as FromStr>::Err>)
+    ensures
+        ret.is_ok() ==> <F as FromStrSpec>::from_str_ok_ensures(s@, ret->Ok_0),
+        ret.is_err() ==> <F as FromStrSpec>::from_str_err_ensures(s@, ret->Err_0),
+    no_unwind when <F as FromStrSpec>::from_str_no_unwind()
 ;
 
 /// Enable `str::to_ascii_lowercase`.

@@ -8,6 +8,7 @@ use verge::str::*;
 mod chars;
 mod fmt;
 mod iter;
+mod parse;
 mod pattern;
 mod string;
 
@@ -279,6 +280,8 @@ fn test_collect() {
 pub fn run() -> usize {
     let mut count = 0;
     count += crate::run_suite("str::chars", chars::run);
+    count += crate::run_suite("str::fmt", fmt::run);
+    count += crate::run_suite("str::parse", parse::run);
     count += crate::run_suite("str::string", string::run);
     count
 }

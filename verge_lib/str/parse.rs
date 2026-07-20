@@ -13,8 +13,9 @@ pub use std::num::{ParseIntError, IntErrorKind};
 use std::str::FromStr;
 use std::fmt::Debug;
 
-// XXX: Unfortunately, `vstd::string` currently has a separate `String::from_str` 
-// defined via extension traits, which when `FromStr` is also in scope causes ambiguity. 
+// XXX: Unfortunately, `vstd::string` currently has a separate `String::from_str`
+// defined via extension traits, which when `FromStr` is also in scope causes ambiguity and
+// requires the fully qualified syntax.
 
 verus! {
 
@@ -38,7 +39,9 @@ pub trait ExFromStr: Sized {
     fn from_str(s: &str) -> (res: Result<Self, Self::Err>)
         ensures
             res.is_ok() ==> Self::from_str_ok_ensures(s@, res->Ok_0),
-            res.is_err() ==> Self::from_str_err_ensures(s@, res->Err_0),
+            res.is_err() ==>
+                Self::from_str_err_ensures(s@, res->Err_0)
+                && !exists|v: Self| Self::from_str_ok_ensures(s@, v),
         no_unwind when Self::from_str_no_unwind()
     ;
 }
@@ -51,13 +54,14 @@ pub assume_specification [ <bool as FromStr>::from_str ] (s: &str) -> Result<boo
 
 impl FromStrSpecImpl for bool {
     open spec fn from_str_ok_ensures(s: Seq<char>, value: bool) -> bool {
-        &&& value <==> s == seq!['t', 'r', 'u', 'e']
-        &&& !value <==> s == seq!['f', 'a', 'l', 's', 'e']
+        &&& s == "true"@ || s == "false"@
+        &&& value <==> s == "true"@
+        &&& !value <==> s == "false"@
     }
 
     open spec fn from_str_err_ensures(s: Seq<char>, err: Self::Err) -> bool {
         &&& err.is_str_parse_error()
-        &&& s != seq!['t', 'r', 'u', 'e'] && s != seq!['f', 'a', 'l', 's', 'e']
+        &&& s != "true"@ && s != "false"@
     }
 
     open spec fn from_str_no_unwind() -> bool { true }
@@ -72,7 +76,8 @@ pub assume_specification [ <char as FromStr>::from_str ] (s: &str) -> Result<cha
 
 impl FromStrSpecImpl for char {
     open spec fn from_str_ok_ensures(s: Seq<char>, value: char) -> bool {
-        s == seq![value]
+        &&& s.len() == 1
+        &&& s.first() == value
     }
 
     open spec fn from_str_err_ensures(s: Seq<char>, err: Self::Err) -> bool {
@@ -185,15 +190,15 @@ macro_rules! impl_from_str_signed_int {
             open spec fn from_str_err_ensures(s: Seq<char>, err: Self::Err) -> bool {
                 &&& err.is_str_parse_error()
                 &&& err.kind() is Empty
-                    ==> s.len() == 0
+                    <==> s.len() == 0
                 &&& err.kind() is InvalidDigit
-                    ==> s.len() > 0 && !str_is_valid_int_radix(s, 10, true)
+                    <==> s.len() > 0 && !str_is_valid_int_radix(s, 10, true)
                 &&& err.kind() is PosOverflow
-                    ==> s.len() > 0 
+                    <==> s.len() > 0 
                     && str_is_valid_int_radix(s, 10, true) 
                     && spec_int_from_str_radix(s, 10) > ($ty::MAX as int)
                 &&& err.kind() is NegOverflow
-                    ==> s.len() > 0 
+                    <==> s.len() > 0 
                     && str_is_valid_int_radix(s, 10, true) 
                     && spec_int_from_str_radix(s, 10) < ($ty::MIN as int)
                 &&& !(err.kind() is Zero)
@@ -216,15 +221,15 @@ macro_rules! impl_from_str_signed_int {
                     let err = res->Err_0;
                     &&& err.is_str_parse_error()
                     &&& err.kind() is Empty
-                        ==> s@.len() == 0
+                        <==> s@.len() == 0
                     &&& err.kind() is InvalidDigit
-                        ==> s@.len() > 0 && !str_is_valid_int_radix(s@, radix as int, true)
+                        <==> s@.len() > 0 && !str_is_valid_int_radix(s@, radix as int, true)
                     &&& err.kind() is PosOverflow
-                        ==> s@.len() > 0 
+                        <==> s@.len() > 0 
                         && str_is_valid_int_radix(s@, radix as int, true) 
                         && spec_int_from_str_radix(s@, radix as int) > ($ty::MAX as int)
                     &&& err.kind() is NegOverflow
-                        ==> s@.len() > 0 
+                        <==> s@.len() > 0 
                         && str_is_valid_int_radix(s@, radix as int, true) 
                         && spec_int_from_str_radix(s@, radix as int) < ($ty::MIN as int)
                     &&& !(err.kind() is Zero)
@@ -248,11 +253,11 @@ macro_rules! impl_from_str_unsigned_int {
             open spec fn from_str_err_ensures(s: Seq<char>, err: Self::Err) -> bool {
                 &&& err.is_str_parse_error()
                 &&& err.kind() is Empty
-                    ==> s.len() == 0
+                    <==> s.len() == 0
                 &&& err.kind() is InvalidDigit
-                    ==> s.len() > 0 && !str_is_valid_int_radix(s, 10, false)
+                    <==> s.len() > 0 && !str_is_valid_int_radix(s, 10, false)
                 &&& err.kind() is PosOverflow
-                    ==> s.len() > 0 
+                    <==> s.len() > 0 
                     && str_is_valid_int_radix(s, 10, false) 
                     && spec_int_from_str_radix(s, 10) > ($ty::MAX as int)
                 &&& !(err.kind() is NegOverflow)
@@ -276,11 +281,11 @@ macro_rules! impl_from_str_unsigned_int {
                     let err = res->Err_0;
                     &&& err.is_str_parse_error()
                     &&& err.kind() is Empty
-                        ==> s@.len() == 0
+                        <==> s@.len() == 0
                     &&& err.kind() is InvalidDigit
-                        ==> s@.len() > 0 && !str_is_valid_int_radix(s@, radix as int, false)
+                        <==> s@.len() > 0 && !str_is_valid_int_radix(s@, radix as int, false)
                     &&& err.kind() is PosOverflow
-                        ==> s@.len() > 0 
+                        <==> s@.len() > 0 
                         && str_is_valid_int_radix(s@, radix as int, false) 
                         && spec_int_from_str_radix(s@, radix as int) > ($ty::MAX as int)
                     &&& !(err.kind() is NegOverflow)
@@ -306,8 +311,7 @@ pub trait FromToStr: ToString + FromStr {
         ensures
             ({
                 forall|s: String| #[trigger] t.to_string_ensures(s)
-                    ==> Self::from_str_ok_ensures(s@, t) 
-                    && !exists|err: <Self as FromStr>::Err| Self::from_str_err_ensures(s@, err)
+                    ==> Self::from_str_ok_ensures(s@, t)
             }),
     ;
 }
@@ -318,8 +322,19 @@ impl FromToStr for bool {
 
         assert forall|s: String| #[trigger] <bool as ToStringSpec>::to_string_ensures(&t, s) 
         implies <bool as FromStrSpec>::from_str_ok_ensures(s@, t) 
-            && !exists|err: ParseBoolError| <bool as FromStrSpec>::from_str_err_ensures(s@, err)
-        by {}
+        by {
+            reveal_strlit("true");
+            reveal_strlit("false");
+            if t {
+                assert(s@ == seq!['t', 'r', 'u', 'e']);
+                assert("true"@ == seq!['t', 'r', 'u', 'e']);
+                assert(s@ == "true"@);
+            } else {
+                assert(s@ == seq!['f', 'a', 'l', 's', 'e']);
+                assert("false"@ == seq!['f', 'a', 'l', 's', 'e']);
+                assert(s@ == "false"@);
+            }
+        }
     }
 }
 
@@ -329,8 +344,9 @@ impl FromToStr for char {
         
         assert forall|s: String| #[trigger] <char as ToStringSpec>::to_string_ensures(&t, s) 
         implies <char as FromStrSpec>::from_str_ok_ensures(s@, t)
-            && !exists|err: ParseCharError| <char as FromStrSpec>::from_str_err_ensures(s@, err)
-        by {}
+        by {
+            assert(<char as FromStrSpec>::from_str_ok_ensures(seq![t], t));
+        }
     }
 }
 
@@ -344,25 +360,8 @@ macro_rules! proof_for_signed_int {
 
                 assert forall|s: String| #[trigger] <$ty as ToStringSpec>::to_string_ensures(&t, s) 
                 implies <$ty as FromStrSpec>::from_str_ok_ensures(s@, t)
-                    && !exists|err: ParseIntError| <$ty as FromStrSpec>::from_str_err_ensures(s@, err)
                 by { 
                     int_proofs::lemma_int_to_str_from_str(t as int, true);
-                    assert_by_contradiction!(!exists|err: ParseIntError| <$ty as FromStrSpec>::from_str_err_ensures(s@, err), {
-                        let err = choose|err: ParseIntError| <$ty as FromStrSpec>::from_str_err_ensures(s@, err);
-                        assert(!(err.kind() is Empty)) by {
-                            reveal(str_is_valid_int_radix);
-                            assert(s@.len() > 0);
-                        }
-                        assert(!(err.kind() is InvalidDigit)) by {
-                            assert(str_is_valid_int_radix(s@, 10, true));
-                        }
-                        assert(!(err.kind() is PosOverflow)) by {
-                            assert(t <= $ty::MAX);
-                        }
-                        assert(!(err.kind() is NegOverflow)) by {
-                            assert(t >= $ty::MIN);
-                        }
-                    });
                 }
             }
         }
@@ -381,22 +380,8 @@ macro_rules! proof_for_unsigned_int {
 
                 assert forall|s: String| #[trigger] <$ty as ToStringSpec>::to_string_ensures(&t, s) 
                 implies <$ty as FromStrSpec>::from_str_ok_ensures(s@, t)
-                    && !exists|err: ParseIntError| <$ty as FromStrSpec>::from_str_err_ensures(s@, err)
                 by { 
                     int_proofs::lemma_int_to_str_from_str(t as int, false);
-                    assert_by_contradiction!(!exists|err: ParseIntError| <$ty as FromStrSpec>::from_str_err_ensures(s@, err), {
-                        let err = choose|err: ParseIntError| <$ty as FromStrSpec>::from_str_err_ensures(s@, err);
-                        assert(!(err.kind() is Empty)) by {
-                            reveal(str_is_valid_int_radix);
-                            assert(s@.len() > 0);
-                        }
-                        assert(!(err.kind() is InvalidDigit)) by {
-                            assert(str_is_valid_int_radix(s@, 10, false));
-                        }
-                        assert(!(err.kind() is PosOverflow)) by {
-                            assert(t <= $ty::MAX);
-                        }
-                    });
                 }
             }
         }
