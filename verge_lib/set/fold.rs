@@ -3,14 +3,15 @@
 #[allow(unused_imports)]
 use vstd::prelude::*;
 use vstd::seq_lib::*;
-use vstd::set::fold::*;
-use vstd::{assert_by_contradiction, assert_sets_equal, assert_multisets_equal, calc};
+use vstd::iset::fold::*;
+use vstd::{assert_by_contradiction, calc};
+use vstd::iset_lib::*;
 use vstd::relations::*;
 
 verus! {
 
 /// Proof that folding over two disjoint sets is equivalent to folding over their union set.
-pub proof fn lemma_fold_disjoint_union<A, B>(s1: Set<A>, s2: Set<A>, z: B, f: spec_fn(B, A) -> B)
+pub proof fn lemma_fold_disjoint_union<A, B>(s1: ISet<A>, s2: ISet<A>, z: B, f: spec_fn(B, A) -> B)
     requires
         s1.finite() && s2.finite(),
         s1.disjoint(s2),
@@ -43,10 +44,10 @@ pub proof fn lemma_fold_disjoint_union<A, B>(s1: Set<A>, s2: Set<A>, z: B, f: sp
 
 /// Proof that folding over a set is equivalent to folding along its sequence version, 
 /// if the fold function is commutative.
-pub proof fn lemma_fold_set_seq_eq<A, B>(set: Set<A>, seq: Seq<A>, z: B, f: spec_fn(B, A) -> B)
+pub proof fn lemma_fold_set_seq_eq<A, B>(set: ISet<A>, seq: Seq<A>, z: B, f: spec_fn(B, A) -> B)
     requires
         set.finite(),
-        seq.no_duplicates() && seq.to_set() == set,
+        seq.no_duplicates() && seq.to_iset() == set,
         is_fun_commutative(f),
     ensures
         set.fold(z, f) == seq.fold_left(z, f),
@@ -65,10 +66,10 @@ pub proof fn lemma_fold_set_seq_eq<A, B>(set: Set<A>, seq: Seq<A>, z: B, f: spec
             (==)
             seq.fold_left(z, f); {}
             f(seq.drop_last().fold_left(z, f), a); {
-                assert_sets_equal!(seq.drop_last().to_set() == set.remove(a), elem => {
+                assert_isets_equal!(seq.drop_last().to_iset() == set.remove(a), elem => {
                     calc!{
                         (<==>)
-                        seq.drop_last().to_set().contains(elem); {}
+                        seq.drop_last().to_iset().contains(elem); {}
                         seq.drop_last().contains(elem); {
                             if seq.contains(elem) && elem != a {
                                 let i = seq.index_of(elem);
@@ -93,7 +94,7 @@ pub proof fn lemma_fold_set_seq_eq<A, B>(set: Set<A>, seq: Seq<A>, z: B, f: spec
 
 /// Proof that folding over set `s` with `f1` and `f2` is equivalent if `f1` and `f2` are equivalent 
 /// over domain `s`.
-pub proof fn lemma_fold_fn_eq<A, B>(s: Set<A>, z: B, f1: spec_fn(B, A) -> B, f2: spec_fn(B, A) -> B)
+pub proof fn lemma_fold_fn_eq<A, B>(s: ISet<A>, z: B, f1: spec_fn(B, A) -> B, f2: spec_fn(B, A) -> B)
     requires
         s.finite(),
         is_fun_commutative(f1) && is_fun_commutative(f2),

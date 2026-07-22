@@ -19,12 +19,4 @@ pub assume_specification<T> [core::mem::replace::<T>] (dest: &mut T, src: T) -> 
     opens_invariants none
     no_unwind;
 
-/// Enable `core::slice::copy_from_slice`, which is essentially `memcpy` in C.
-pub assume_specification<T: Copy> [ <[T]>::copy_from_slice ] (dest: &mut [T], src: &[T])
-    requires
-        old(dest).len() == src.len(),
-    ensures
-        final(dest)@ =~= src@,
-    no_unwind;
-
 } // verus!

@@ -6,11 +6,11 @@ use vstd::arithmetic::mul::*;
 use vstd::arithmetic::div_mod::*;
 use vstd::arithmetic::power::*;
 use vstd::seq::*;
-use vstd::set::fold::*;
-use vstd::set_lib::*;
+use vstd::iset::fold::*;
+use vstd::iset_lib::*;
 use vstd::math::{min, max, clip};
 use vstd::{assert_by_contradiction, calc};
-use vstd::relations::{injective_on, is_minimal, sorted_by};
+use vstd::relations::sorted_by;
 
 pub mod gcd;
 pub mod totient;
@@ -25,28 +25,13 @@ pub use gcd::{
 
 pub use totient::{totient, totients};
 
-// TODO: this module will need major updates for the new ISet/IMap changes
-
 verus! {
-
-// TODO: deprecate this to improve proof efficiency
-/// An expansion of `div_mod::group_mod_properties` with commonly used lemmas 
-/// in number theory.
-/// WARNING: avoid using this and `mul::group_mul_properties` together; it likely 
-/// blows up error diagnostics.
-broadcast group group_mod_properties_nt {
-    group_mod_properties,
-    group_fundamental_div_mod_converse,
-    lemma_fundamental_div_mod,
-    lemma_mod_multiples_basic,
-    lemma_mod_is_zero,
-}
 
 /// This function defines the natural number range [lo, hi).
 /// It is useful in this module as a substitute of `set_lib::set_int_range`, 
 /// with the elements being `nat` instead of `int`.
-pub open spec fn set_nat_range(lo: nat, hi: nat) -> Set<nat> {
-    Set::<nat>::new(|p: nat| lo <= p < hi)
+pub open spec fn set_nat_range(lo: nat, hi: nat) -> ISet<nat> {
+    ISet::<nat>::new(|p: nat| lo <= p < hi)
 }
 
 /// Proof of `set_nat_range`'s basic properties.
@@ -57,8 +42,8 @@ pub broadcast proof fn lemma_nat_range(lo: nat, hi: nat)
 {
     if lo > hi {
         // Case 1: Empty
-        let empty = Set::<nat>::empty();
-        assert_sets_equal!(set_nat_range(lo, hi) == empty, elem => {});
+        let empty = ISet::<nat>::empty();
+        assert_isets_equal!(set_nat_range(lo, hi) == empty, elem => {});
     } else {
         // Case 2: Non-empty
         let f = |e: int| e as nat;
@@ -67,7 +52,7 @@ pub broadcast proof fn lemma_nat_range(lo: nat, hi: nat)
         let set2 = set_nat_range(lo, hi);
 
         lemma_int_range(lo as int, hi as int);
-        assert_sets_equal!(set1f == set2, elem => {
+        assert_isets_equal!(set1f == set2, elem => {
             if set1f.contains(elem) {
                 let g = |a: nat| { exists|x: int| set1.contains(x) && a == f(x) };
                 assert(g(elem));
@@ -85,7 +70,7 @@ pub broadcast proof fn lemma_nat_range(lo: nat, hi: nat)
                 assert(set1f.contains(elem));
             }
         });
-        assert(injective_on(f, Set::<int>::new(|x: int| x >= 0)));
+        assert(ISet::<int>::new(|x: int| x >= 0).injective_on(f));
         lemma_map_size(set1, set2, f);
     }
 }
@@ -102,7 +87,13 @@ pub broadcast proof fn lemma_is_factor_bound(n: nat, d: nat)
         #[trigger] is_factor_of(n, d),
     ensures n == 0 || n >= d,
 {
-    broadcast use group_mod_properties_nt;
+    broadcast use {
+        group_mod_properties,
+        group_fundamental_div_mod_converse,
+        lemma_fundamental_div_mod,
+        lemma_mod_multiples_basic,
+        lemma_mod_is_zero,
+    };
 }
 
 /// Proof that if `d|n1` and `d|n2`, then `d|(n1 * a1 + n2 * a2)` for any integer coefficients
@@ -116,12 +107,24 @@ pub proof fn lemma_is_factor_lincomb(n1: nat, a1: int, n2: nat, a2: int, d: nat)
         is_factor_of((n1 * a1 + n2 * a2) as nat, d),
 {
     assert(n1 * a1 % (d as int) == 0) by {
-        broadcast use group_mod_properties_nt;
+        broadcast use {
+            group_mod_properties,
+            group_fundamental_div_mod_converse,
+            lemma_fundamental_div_mod,
+            lemma_mod_multiples_basic,
+            lemma_mod_is_zero,
+        };
         assert(n1 == d * (n1/d) + 0);
         assert(n1 * a1 == (n1/d) * a1 * d) by { broadcast use group_mul_properties; };
     };
     assert(n2 * a2 % (d as int) == 0) by {
-        broadcast use group_mod_properties_nt;
+        broadcast use {
+            group_mod_properties,
+            group_fundamental_div_mod_converse,
+            lemma_fundamental_div_mod,
+            lemma_mod_multiples_basic,
+            lemma_mod_is_zero,
+        };
         assert(n2 == d * (n2/d) + 0);
         assert(n2 * a2 == (n2/d) * a2 * d) by { broadcast use group_mul_properties; };
     };
@@ -193,10 +196,10 @@ pub open spec fn is_coprime(a: nat, b: nat) -> bool {
 }
 
 /// This function defines the set of prime factors of `n`.
-pub open spec fn prime_factors(n: nat) -> Set<nat>
+pub open spec fn prime_factors(n: nat) -> ISet<nat>
     recommends n > 0
 {
-    Set::<nat>::new(|p: nat| is_prime(p) && is_factor_of(n, p))
+    ISet::<nat>::new(|p: nat| is_prime(p) && is_factor_of(n, p))
 }
 
 /// This function defines the "p-adic" valuation of `n` for a prime number `p` (denoted as `v_p(n)`); 
@@ -206,7 +209,7 @@ pub closed spec fn vp(n: nat, p: nat) -> nat
         n > 0,
         is_prime(p),
 {
-    let s = Set::<nat>::new(|k: nat| is_factor_of(n, pow(p as int, k) as nat));
+    let s = ISet::<nat>::new(|k: nat| is_factor_of(n, pow(p as int, k) as nat));
     let r = |x: nat, y: nat| x <= y;
     s.find_unique_maximal(r)
 }
@@ -233,7 +236,7 @@ pub proof fn axiom_vp_properties(n: nat, p: nat)
         !is_factor_of(n / pow(p as int, vp(n, p)) as nat, p),
         prime_factors(n / pow(p as int, vp(n, p)) as nat) == prime_factors(n).remove(p),
 {
-    let s = Set::<nat>::new(|k: nat| is_factor_of(n, pow(p as int, k) as nat));
+    let s = ISet::<nat>::new(|k: nat| is_factor_of(n, pow(p as int, k) as nat));
     let r = |x: nat, y: nat| x <= y;
     assert(s.finite()) by {
         assert forall|l: nat| #[trigger] s.contains(l) 
@@ -387,7 +390,13 @@ pub broadcast proof fn axiom_prime_not_composite(p: nat)
         assert_by_contradiction!(is_prime(p), {
             let a = choose|d: nat| is_factor_of(p, d) && d != 1 && d != p;
             let b = p / a;
-            broadcast use group_mod_properties_nt;
+            broadcast use {
+                group_mod_properties,
+                group_fundamental_div_mod_converse,
+                lemma_fundamental_div_mod,
+                lemma_mod_multiples_basic,
+                lemma_mod_is_zero,
+            };
             assert(a * b + 0 == p);
             assert(1 < a < p) by { lemma_is_factor_bound(p, a); };
             assert(1 < b < p) by {
@@ -556,7 +565,7 @@ pub proof fn lemma_bezout_identity(a: nat, b: nat, d: nat)
     let dom = set_nat_range(0, b1 as nat);
     let img = dom.map(f);
     lemma_nat_range(0, b1 as nat);
-    assert(injective_on(f, dom)) by {
+    assert(dom.injective_on(f)) by {
         assert forall |x1: nat, x2: nat| 
             dom.contains(x1) && dom.contains(x2) && #[trigger] f(x1) == #[trigger] f(x2)
         implies 
@@ -638,22 +647,22 @@ pub proof fn lemma_prime_minimal()
 /// Proof that there are infinitely many primes.
 pub proof fn lemma_prime_infinite() 
     ensures
-        !Set::<nat>::new(|n: nat| is_prime(n)).finite(),
+        !ISet::<nat>::new(|n: nat| is_prime(n)).finite(),
 {
-    let all_primes = Set::<nat>::new(|n: nat| is_prime(n));
+    let all_primes = ISet::<nat>::new(|n: nat| is_prime(n));
     assert_by_contradiction!(!all_primes.finite(), {
         let f = |prod: nat, p: nat| prod * p;
         let n = all_primes.fold(1, f) + 1;
         
         // n >= 1 by Induction
-        let pred = |s: Set<nat>| s.subset_of(all_primes) ==> s.fold(1, f) >= 1;
+        let pred = |s: ISet<nat>| s.subset_of(all_primes) ==> s.fold(1, f) >= 1;
         assert forall|a1, a2, b| #[trigger] f(f(b, a2), a1) == f(f(b, a1), a2)
         by { // is_fun_commutative(f)
             lemma_mul_is_associative(b as int, a2 as int, a1 as int);
             lemma_mul_is_commutative(a1 as int, a2 as int);
             lemma_mul_is_associative(b as int, a1 as int, a2 as int);
         };
-        assert(pred(Set::<nat>::empty())) by { lemma_fold_empty(1, f); };
+        assert(pred(ISet::<nat>::empty())) by { lemma_fold_empty(1, f); };
         assert forall |s, a| pred(s) && s.finite() && !s.contains(a) 
         implies #[trigger] pred(s.insert(a)) 
         by {
@@ -742,11 +751,11 @@ pub proof fn lemma_prime_factors_one()
 /// Proof that the only prime factor of a prime `p` is `p`.
 pub proof fn lemma_prime_factors_prime(p: nat) 
     requires is_prime(p),
-    ensures prime_factors(p) =~= set!{p},
+    ensures prime_factors(p) =~= iset!{p},
 {
     let set1 = prime_factors(p);
-    let set2 = set!{p};
-    assert_sets_equal!(set1 == set2, d => {
+    let set2 = iset!{p};
+    assert_isets_equal!(set1 == set2, d => {
         if set2.contains(d) {
             assert(d == p);
             assert(set1.contains(p));
@@ -765,7 +774,7 @@ pub proof fn lemma_prime_factors_prime_pow(p: nat, e: nat)
         is_prime(p),
         e > 0,
     ensures
-        prime_factors(pow(p as int, e) as nat) =~= set!{p},
+        prime_factors(pow(p as int, e) as nat) =~= iset!{p},
     decreases e,
 {
     if e == 1 {
@@ -781,8 +790,8 @@ pub proof fn lemma_prime_factors_prime_pow(p: nat, e: nat)
         }
         lemma_prime_factors_prime_pow(p, (e - 1) as nat);
 
-        assert_sets_equal!(prime_factors(pow(p as int, e) as nat) == set!{p}, p0 => {
-            if set!{p}.contains(p0) {
+        assert_isets_equal!(prime_factors(pow(p as int, e) as nat) == iset!{p}, p0 => {
+            if iset!{p}.contains(p0) {
                 assert(p0 == p);
                 assert(is_factor_of(pow(p as int, e) as nat, p)) by { 
                     lemma_pow_positive(p as int, e);
@@ -802,7 +811,7 @@ pub proof fn lemma_prime_factors_prime_pow(p: nat, e: nat)
                     if is_factor_of(p, p0) { assert(p == p0); }
                     else { 
                         assert(is_factor_of(pow(p as int, (e - 1) as nat) as nat, p0));
-                        assert(set!{p}.contains(p0));
+                        assert(iset!{p}.contains(p0));
                     }
                 });
             }
@@ -828,6 +837,7 @@ pub proof fn lemma_prime_factors_bound(n: nat)
         }
     }
     lemma_nat_range(2, n + 1);
+    lemma_iset_subset_finite(range, ps);
 }
 
 /// Proof that if `d | n`, then the set of prime factors of `d` is the subset of that of `n`.
@@ -921,7 +931,7 @@ pub proof fn lemma_prime_factors_disjoint_iff_coprime(a: nat, b: nat)
         }
         prime_factors(gcd(a, b)).is_empty(); { lemma_prime_factors_gcd_intersect(a, b); }
         (prime_factors(a) * prime_factors(b)).is_empty(); { 
-            lemma_disjoint_iff_empty_intersection(prime_factors(a), prime_factors(b));
+            lemma_iset_disjoint_iff_empty_intersection(prime_factors(a), prime_factors(b));
         }
         prime_factors(a).disjoint(prime_factors(b));
     }
@@ -1031,8 +1041,8 @@ pub proof fn lemma_factorization_induct(n: nat, g: spec_fn(nat) -> nat)
             g(n); {}
             g(p_to_e * n1); { broadcast use lemma_mul_is_commutative; }
             g(n1 * p_to_e); {
-                assert(prime_factors(p_to_e) == set!{p}) by { lemma_prime_factors_prime_pow(p, e); }
-                assert(prime_factors(n1).disjoint(set!{p}));
+                assert(prime_factors(p_to_e) == iset!{p}) by { lemma_prime_factors_prime_pow(p, e); }
+                assert(prime_factors(n1).disjoint(iset!{p}));
                 lemma_prime_factors_disjoint_iff_coprime(n1, p_to_e);
                 assert(is_coprime(n1, p_to_e));
             }
@@ -1074,7 +1084,7 @@ proof fn lemma_factorization_fun_comm(n: nat, g: spec_fn(nat) -> nat)
     }
 }
 
-proof fn lemma_factorization_fun_fold(n: nat, p: nat, n1: nat, ps: Set<nat>, g: spec_fn(nat) -> nat) 
+proof fn lemma_factorization_fun_fold(n: nat, p: nat, n1: nat, ps: ISet<nat>, g: spec_fn(nat) -> nat) 
     requires
         is_prime(p),
         n > 0,
@@ -1093,8 +1103,11 @@ proof fn lemma_factorization_fun_fold(n: nat, p: nat, n1: nat, ps: Set<nat>, g: 
 {
     let f = |prod: nat, p: nat| prod * g((pow(p as int, vp(n, p)) as nat));
     let f1 = |prod: nat, p: nat| prod * g((pow(p as int, vp(n1, p)) as nat));
+    lemma_factorization_fun_comm(n, g);
+    lemma_factorization_fun_comm(n1, g);
     
     lemma_prime_factors_bound(n1);
+    lemma_iset_subset_finite(prime_factors(n1), ps);
     assert(ps.finite());
 
     if ps.is_empty() {
@@ -1139,8 +1152,8 @@ proof fn lemma_factorization_fun_fold(n: nat, p: nat, n1: nat, ps: Set<nat>, g: 
                     lemma_pow_positive(p as int, vp(n, p));
                     assert(is_factor_of(n1, p0_to_e)) by {
                         assert(is_coprime(p0_to_e, p_exp)) by {
-                            assert(prime_factors(p0_to_e) == set!{p0}) by { lemma_prime_factors_prime_pow(p0, e); }
-                            assert(prime_factors(p_exp) == set!{p}) by { lemma_prime_factors_prime_pow(p, vp(n, p)); }
+                            assert(prime_factors(p0_to_e) == iset!{p0}) by { lemma_prime_factors_prime_pow(p0, e); }
+                            assert(prime_factors(p_exp) == iset!{p}) by { lemma_prime_factors_prime_pow(p, vp(n, p)); }
                             lemma_prime_factors_disjoint_iff_coprime(p0_to_e, p_exp);
                         }
                         lemma_coprime_factor(p0_to_e, p_exp, n1);

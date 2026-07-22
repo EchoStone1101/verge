@@ -19,10 +19,10 @@ The workspace has three crates:
 | `fs` | File system: `File`, `ReadDir`, `DirEntry`, path, metadata |
 | `io` | I/O traits and impls: `Read`, `Write`, `BufReader`, stdio |
 | `iter` | `Iterator` trait specs, wrapper iterators, and constructor-method extensions |
-| `mem` | `forget`, `replace`, `copy_from_slice` |
-| `nt` | Number theory: GCD, LCM, Euler's totient |
+| `mem` | `forget`, `replace` |
+| `nt` | Number theory: GCD, LCM, Euler's totient, prime factors, and `ISet`-based fold lemmas |
 | `seq` | Extended `Seq` specs and sequence lemmas |
-| `set` | Extended set ops: Cartesian product, fold |
+| `set` | Extended `ISet` helpers: Cartesian product and fold lemmas used by `nt` |
 | `str` | String specs: UTF-8, parsing, formatting, iteration, pattern matching |
 
 ## Defensive Spec Design
@@ -40,6 +40,7 @@ See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 - Types: `#[verifier::external_type_specification]`
 - Functions/methods: `assume_specification[...]`
 - Altered signatures (e.g., removing `unsafe`, narrowing generics): add a new `#[verifier::external_body]` function that delegates to the real one
+- Abstract math domains that may be infinite should use `ISet`; keep `Set` for finite/executable collections.
 
 **Specifying traits:** Prefer `#[verifier::external_trait_specification]` with `#[verifier::external_trait_extension(Spec via SpecImpl)]` when the original trait signature is usable (for example, `str::fmt::ToStringSpec` and `str::parse::FromStrSpec`). Use concrete `assume_specification` bridges when Verus still needs help accepting a standard-library impl call form, and use new delegating Verge traits only when the Rust signature or trait bounds cannot express the needed abstract state (for example, `io::Read`/`io::Write`).
 

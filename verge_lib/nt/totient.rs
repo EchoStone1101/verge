@@ -23,20 +23,20 @@ use vstd::arithmetic::div_mod::*;
 use vstd::arithmetic::power::*;
 use vstd::seq::*;
 use vstd::seq_lib::*;
-use vstd::set::*;
-use vstd::set::fold::*;
-use vstd::set_lib::*;
+use vstd::iset::*;
+use vstd::iset::fold::*;
+use vstd::iset_lib::*;
 use vstd::math::{min, max};
 use vstd::{assert_by_contradiction, assert_seqs_equal, calc};
-use vstd::relations::{injective_on, sorted_by};
+use vstd::relations::sorted_by;
 
 verus! {
 
-closed spec fn coprime_set(n: nat) -> Set<nat> {
+closed spec fn coprime_set(n: nat) -> ISet<nat> {
     set_nat_range(1, n + 1).filter(|m: nat| is_coprime(n, m))
 }
 
-closed spec fn noncoprime_set(n: nat) -> Set<nat> {
+closed spec fn noncoprime_set(n: nat) -> ISet<nat> {
     set_nat_range(1, n + 1).filter(|m: nat| !is_coprime(n, m))
 }
 
@@ -51,8 +51,8 @@ proof fn axiom_coprime_set(n: nat)
     let s1 = coprime_set(n);
     let s2 = noncoprime_set(n);
     assert(s1 + s2 == set_nat_range(1, n + 1));
-    assert(s1 * s2 == Set::<nat>::empty());
-    lemma_set_intersect_union_lens(s1, s2);
+    assert(s1 * s2 == ISet::<nat>::empty());
+    lemma_iset_intersect_union_lens(s1, s2);
 }
 
 /// This function defines the totient function `phi(n)`, which computes
@@ -77,7 +77,7 @@ pub proof fn lemma_totient_bound(n: nat)
             lemma_is_factor_bound(1, d);
         });
         assert(coprime_set(n).contains(m));
-        lemma_set_empty_equivalency_len(coprime_set(n));
+        lemma_iset_empty_equivalency_len(coprime_set(n));
     }
     assert(totient(n) <= n - 1) by {
         assert(noncoprime_set(n).contains(n)) by {
@@ -98,15 +98,15 @@ pub proof fn lemma_totient_zero()
 pub proof fn lemma_totient_one()
     ensures totient(1) == 1,
 {
-    assert(set_nat_range(1, 2) == set!{1nat});
+    assert(set_nat_range(1, 2) == iset!{1nat});
     assert(coprime_set(1).subset_of(set_nat_range(1,2)));
-    assert(set!{1nat}.subset_of(coprime_set(1))) by {
+    assert(iset!{1nat}.subset_of(coprime_set(1))) by {
         assert_by_contradiction!(is_coprime(1, 1), {
             let d = choose|d: nat| d > 1 && #[trigger] is_common_factor(1, 1, d);
             lemma_is_factor_bound(1, d);
         });
     }
-    assert(coprime_set(1) == set!{1nat});
+    assert(coprime_set(1) == iset!{1nat});
 }
 
 /// Proof that `phi(p) = p - 1`.
@@ -115,7 +115,7 @@ pub proof fn lemma_totient_prime(p: nat)
     ensures totient(p) == p - 1,
 {
     axiom_coprime_set(p);
-    assert_sets_equal!(noncoprime_set(p) == set!{p}, m => {
+    assert_isets_equal!(noncoprime_set(p) == iset!{p}, m => {
         assert forall|m: nat| noncoprime_set(p).contains(m) 
         implies m == p 
         by {
@@ -153,7 +153,7 @@ pub proof fn lemma_totient_prime_pow(p: nat, e: nat)
 
     assert(r1p.finite() && r1p.len() == n1) by {
         let f = |m: nat| p * m;
-        assert(injective_on(f, r1)) by {
+        assert(r1.injective_on(f)) by {
             assert forall |x1: nat, x2: nat| 
                 r1.contains(x1) && r1.contains(x2) && #[trigger] f(x1) == #[trigger] f(x2)
             implies
@@ -165,7 +165,7 @@ pub proof fn lemma_totient_prime_pow(p: nat, e: nat)
         lemma_map_size(r1, r1p, f);
     }
 
-    assert_sets_equal!(noncoprime_set(n) == r1p, m => {
+    assert_isets_equal!(noncoprime_set(n) == r1p, m => {
         // ==>
         if noncoprime_set(n).contains(m) {
             assert(1 <= m <= n) by { lemma_nat_range(1, n + 1); }
@@ -271,7 +271,7 @@ pub proof fn lemma_totient_coprime_mul(a: nat, b: nat)
     assert(dom.map(f) == img) by { lemma_totient_coprime_mul_part1(a, b); }
 
     // Step 2: cart(da, sb) * cart(sa, db) == cart(sa, sb)
-    assert(injective_on(f, dom)) by { lemma_totient_coprime_mul_part2(a, b); }
+    assert(dom.injective_on(f)) by { lemma_totient_coprime_mul_part2(a, b); }
     
     // Step 3: cardinality
     axiom_coprime_set(a);
@@ -299,7 +299,7 @@ pub proof fn lemma_totient_coprime_mul(a: nat, b: nat)
         noncoprime_set(a * b).len() as int; {}
         dom.len() as int; { lemma_map_size(dom, img, f); }
         img.len() as int; {
-            lemma_set_intersect_union_lens(cart::<nat, nat>(da, sb), cart::<nat, nat>(sa, db));
+            lemma_iset_intersect_union_lens(cart::<nat, nat>(da, sb), cart::<nat, nat>(sa, db));
         }
         cart::<nat, nat>(da, sb).len() + cart::<nat, nat>(sa, db).len()
             - (cart::<nat, nat>(da, sb) * cart::<nat, nat>(sa, db)).len(); {
@@ -355,7 +355,7 @@ proof fn lemma_totient_coprime_mul_part1(a: nat, b: nat)
 
     let dom = noncoprime_set(a * b).remove(a * b).insert(0);
     let img = cart::<nat, nat>(da, sb) + cart::<nat, nat>(sa, db);
-    assert_sets_equal!(dom.map(f) == img, pair => {
+    assert_isets_equal!(dom.map(f) == img, pair => {
         if dom.map(f).contains(pair) {
             let x = choose|x: nat| #[trigger] dom.contains(x) && f(x) == pair;
             let ra = pair.0;
@@ -590,7 +590,7 @@ proof fn lemma_totient_coprime_mul_part2(a: nat, b: nat)
         a * b > 1,
         is_coprime(a, b),
     ensures 
-        injective_on(|m: nat| (m % a, m % b), noncoprime_set(a * b).remove(a * b).insert(0)),
+        noncoprime_set(a * b).remove(a * b).insert(0).injective_on(|m: nat| (m % a, m % b)),
 {
     let f = |m: nat| (m % a, m % b);
     let dom = set_nat_range(0, a * b); // widening the dom here
@@ -717,18 +717,18 @@ pub proof fn lemma_totient_factorization(n: nat)
                     }
                     ((p - 1) * x) / p as int; { lemma_mul_is_commutative(p - 1, x as int); }
                     x * (p - 1) / p as int; {
-                        assert(set!{p}.fold(1, f1) == p - 1) by {
+                        assert(iset!{p}.fold(1, f1) == p - 1) by {
                             lemma_fold_empty(1, f1);
-                            lemma_fold_insert(Set::<nat>::empty(), 1, f1, p);
+                            lemma_fold_insert(ISet::<nat>::empty(), 1, f1, p);
                             broadcast use group_mul_basics;
                         }
-                        assert(set!{p}.fold(1, f2) == p) by {
+                        assert(iset!{p}.fold(1, f2) == p) by {
                             lemma_fold_empty(1, f2);
-                            lemma_fold_insert(Set::<nat>::empty(), 1, f2, p);
+                            lemma_fold_insert(ISet::<nat>::empty(), 1, f2, p);
                             broadcast use group_mul_basics;
                         }
                     }
-                    (x * set!{p}.fold(1, f1) / set!{p}.fold(1, f2)) as int; { 
+                    (x * iset!{p}.fold(1, f1) / iset!{p}.fold(1, f2)) as int; { 
                         lemma_prime_factors_prime_pow(p, e); 
                     }
                     (x * prime_factors(x).fold(1, f1) / prime_factors(x).fold(1, f2)) as int;
@@ -938,7 +938,7 @@ proof fn lemma_totient_factorization_fun_comm(g: spec_fn(nat) -> nat)
     }
 }
 
-proof fn lemma_totient_factorization_fold(s: Set<nat>, z: nat, g: spec_fn(nat) -> nat)
+proof fn lemma_totient_factorization_fold(s: ISet<nat>, z: nat, g: spec_fn(nat) -> nat)
     requires s.finite(),
     ensures
         ({
@@ -989,7 +989,7 @@ proof fn lemma_totient_factorization_fold(s: Set<nat>, z: nat, g: spec_fn(nat) -
     }
 }
 
-proof fn lemma_totient_factorization_factor(n: nat, set: Set<nat>)
+proof fn lemma_totient_factorization_factor(n: nat, set: ISet<nat>)
     requires 
         n > 0,
         set.subset_of(prime_factors(n)),
@@ -1003,16 +1003,16 @@ proof fn lemma_totient_factorization_factor(n: nat, set: Set<nat>)
         lemma_totient_factorization_fun_comm(g);
     }
 
-    let pred = |s: Set<nat>| s.subset_of(prime_factors(n)) 
+    let pred = |s: ISet<nat>| s.subset_of(prime_factors(n)) 
         ==> is_factor_of(n, s.fold(1, f)) && prime_factors(s.fold(1, f)) == s;
     lemma_prime_factors_bound(n);
-    assert(pred(Set::<nat>::empty())) by { 
+    assert(pred(ISet::<nat>::empty())) by { 
         lemma_fold_empty(1, f);
         assert(is_factor_of(n, 1)) by (compute);
         lemma_prime_factors_one();
     }
 
-    assert forall |s: Set<nat>, p: nat| pred(s) && s.finite() && !s.contains(p)
+    assert forall |s: ISet<nat>, p: nat| pred(s) && s.finite() && !s.contains(p)
     implies #[trigger] pred(s.insert(p))
     by {
         if !prime_factors(n).contains(p) || !s.subset_of(prime_factors(n)) {
@@ -1040,18 +1040,19 @@ proof fn lemma_totient_factorization_factor(n: nat, set: Set<nat>)
             }
         }
     }
+    lemma_iset_subset_finite(prime_factors(n), set);
     lemma_finite_set_induct(set, pred);
 }
 
 mod lemma_totients {
     use super::*;
 
-    pub(super) closed spec fn pf(n: nat, hi: nat) -> Set<nat>
+    pub(super) closed spec fn pf(n: nat, hi: nat) -> ISet<nat>
     {
         if n > 0 {
             prime_factors(n).filter(|p: nat| p < hi)
         } else {
-            Set::<nat>::empty()
+            ISet::<nat>::empty()
         }
     }
 
@@ -1063,7 +1064,7 @@ mod lemma_totients {
         if n == 0 { return; }
         lemma_prime_factors_bound(n);
         assert(pf(n, hi).subset_of(prime_factors(n)));
-        lemma_set_subset_finite(prime_factors(n), pf(n, hi));
+        lemma_iset_subset_finite(prime_factors(n), pf(n, hi));
 
         assert forall|p: nat| #[trigger] pf(n, hi).contains(p)
         implies prime_factors(n).contains(p) && p >= 2 && p < hi && p <= n
@@ -1071,7 +1072,7 @@ mod lemma_totients {
     }
 
     pub(super) proof fn pf_is_empty(n: nat)
-        ensures pf(n, 2) == Set::<nat>::empty(),
+        ensures pf(n, 2) == ISet::<nat>::empty(),
     {
         assert_by_contradiction!(pf(n, 2).is_empty(), {
             let k = pf(n, 2).choose();
@@ -1081,7 +1082,7 @@ mod lemma_totients {
 
     pub(super) proof fn pf_prime_is_empty(p: nat)
         requires is_prime(p),
-        ensures pf(p, p) == Set::<nat>::empty(),
+        ensures pf(p, p) == ISet::<nat>::empty(),
     {
         assert_by_contradiction!(pf(p, p).is_empty(), {
             let k = pf(p, p).choose();
@@ -1137,7 +1138,7 @@ mod lemma_totients {
         }
     }
 
-    proof fn fold_f1_f2_positive(s: Set<nat>)
+    proof fn fold_f1_f2_positive(s: ISet<nat>)
         requires
             s.finite(),
             s.all(|n: nat| n >= 2),
@@ -1173,7 +1174,7 @@ mod lemma_totients {
         }
     }
 
-    proof fn fold_f1_lt_f2(s: Set<nat>)
+    proof fn fold_f1_lt_f2(s: ISet<nat>)
         requires
             s.finite() && !s.is_empty(),
             s.all(|n: nat| n >= 2),
@@ -1191,8 +1192,8 @@ mod lemma_totients {
         f1_f2_commutative();
         if s.len() == 1 {
             let n = s.choose();
-            let empty = Set::<nat>::empty();
-            assert(s == empty.insert(n)) by { Set::<nat>::lemma_is_singleton(s); }
+            let empty = ISet::<nat>::empty();
+            assert(s == empty.insert(n)) by { ISet::<nat>::lemma_is_singleton(s); }
             calc!{
                 (<)
                 s.fold(1, f1); (==) { 

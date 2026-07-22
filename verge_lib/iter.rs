@@ -320,7 +320,7 @@ pub fn iter_find<I: Iterator, P>(iter: &mut I, predicate: P) -> (ret: Option<I::
     where
         P: FnMut(&I::Item) -> bool,
     requires
-        iter.obeys_prophetic_iter_laws() && iter.will_return_none(),
+        <I as IteratorSpec>::obeys_prophetic_iter_laws(iter) && <I as IteratorSpec>::will_return_none(iter),
         is_total(predicate) && is_deterministic(predicate),
     ensures
         // The iterator consistently obeys, completes, and decreases throughout its lifetime
@@ -356,7 +356,7 @@ pub fn iter_all<I: Iterator, P>(iter: &mut I, predicate: P) -> (ret: bool)
     where
         P: FnMut(I::Item) -> bool,
     requires
-        iter.obeys_prophetic_iter_laws() && iter.will_return_none(),
+        <I as IteratorSpec>::obeys_prophetic_iter_laws(iter) && <I as IteratorSpec>::will_return_none(iter),
         is_total(predicate) && is_deterministic(predicate),
     ensures
         // The iterator consistently obeys, completes, and decreases throughout its lifetime
@@ -390,7 +390,7 @@ pub fn iter_any<I: Iterator, P>(iter: &mut I, predicate: P) -> (ret: bool)
     where
         P: FnMut(I::Item) -> bool,
     requires
-        iter.obeys_prophetic_iter_laws() && iter.will_return_none(),
+        <I as IteratorSpec>::obeys_prophetic_iter_laws(iter) && <I as IteratorSpec>::will_return_none(iter),
         is_total(predicate) && is_deterministic(predicate),
     ensures
         // The iterator consistently obeys, completes, and decreases throughout its lifetime
@@ -422,7 +422,7 @@ pub fn iter_any<I: Iterator, P>(iter: &mut I, predicate: P) -> (ret: bool)
 #[verifier::external_body]
 pub fn iter_nth<I: Iterator>(iter: &mut I, n: usize) -> (ret: Option<I::Item>) 
     requires
-        iter.obeys_prophetic_iter_laws(),
+        <I as IteratorSpec>::obeys_prophetic_iter_laws(iter),
     ensures
         // The iterator consistently obeys, completes, and decreases throughout its lifetime
         (*final(iter)).obeys_prophetic_iter_laws(),

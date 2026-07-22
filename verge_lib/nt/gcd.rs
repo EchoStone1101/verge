@@ -10,7 +10,7 @@ use super::{
 use vstd::prelude::*;
 use vstd::arithmetic::mul::*;
 use vstd::arithmetic::div_mod::*;
-use vstd::set_lib::*;
+use vstd::iset_lib::*;
 use vstd::math::{min, max};
 use vstd::{assert_by_contradiction, calc};
 
@@ -21,7 +21,7 @@ verus! {
 pub closed spec fn gcd(a: nat, b: nat) -> nat 
     recommends a > 0 && b > 0,
 {
-    let s = Set::<nat>::new(|d: nat| is_common_factor(a, b, d));
+    let s = ISet::<nat>::new(|d: nat| is_common_factor(a, b, d));
     let r = |x: nat, y: nat| x <= y;
     s.find_unique_maximal(r)
 }
@@ -36,7 +36,7 @@ pub proof fn axiom_gcd_properties(a: nat, b: nat)
         gcd(a, b) == gcd(b, a),
 {
     let d = gcd(a, b);
-    let s = Set::<nat>::new(|d: nat| is_common_factor(a, b, d));
+    let s = ISet::<nat>::new(|d: nat| is_common_factor(a, b, d));
     let r = |x: nat, y: nat| x <= y;
     assert(s.finite()) by {
         assert forall|m: nat| s.contains(m) 
@@ -67,7 +67,7 @@ pub proof fn axiom_gcd_properties(a: nat, b: nat)
     // Goal 3
     assert (d == gcd(b, a)) by {
         let d2 = gcd(b, a);
-        let s2 = Set::<nat>::new(|d: nat| is_common_factor(b, a, d));
+        let s2 = ISet::<nat>::new(|d: nat| is_common_factor(b, a, d));
         assert(s == s2);
         assert(d == d2);
     };

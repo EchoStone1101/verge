@@ -4,9 +4,36 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-vstd = "=0.0.0-2026-05-31-0205"
+vstd = "=0.0.0-2026-07-12-0122"
 verge = { path = "../../../verge_lib" }
 verge_macros = { path = "../.." }
+
+[workspace.dependencies]
+convert_case = "0.11.0"
+indexmap = "1.9.3"
+proc-macro2 = "1.0.106"
+quote = "1.0.45"
+syn = { version = "2.0.117", features = ["full", "visit-mut", "extra-traits"] }
+synstructure = "0.13.2"
+verus_prettyplease = "0.0.0-2026-05-31-0205"
+verus_syn = { version = "0.0.0-2026-05-31-0205", features = ["full", "visit-mut", "extra-traits"] }
+
+[patch.crates-io]
+vstd = { path = "../../../verus-release-latest/vstd" }
+verus_builtin = { path = "../../../verus-release-latest/builtin" }
+verus_builtin_macros = { path = "../../../verus-release-latest/builtin_macros" }
+verus_state_machines_macros = { path = "../../../verus-release-latest/state_machines_macros" }
+verus_syn = { path = "../../../verus-release-latest/dependencies/syn" }
+verus_prettyplease = { path = "../../../verus-release-latest/dependencies/prettyplease" }
+
+[workspace.lints]
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(verus_keep_ghost)',
+  'cfg(verus_verify_core)',
+  'cfg(verus_keep_ghost_body)',
+] }
 
 [package.metadata.verus]
 verify = true

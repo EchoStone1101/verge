@@ -13,8 +13,8 @@ It is useful in this module as a substitute of `set_lib::set_int_range`,
 with the elements being `nat` instead of `int`.
 
 ```rust
-pub open spec fn set_nat_range(lo: nat, hi: nat) -> Set<nat> {
-    Set::<nat>::new(|p: nat| lo <= p < hi)
+pub open spec fn set_nat_range(lo: nat, hi: nat) -> ISet<nat> {
+    ISet::<nat>::new(|p: nat| lo <= p < hi)
     }
 ```
 
@@ -154,10 +154,10 @@ pub open spec fn is_coprime(a: nat, b: nat) -> bool {
 This function defines the set of prime factors of `n`.
 
 ```rust
-pub open spec fn prime_factors(n: nat) -> Set<nat>
+pub open spec fn prime_factors(n: nat) -> ISet<nat>
     recommends n > 0
         {
-        Set::<nat>::new(|p: nat| is_prime(p) && is_factor_of(n, p))
+        ISet::<nat>::new(|p: nat| is_prime(p) && is_factor_of(n, p))
         }
 ```
 
@@ -335,7 +335,7 @@ Proof that there are infinitely many primes.
 ```rust
 pub proof fn lemma_prime_infinite()
     ensures
-        !Set::<nat>::new(|n: nat| is_prime(n)).finite(),
+        !ISet::<nat>::new(|n: nat| is_prime(n)).finite(),
 ```
 
 
@@ -368,7 +368,7 @@ Proof that the only prime factor of a prime `p` is `p`.
 ```rust
 pub proof fn lemma_prime_factors_prime(p: nat)
     requires is_prime(p),
-    ensures prime_factors(p) =~= set!{p},
+    ensures prime_factors(p) =~= iset!{p},
 ```
 
 
@@ -382,7 +382,7 @@ pub proof fn lemma_prime_factors_prime_pow(p: nat, e: nat)
         is_prime(p),
         e > 0,
     ensures
-        prime_factors(pow(p as int, e) as nat) =~= set!{p},
+        prime_factors(pow(p as int, e) as nat) =~= iset!{p},
     decreases e,
 ```
 

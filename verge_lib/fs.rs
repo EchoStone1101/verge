@@ -239,12 +239,12 @@ impl Fs {
     ///
     /// This is only meaningful when the entity specified by `epoch` and `path` exists and is 
     /// a directory to begin with.
-    pub open spec fn files_in_dir(epoch: int, path: PathView) -> Set<PathView>
+    pub open spec fn files_in_dir(epoch: int, path: PathView) -> ISet<PathView>
         recommends
             Fs::file_exists(epoch, path),
             Fs::file_is_dir(epoch, path),
     {
-        Set::<PathView>::new(
+        ISet::<PathView>::new(
             |subpath: PathView| {
                 &&& subpath.is_normalized() // `*/.` not considered
                 &&& subpath.path.len() > 0 && subpath.path.last() != seq!['.', '.', MAIN_SEPARATOR] // `*/..` not considered
@@ -913,7 +913,7 @@ impl Fs {
                                     }
                                 );
                                 &&& items.no_duplicates()
-                                &&& items.to_set().subset_of(Fs::files_in_dir(old(self).epoch(), path))
+                                &&& items.to_iset().subset_of(Fs::files_in_dir(old(self).epoch(), path))
                             }
                         }
                     },
