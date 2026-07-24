@@ -1,7 +1,5 @@
 use proc_macro::TokenStream;
 
-mod eq_common;
-mod hash_key;
 mod derive_clone;
 mod derive_copy;
 mod derive_default;
@@ -9,6 +7,9 @@ mod derive_eq;
 mod derive_ord;
 mod derive_partial_eq;
 mod derive_partial_ord;
+mod eq_common;
+mod func;
+mod hash_key;
 
 #[proc_macro_attribute]
 pub fn hash_key(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -53,4 +54,24 @@ pub fn derive_copy(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn derive_default(attr: TokenStream, item: TokenStream) -> TokenStream {
     derive_default::derive_default_impl(attr.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn assume_surjective(attr: TokenStream, item: TokenStream) -> TokenStream {
+    func::assume_surjective_impl(attr.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn assume_injective_by(attr: TokenStream, item: TokenStream) -> TokenStream {
+    func::assume_injective_by_impl(attr.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn assert_surjective(attr: TokenStream, item: TokenStream) -> TokenStream {
+    func::assert_surjective_impl(attr.into(), item.into()).into()
+}
+
+#[proc_macro_attribute]
+pub fn assert_injective_by(attr: TokenStream, item: TokenStream) -> TokenStream {
+    func::assert_injective_by_impl(attr.into(), item.into()).into()
 }

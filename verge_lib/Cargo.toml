@@ -11,6 +11,10 @@ categories = ["development-tools"]
 name = "verge"
 path = "verge.rs"
 
+[features]
+default = []
+func_assume_lemmas = ["verge_macros/func_assume_lemmas"]
+
 [dependencies]
 vstd = "0.0.0-2026-05-31-0205"
 verus_builtin = "0.0.0-2026-05-17-0151"

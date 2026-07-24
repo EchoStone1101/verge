@@ -4,7 +4,7 @@
 
 The workspace has three crates:
 - **`verge_lib/`** — the main library (`verge_lib/verge.rs` is the root)
-- **`verge_macros/`** — procedural macros for verified derives and `hash_key`/`hash_key_with_clone` helpers
+- **`verge_macros/`** — procedural macros for verified derives, `hash_key`/`hash_key_with_clone`, and function-contract lemma helpers
 - **`verge_tests/`** — external Verus integration tests that import `verge` like a downstream crate
 
 ## Modules
@@ -16,7 +16,7 @@ The workspace has three crates:
 | `cmp` | Verified comparison traits, type-family comparison impls, string comparison specs, and generic lexicographic sequence lemmas |
 | `env` | `std::env`: `Args`, `Vars`, environment variables |
 | `error` | Error semantics tagging (fs, I/O, UTF-8, parse errors) |
-| `func` | Function specs and trigger helper functions |
+| `func` | Function specs, trigger helper functions, macro re-exports, and dedicated function-contract proof modules |
 | `fs` | File system: `File`, `ReadDir`, `DirEntry`, path, metadata |
 | `io` | I/O traits and impls: `Read`, `Write`, `BufReader`, stdio |
 | `iter` | `Iterator` trait specs, wrapper iterators, and constructor-method extensions |
@@ -46,6 +46,8 @@ See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 **Specifying traits:** Prefer `#[verifier::external_trait_specification]` with `#[verifier::external_trait_extension(Spec via SpecImpl)]` when the original trait signature is usable (for example, `str::fmt::ToStringSpec` and `str::parse::FromStrSpec`). Use concrete `assume_specification` bridges when Verus still needs help accepting a standard-library impl call form, and use new delegating Verge traits only when the Rust signature or trait bounds cannot express the needed abstract state (for example, `io::Read`/`io::Write`).
 
 **Broadcast groups:** Lemmas are grouped with `broadcast group group_*` and enabled in proofs with `broadcast use group_*;`.
+
+**Function-contract lemmas:** Prefer `func::assert_surjective` and `func::assert_injective_by` when a hand-written proof can discharge a generated contract sanity check. The admitted `func::assume_surjective` and `func::assume_injective_by` variants are behind the `func_assume_lemmas` feature and are reserved for tests or explicitly trusted facts.
 
 **Opacity:** `#[verifier::opaque]` + `reveal(...)` is used to control when spec functions unfold.
 

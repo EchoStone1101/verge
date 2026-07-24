@@ -10,8 +10,12 @@ categories = ["development-tools"]
 [lib]
 proc-macro = true
 
+[features]
+default = []
+func_assume_lemmas = []
+
 [dependencies]
-syn = { version = "2.0", features = ["full", "extra-traits"] }
+syn = { version = "2.0", features = ["full", "visit", "extra-traits"] }
 verus_syn = { version = "=0.0.0-2026-05-31-0205", features = ["full", "visit-mut", "extra-traits"] }
 quote = "1.0"
 proc-macro2 = "1.0.39"

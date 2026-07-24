@@ -8,6 +8,10 @@ vstd = "=0.0.0-2026-07-12-0122"
 verge = { path = "../../../verge_lib" }
 verge_macros = { path = "../.." }
 
+[features]
+default = ["func_assume_lemmas"]
+func_assume_lemmas = ["verge/func_assume_lemmas", "verge_macros/func_assume_lemmas"]
+
 [workspace.dependencies]
 convert_case = "0.11.0"
 indexmap = "1.9.3"

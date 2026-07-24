@@ -1,10 +1,16 @@
 // Internal proof module for `str::contains` pattern linking lemmas.
 
-use super::*;
 use super::internal::*;
+use super::*;
 
 verus! {
 
+#[crate::func::assert_surjective(
+    crate::func::str::pattern::contains::lemma_str_contains_char_surjective
+)]
+#[crate::func::assert_injective_by(
+    crate::func::str::pattern::contains::lemma_str_contains_char_injective_by(s, ch; ret)
+)]
 //~doc-skip
 pub broadcast proof fn lemma_str_contains_char(s: Seq<char>, ch: char, ret: bool)
     requires

@@ -2,6 +2,15 @@
 
 Specifications and lemmas for functions.
 
+## Macros
+The `assume_surjective` and `assume_injective_by` proc-macros derive admitted
+proof lemmas from an existing `proof fn` or `exec fn` contract. They are gated
+by the `func_assume_lemmas` feature because the generated lemmas are trusted.
+The `assert_surjective` and `assert_injective_by` variants instead generate
+private sanity-check lemmas that call a separately written proof function.
+Dedicated submodules under `func` hold proof functions for other Verge modules'
+function-contract sanity checks.
+
 
 ## Functions
 
