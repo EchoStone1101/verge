@@ -19,6 +19,7 @@ Auto-generated from source. See the [source code](../verge_lib/) for full detail
 - [`verge::fs`](fs.md)
 - [`verge::fs::metadata`](fs/metadata.md)
 - [`verge::fs::path`](fs/path.md)
+- [`verge::func`](func.md)
 - [`verge::io`](io.md)
 - [`verge::io::stdio`](io/stdio.md)
 - [`verge::iter`](iter.md)

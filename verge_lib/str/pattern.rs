@@ -23,7 +23,8 @@
 //! `str::matches` join into the original string).
 
 use super::*;
-use crate::{is_deterministic, is_total, VergeView};
+use crate::func::{is_deterministic, is_total};
+use crate::VergeView;
 use crate::seq::*;
 use crate::iter::*;
 use vstd::{calc, assert_seqs_equal};

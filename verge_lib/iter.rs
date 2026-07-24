@@ -17,7 +17,7 @@
 use crate::cmp::*;
 use crate::clone::*;
 use crate::seq::*;
-use crate::{is_deterministic, is_total};
+use crate::func::{is_deterministic, is_total};
 use vstd::prelude::*;
 use vstd::pervasive::cloned;
 use vstd::math::{min, max};

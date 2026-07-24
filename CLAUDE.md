@@ -43,7 +43,7 @@ python3 tools/generate_verge_docs.py --no-warn # generates docs without failing
 
 - All Verus code is wrapped in `verus! { ... }`.
 - Tests (`mod tests`) contain private `exec fn`s that are both examples and automatically verified proofs.
-- The `dummy` and `dummy2` spec functions in `verge.rs` are used as one- and two-term triggers.
+- The `dummy` and `dummy2` spec functions in `func.rs` are used as one- and two-term triggers.
 - `#![allow(unused_parens, unused_imports, dead_code, ...)]` pragmas appear at the crate root — suppress lint noise expected from verification-style code.
 
 ## Proc-Macros (verge_macros)

@@ -16,6 +16,7 @@ The workspace has three crates:
 | `cmp` | Verified comparison traits, type-family comparison impls, string comparison specs, and generic lexicographic sequence lemmas |
 | `env` | `std::env`: `Args`, `Vars`, environment variables |
 | `error` | Error semantics tagging (fs, I/O, UTF-8, parse errors) |
+| `func` | Function specs and trigger helper functions |
 | `fs` | File system: `File`, `ReadDir`, `DirEntry`, path, metadata |
 | `io` | I/O traits and impls: `Read`, `Write`, `BufReader`, stdio |
 | `iter` | `Iterator` trait specs, wrapper iterators, and constructor-method extensions |
