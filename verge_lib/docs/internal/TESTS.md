@@ -60,11 +60,21 @@ consistent with the API's `no_unwind` clause.
 ## Executable Checks
 
 `verus` assertions are proof obligations, not Rust runtime assertions. Use the crate
-helper `exec_assert` when a proof-only claim should also execute as a Rust check:
+macro `test!` when a proof-only claim should also execute as a Rust check:
 
 ```rust
-crate::exec_assert(observed == expected);
+test!(observed == expected);
+
+test!(observed == expected, {
+    assert(observed == expected);
+});
 ```
+
+Use the one-argument form when the condition verifies directly. Put common setup and
+reusable proof hints before the `test!` cases. Put proof lines that derive a single
+executable condition inside that condition's `test!` block; the macro expands to a
+scoped block ending in the private runtime assertion helper, so per-case proof facts
+do not leak into later cases.
 
 The root `verge_tests` crate should expose a `run()` function, and `verge_tests/src/main.rs`
 should call it. During migration, `run()` may call only the modules already converted
@@ -73,8 +83,8 @@ to this scheme; add more modules as they are migrated.
 Use executable checks for adversarial soundness attempts and for representative cases
 where the test compares real exec output against the spec-level expectation. Core/std
 migration cases may remain proof-only when the Rust test already establishes the
-runtime result, but adversarial corner cases should be grounded with `exec_assert` at
-least once.
+runtime result, but adversarial corner cases should be grounded with `test!` at least
+once.
 
 ## Verification
 

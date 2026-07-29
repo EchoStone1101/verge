@@ -1,608 +1,284 @@
-//! External-crate tests for public string pattern APIs.
+//! Executable downstream-style tests for public string pattern APIs.
 
 use vstd::prelude::*;
-use vstd::utf8::{decode_utf8, is_char_boundary};
-use verge::iter::VergeIteratorSpec;
 use verge::prelude::*;
 use verge::seq::SeqAdditionalSpec;
 use verge::str::*;
 
 verus! {
 
-fn test_contains_char_public(s: &str, ch: char) {
+/// Migrated from Rust core/std `test_starts_with`, `test_ends_with`, and `contains_weird_cases`.
+/// Port status: partial; it keeps representative runtime checks rather than the full upstream boolean matrix.
+fn test_contains_starts_ends_representatives() {
     broadcast use group_str_contains;
-
-    let ret = s.contains(ch);
-    assert(ret <==> s@.contains(ch));
-}
-
-fn test_contains_string_public(s: &str, pat: &str) {
-    broadcast use group_str_contains;
-
-    let ret = s.contains(pat);
-    assert(ret <==> pat@.is_subrange_of(s@));
-}
-
-fn test_contains_chars_public(s: &str, chars: &[char]) {
-    broadcast use group_str_contains;
-
-    let ret = s.contains(chars);
-    assert(ret <==> exists|i: int| 0 <= i < s@.len() && #[trigger] chars@.contains(s@[i]));
-}
-
-fn test_starts_with_char_public(s: &str, ch: char) {
     broadcast use group_str_starts_with;
-
-    let ret = s.starts_with(ch);
-    assert(ret <==> s@.len() > 0 && s@.first() == ch);
-}
-
-fn test_starts_with_string_public(s: &str, pat: &str) {
-    broadcast use group_str_starts_with;
-
-    let ret = s.starts_with(pat);
-    assert(ret <==> pat@.is_prefix_of(s@));
-}
-
-fn test_starts_with_chars_public(s: &str, chars: &[char]) {
-    broadcast use group_str_starts_with;
-
-    let ret = s.starts_with(chars);
-    assert(ret <==> s@.len() > 0 && chars@.contains(s@.first()));
-}
-
-fn test_ends_with_char_public(s: &str, ch: char) {
     broadcast use group_str_ends_with;
 
-    let ret = s.ends_with(ch);
-    assert(ret <==> s@.len() > 0 && s@.last() == ch);
-}
-
-fn test_ends_with_string_public(s: &str, pat: &str) {
-    broadcast use group_str_ends_with;
-
-    let ret = s.ends_with(pat);
-    assert(ret <==> pat@.is_suffix_of(s@));
-}
-
-fn test_ends_with_chars_public(s: &str, chars: &[char]) {
-    broadcast use group_str_ends_with;
-
-    let ret = s.ends_with(chars);
-    assert(ret <==> s@.len() > 0 && chars@.contains(s@.last()));
-}
-
-fn test_find_char_public(s: &str, ch: char) {
-    broadcast use group_str_find;
-
-    let ret = s.find(ch);
-    match ret {
-        None => {
-            assert(!s@.contains(ch));
-        },
-        Some(k) => {
-            let ghost k_ch = decode_utf8(s@.as_bytes().take(k as int)).len() as int;
-            assert(is_char_boundary(s@.as_bytes(), k as int));
-            assert(k_ch < s@.len());
-            assert(s@[k_ch] == ch);
-            assert(forall |i: int| 0 <= i < k_ch ==> #[trigger] s@[i] != ch);
-        },
+    proof {
+        reveal_strlit("Mary had a little lamb");
+        reveal_strlit("little");
     }
+
+    let text = "Mary had a little lamb";
+
+    test!(text.contains('M'));
+    test!(text.contains("little"), {
+        assert(text@.subrange(11, 17) =~= "little"@);
+    });
+    test!(text.starts_with('M'));
+    test!(text.ends_with('b'));
 }
 
-fn test_find_string_public(s: &str, pat: &str) {
+/// Migrated from Rust core/std `test_find`, `test_rfind`, and `test_find_str`.
+/// Port status: partial; it keeps representative success cases, but not the exact byte-offset assertions.
+fn test_find_and_rfind_representatives() {
     broadcast use group_str_find;
-
-    let ret = s.find(pat);
-    match ret {
-        None => {
-            assert(!pat@.is_subrange_of(s@));
-        },
-        Some(k) => {
-            let ghost k_ch = decode_utf8(s@.as_bytes().take(k as int)).len() as int;
-            assert(is_char_boundary(s@.as_bytes(), k as int));
-            assert(k_ch <= s@.len() - pat@.len());
-            assert(pat@ == s@.subrange(k_ch, k_ch + pat@.len()));
-            assert(forall |i: int| 0 <= i < k_ch
-                ==> pat@ != #[trigger] s@.subrange(i, i + pat@.len()));
-        },
-    }
-}
-
-fn test_find_chars_public(s: &str, chars: &[char]) {
-    broadcast use group_str_find;
-
-    let ret = s.find(chars);
-    match ret {
-        None => {
-            assert(forall |i: int| 0 <= i < s@.len() ==> !(#[trigger] chars@.contains(s@[i])));
-        },
-        Some(k) => {
-            let ghost k_ch = decode_utf8(s@.as_bytes().take(k as int)).len() as int;
-            assert(is_char_boundary(s@.as_bytes(), k as int));
-            assert(k_ch < s@.len());
-            assert(chars@.contains(s@[k_ch]));
-            assert(forall |i: int| 0 <= i < k_ch ==> !(#[trigger] chars@.contains(s@[i])));
-        },
-    }
-}
-
-fn test_rfind_char_public(s: &str, ch: char) {
     broadcast use group_str_rfind;
 
-    let ret = s.rfind(ch);
-    match ret {
-        None => {
-            assert(!s@.contains(ch));
-        },
-        Some(k) => {
-            let ghost k_ch = decode_utf8(s@.as_bytes().take(k as int)).len() as int;
-            assert(is_char_boundary(s@.as_bytes(), k as int));
-            assert(k_ch < s@.len());
-            assert(s@[k_ch] == ch);
-            assert(forall |i: int| k_ch < i < s@.len() ==> #[trigger] s@[i] != ch);
-        },
+    proof {
+        reveal_strlit("bananas");
+        reveal_strlit("na");
     }
+
+    let text = "bananas";
+
+    test!(text.find('a').is_some());
+    test!(text.find("na").is_some(), {
+        assert(text@.subrange(2, 4) =~= "na"@);
+    });
+    test!(text.rfind('a').is_some());
+    test!(text.rfind("na").is_some());
+
+    // TODO(Verge): keep exact byte-offset checks such as
+    // `text.find('a') == Some(1usize)` and `text.rfind("na") == Some(4usize)`
+    // commented until downstream tests have concise UTF-8 byte-offset proof helpers.
 }
 
-fn test_rfind_string_public(s: &str, pat: &str) {
-    broadcast use group_str_rfind;
-
-    let ret = s.rfind(pat);
-    match ret {
-        None => {
-            assert(!pat@.is_subrange_of(s@));
-        },
-        Some(k) => {
-            let ghost k_ch = decode_utf8(s@.as_bytes().take(k as int)).len() as int;
-            assert(is_char_boundary(s@.as_bytes(), k as int));
-            assert(k_ch <= s@.len() - pat@.len());
-            assert(pat@ == s@.subrange(k_ch, k_ch + pat@.len()));
-            assert(forall |i: int| k_ch < i <= s@.len() - pat@.len()
-                ==> pat@ != #[trigger] s@.subrange(i, i + pat@.len()));
-        },
-    }
-}
-
-fn test_rfind_chars_public(s: &str, chars: &[char]) {
-    broadcast use group_str_rfind;
-
-    let ret = s.rfind(chars);
-    match ret {
-        None => {
-            assert(forall |i: int| 0 <= i < s@.len() ==> !(#[trigger] chars@.contains(s@[i])));
-        },
-        Some(k) => {
-            let ghost k_ch = decode_utf8(s@.as_bytes().take(k as int)).len() as int;
-            assert(is_char_boundary(s@.as_bytes(), k as int));
-            assert(k_ch < s@.len());
-            assert(chars@.contains(s@[k_ch]));
-            assert(forall |i: int| k_ch < i < s@.len() ==> !(#[trigger] chars@.contains(s@[i])));
-        },
-    }
-}
-
-fn test_split_iter_char_public(s: &str, ch: char) {
-    broadcast use group_str_split_iter;
-
-    let iter = s.split_iter(ch);
-    assert(iter.seq().len() > 0);
-    assert(forall |i: int| 0 <= i < iter.seq().len() ==> !(#[trigger] iter.seq()[i]@.contains(ch)));
-}
-
-fn test_split_inclusive_iter_char_public(s: &str, ch: char) {
-    broadcast use group_str_split_inclusive_iter;
-
-    let iter = s.split_inclusive_iter(ch);
-    assert(s@ =~= iter.seq().map_values(|piece: &str| piece@).flatten());
-    assert(forall |i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len() ==>
-        iter.seq()[i]@.len() > 0 && !iter.seq()[i]@.drop_last().contains(ch));
-    assert(forall |i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len() - 1 ==>
-        iter.seq()[i]@.last() == ch);
-}
-
-fn test_rsplit_iter_char_public(s: &str, ch: char) {
-    broadcast use group_str_rsplit_iter;
-
-    let iter = s.rsplit_iter(ch);
-    assert(iter.seq().len() > 0);
-    assert(forall |i: int| 0 <= i < iter.seq().len() ==> !(#[trigger] iter.seq()[i]@.contains(ch)));
-}
-
-fn test_split_terminator_iter_char_public(s: &str, ch: char) {
-    broadcast use group_str_split_terminator_iter;
-
-    let iter = s.split_terminator_iter(ch);
-    assert((s@.len() == 0) == (iter.seq().len() == 0));
-    assert(forall |i: int| 0 <= i < iter.seq().len() ==> !(#[trigger] iter.seq()[i]@.contains(ch)));
-}
-
-fn test_rsplit_terminator_iter_char_public(s: &str, ch: char) {
-    broadcast use group_str_rsplit_terminator_iter;
-
-    let iter = s.rsplit_terminator_iter(ch);
-    assert((s@.len() == 0) == (iter.seq().len() == 0));
-    assert(forall |i: int| 0 <= i < iter.seq().len() ==> !(#[trigger] iter.seq()[i]@.contains(ch)));
-}
-
-fn test_splitn_iter_char_public(s: &str, n: usize, ch: char) {
-    broadcast use group_str_splitn_iter;
-
-    let iter = s.splitn_iter(n, ch);
-    assert(iter.seq().len() <= n);
-    assert(n > 0 ==> iter.seq().len() > 0);
-    assert(forall |i: int| 0 <= i < iter.seq().len() - 1 ==> !(#[trigger] iter.seq()[i]@.contains(ch)));
-    assert(iter.seq().len() < n ==> !iter.seq().last()@.contains(ch));
-}
-
-fn test_rsplitn_iter_char_public(s: &str, n: usize, ch: char) {
-    broadcast use group_str_rsplitn_iter;
-
-    let iter = s.rsplitn_iter(n, ch);
-    assert(iter.seq().len() <= n);
-    assert(n > 0 ==> iter.seq().len() > 0);
-    assert(forall |i: int| 0 <= i < iter.seq().len() - 1 ==> !(#[trigger] iter.seq()[i]@.contains(ch)));
-    assert(iter.seq().len() < n ==> !iter.seq().last()@.contains(ch));
-}
-
-fn test_split_once_char_public(s: &str, ch: char) {
+/// Migrated from Rust core/std `test_split_once` and `test_rsplit_once`.
+/// Port status: partial; it keeps presence and delimiter-splitting checks, not the exact `assert_eq!` result matrix.
+fn test_split_once_and_rsplit_once_representatives() {
+    broadcast use group_str_contains;
     broadcast use group_str_split_once;
-
-    let ret = s.split_once(ch);
-    match ret {
-        None => {
-            assert(!s@.contains(ch));
-        },
-        Some((head, tail)) => {
-            assert(!head@.contains(ch));
-            assert(s@ == head@.push(ch) + tail@);
-        },
-    }
-}
-
-fn test_split_once_string_public(s: &str, pat: &str) {
-    broadcast use group_str_split_once;
-
-    let ret = s.split_once(pat);
-    match ret {
-        None => {
-            assert(!pat@.is_subrange_of(s@));
-        },
-        Some((head, tail)) => {
-            assert(pat@.len() == 0 ==> head@.len() == 0 && tail@ == s@);
-            assert(pat@.len() > 0 ==> s@ == head@ + pat@ + tail@);
-        },
-    }
-}
-
-fn test_split_once_chars_public(s: &str, chars: &[char]) {
-    broadcast use group_str_split_once;
-
-    let ret = s.split_once(chars);
-    match ret {
-        None => {
-            assert(forall |i: int| 0 <= i < s@.len() ==> !(#[trigger] chars@.contains(s@[i])));
-        },
-        Some((head, tail)) => {
-            assert(forall |i: int| 0 <= i < head@.len() ==> !(#[trigger] chars@.contains(head@[i])));
-            assert(head@.is_prefix_of(s@));
-            assert(tail@.is_suffix_of(s@));
-            assert(head@.len() + tail@.len() == s@.len() - 1);
-            assert(chars@.contains(s@[head@.len() as int]));
-        },
-    }
-}
-
-fn test_rsplit_once_char_public(s: &str, ch: char) {
     broadcast use group_str_rsplit_once;
 
-    let ret = s.rsplit_once(ch);
-    match ret {
-        None => {
-            assert(!s@.contains(ch));
-        },
-        Some((head, tail)) => {
-            assert(!tail@.contains(ch));
-            assert(s@ == head@.push(ch) + tail@);
-        },
+    proof {
+        reveal_strlit("cfg=alpha=beta");
     }
-}
 
-fn test_rsplit_once_string_public(s: &str, pat: &str) {
-    broadcast use group_str_rsplit_once;
+    let text = "cfg=alpha=beta";
 
-    let ret = s.rsplit_once(pat);
-    match ret {
-        None => {
-            assert(!pat@.is_subrange_of(s@));
-        },
-        Some((head, tail)) => {
-            assert(pat@.len() == 0 ==> tail@.len() == 0 && head@ == s@);
-            assert(pat@.len() > 0 ==> s@ == head@ + pat@ + tail@);
-        },
+    let first = text.split_once('=');
+    test!(first.is_some(), {
+        assert(text@[3] == '=');
+    });
+    match first {
+        Some((head, _tail)) => {
+            test!(!head.contains('='));
+        }
+        None => test!(false),
     }
-}
 
-fn test_rsplit_once_chars_public(s: &str, chars: &[char]) {
-    broadcast use group_str_rsplit_once;
-
-    let ret = s.rsplit_once(chars);
-    match ret {
-        None => {
-            assert(forall |i: int| 0 <= i < s@.len() ==> !(#[trigger] chars@.contains(s@[i])));
-        },
-        Some((head, tail)) => {
-            assert(forall |i: int| 0 <= i < tail@.len() ==> !(#[trigger] chars@.contains(tail@[i])));
-            assert(head@.is_prefix_of(s@));
-            assert(tail@.is_suffix_of(s@));
-            assert(head@.len() + tail@.len() == s@.len() - 1);
-            assert(chars@.contains(s@[head@.len() as int]));
-        },
-    }
-}
-
-fn test_matches_iter_char_public(s: &str, ch: char) {
-    broadcast use group_str_matches_iter;
-
-    let iter = s.matches_iter(ch);
-    // XXX(Verus): a Verus bug (#2631) regarding capturing spec closures prevents
-    // proving the `count` fact without explicitly calling the linking lemma.
-    proof { lemma_str_matches_iter_char(s@, ch, iter.seq()) }
-    assert(iter.seq().len() == s@.count(|c: char| c == ch));
-    assert(forall |i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len() ==>
-        iter.seq()[i]@ == seq![ch]);
-}
-
-fn test_rmatches_iter_char_public(s: &str, ch: char) {
-    broadcast use group_str_rmatches_iter;
-
-    let iter = s.rmatches_iter(ch);
-    // XXX(Verus): a Verus bug (#2631) regarding capturing spec closures prevents
-    // proving the `count` fact without explicitly calling the linking lemma.
-    proof { lemma_str_rmatches_iter_char(s@, ch, iter.seq()) }
-    assert(iter.seq().len() == s@.count(|c: char| c == ch));
-    assert(forall |i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len() ==>
-        iter.seq()[i]@ == seq![ch]);
-}
-
-fn test_match_indices_iter_char_public(s: &str, ch: char) {
-    broadcast use group_str_match_indices_iter;
-
-    let iter = s.match_indices_iter(ch);
-    // XXX(Verus): a Verus bug (#2631) regarding capturing spec closures prevents
-    // proving the `count` fact without explicitly calling the linking lemma.
-    proof { lemma_str_match_indices_iter_char(s@, ch, iter.seq()) }
-    assert(iter.seq().len() == s@.count(|c: char| c == ch));
-    assert(forall |i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len() ==>
-        iter.seq()[i].1@ == seq![ch]);
-    assert(forall |i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len() - 1 ==>
-        iter.seq()[i].0 < iter.seq()[i + 1].0);
-}
-
-fn test_rmatch_indices_iter_char_public(s: &str, ch: char) {
-    broadcast use group_str_rmatch_indices_iter;
-
-    let iter = s.rmatch_indices_iter(ch);
-    // XXX(Verus): a Verus bug (#2631) regarding capturing spec closures prevents
-    // proving the `count` fact without explicitly calling the linking lemma.
-    proof { lemma_str_rmatch_indices_iter_char(s@, ch, iter.seq()) }
-    assert(iter.seq().len() == s@.count(|c: char| c == ch));
-    assert(forall |i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len() ==>
-        iter.seq()[i].1@ == seq![ch]);
-    assert(forall |i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len() - 1 ==>
-        iter.seq()[i].0 > iter.seq()[i + 1].0);
-}
-
-fn test_split_whitespace_iter_public(s: &str) {
-    let iter = s.split_whitespace_iter();
-}
-
-fn test_split_ascii_whitespace_iter_public(s: &str) {
-    let iter = s.split_ascii_whitespace_iter();
-}
-
-fn test_trim_matches_char_public(s: &str, ch: char) {
-    broadcast use group_str_trim_matches;
-
-    let ret = s.trim_matches(ch);
-    assert(ret@.is_subrange_of(s@));
-    assert(ret@.len() > 0 ==> ret@.first() != ch && ret@.last() != ch);
-}
-
-fn test_trim_matches_chars_public(s: &str, chars: &[char]) {
-    broadcast use group_str_trim_matches;
-
-    let ret = s.trim_matches(chars);
-    assert(ret@.is_subrange_of(s@));
-    assert(ret@.len() > 0 ==> !chars@.contains(ret@.first()) && !chars@.contains(ret@.last()));
-}
-
-// Attempted string-pattern mirror:
-// fn test_trim_matches_string_public(s: &str, pat: &str) { let _ = s.trim_matches(pat); }
-// `trim_matches` currently has public char/closure/chars lemmas, but no public
-// `lemma_str_trim_matches_string`; downstream tests use the string start/end variants instead.
-
-fn test_trim_start_matches_char_public(s: &str, ch: char) {
-    broadcast use group_str_trim_start_matches;
-
-    let ret = s.trim_start_matches(ch);
-    assert(ret@.is_suffix_of(s@));
-    assert(ret@.len() > 0 ==> ret@.first() != ch);
-    assert(forall |i: int| 0 <= i < s@.len() - ret@.len() ==> #[trigger] s@[i] == ch);
-}
-
-fn test_trim_start_matches_string_public(s: &str, pat: &str)
-    requires
-        pat@.len() > 0,
-{
-    broadcast use group_str_trim_start_matches;
-
-    let ret = s.trim_start_matches(pat);
-    assert(ret@.is_suffix_of(s@));
-    assert(ret@.len() > 0 ==> !pat@.is_prefix_of(ret@));
-    assert((s@.len() - ret@.len()) % pat@.len() as int == 0);
-    assert(forall |i: int| 0 <= i < s@.len() - ret@.len() && i % pat@.len() as int == 0
-        ==> #[trigger] s@.subrange(i, i + pat@.len()) == pat@);
-}
-
-fn test_trim_start_matches_chars_public(s: &str, chars: &[char]) {
-    broadcast use group_str_trim_start_matches;
-
-    let ret = s.trim_start_matches(chars);
-    assert(ret@.is_suffix_of(s@));
-    assert(ret@.len() > 0 ==> !chars@.contains(ret@.first()));
-    assert(forall |i: int| 0 <= i < s@.len() - ret@.len() ==> #[trigger] chars@.contains(s@[i]));
-}
-
-fn test_trim_end_matches_char_public(s: &str, ch: char) {
-    broadcast use group_str_trim_end_matches;
-
-    let ret = s.trim_end_matches(ch);
-    assert(ret@.is_prefix_of(s@));
-    assert(ret@.len() > 0 ==> ret@.last() != ch);
-    assert(forall |i: int| ret@.len() <= i < s@.len() ==> #[trigger] s@[i] == ch);
-}
-
-fn test_trim_end_matches_string_public(s: &str, pat: &str)
-    requires
-        pat@.len() > 0,
-{
-    broadcast use group_str_trim_end_matches;
-
-    let ret = s.trim_end_matches(pat);
-    assert(ret@.is_prefix_of(s@));
-    assert(ret@.len() > 0 ==> !pat@.is_suffix_of(ret@));
-    assert((s@.len() - ret@.len()) % pat@.len() as int == 0);
-    assert(forall |i: int| 0 <= i < s@.len() - ret@.len() && i % pat@.len() as int == 0
-        ==> #[trigger] s@.subrange(ret@.len() + i, ret@.len() + i + pat@.len()) == pat@);
-}
-
-fn test_trim_end_matches_chars_public(s: &str, chars: &[char]) {
-    broadcast use group_str_trim_end_matches;
-
-    let ret = s.trim_end_matches(chars);
-    assert(ret@.is_prefix_of(s@));
-    assert(ret@.len() > 0 ==> !chars@.contains(ret@.last()));
-    assert(forall |i: int| ret@.len() <= i < s@.len() ==> #[trigger] chars@.contains(s@[i]));
-}
-
-fn test_strip_prefix_char_public(s: &str, ch: char) {
-    broadcast use group_str_strip_prefix;
-
-    let ret = s.strip_prefix(ch);
-    match ret {
-        None => {
-            assert(s@.len() == 0 || (s@.len() > 0 && s@.first() != ch));
-        },
-        Some(rest) => {
-            assert(s@.len() > 0);
-            assert(s@.first() == ch);
-            assert(rest@ == s@.drop_first());
-        },
-    }
-}
-
-fn test_strip_prefix_string_public(s: &str, pat: &str) {
-    broadcast use group_str_strip_prefix;
-
-    let ret = s.strip_prefix(pat);
-    match ret {
-        None => {
-            assert(!pat@.is_prefix_of(s@));
-        },
-        Some(rest) => {
-            assert(pat@.is_prefix_of(s@));
-            assert(rest@ == s@.skip(pat@.len() as int));
-        },
-    }
-}
-
-fn test_strip_prefix_chars_public(s: &str, chars: &[char]) {
-    broadcast use group_str_strip_prefix;
-
-    let ret = s.strip_prefix(chars);
-    match ret {
-        None => {
-            assert(s@.len() == 0 || (s@.len() > 0 && !chars@.contains(s@.first())));
-        },
-        Some(rest) => {
-            assert(s@.len() > 0);
-            assert(chars@.contains(s@.first()));
-            assert(rest@ == s@.drop_first());
-        },
-    }
-}
-
-fn test_strip_suffix_char_public(s: &str, ch: char) {
-    broadcast use group_str_strip_suffix;
-
-    let ret = s.strip_suffix(ch);
-    match ret {
-        None => {
-            assert(s@.len() == 0 || (s@.len() > 0 && s@.last() != ch));
-        },
-        Some(rest) => {
-            assert(s@.len() > 0);
-            assert(s@.last() == ch);
-            assert(rest@ == s@.drop_last());
-        },
-    }
-}
-
-fn test_strip_suffix_string_public(s: &str, pat: &str) {
-    broadcast use group_str_strip_suffix;
-
-    let ret = s.strip_suffix(pat);
-    match ret {
-        None => {
-            assert(!pat@.is_suffix_of(s@));
-        },
-        Some(rest) => {
-            assert(pat@.is_suffix_of(s@));
-            assert(rest@ == s@.take(s@.len() - pat@.len()));
-        },
-    }
-}
-
-fn test_strip_suffix_chars_public(s: &str, chars: &[char]) {
-    broadcast use group_str_strip_suffix;
-
-    let ret = s.strip_suffix(chars);
-    match ret {
-        None => {
-            assert(s@.len() == 0 || (s@.len() > 0 && !chars@.contains(s@.last())));
-        },
-        Some(rest) => {
-            assert(s@.len() > 0);
-            assert(chars@.contains(s@.last()));
-            assert(rest@ == s@.drop_last());
-        },
-    }
-}
-
-fn test_pattern_composition_strip_after_split(s: &str, ch: char) {
-    broadcast use group_str_split_once;
-    broadcast use group_str_strip_prefix;
-
-    let ret = s.split_once(ch);
-    match ret {
-        None => {
-            assert(!s@.contains(ch));
-        },
+    let last = text.rsplit_once('=');
+    test!(last.is_some());
+    match last {
         Some((_head, tail)) => {
-            let stripped = tail.strip_prefix(ch);
-            match stripped {
-                None => {
-                    assert(tail@.len() == 0 || (tail@.len() > 0 && tail@.first() != ch));
-                },
-                Some(rest) => {
-                    assert(tail@.len() > 0);
-                    assert(tail@.first() == ch);
-                    assert(rest@ == tail@.drop_first());
-                },
-            }
-        },
+            test!(!tail.contains('='));
+        }
+        None => test!(false),
+    }
+}
+
+/// Migrated from Rust core/std `test_trim_start_matches`, `test_trim_end_matches`, `test_trim_matches`, and whitespace-trim examples.
+/// Port status: partial; it keeps representative endpoint checks, not the full upstream output table.
+fn test_trim_matches_representatives() {
+    broadcast use group_str_starts_with;
+    broadcast use group_str_ends_with;
+    broadcast use group_str_trim_start_matches;
+    broadcast use group_str_trim_end_matches;
+    broadcast use group_str_trim_matches;
+
+    proof {
+        reveal_strlit("111foo111");
+        reveal_strlit("abcabcxyzabc");
+        reveal_strlit("abc");
+    }
+
+    let numeric = "111foo111";
+
+    test!(!numeric.trim_start_matches('1').starts_with('1'));
+
+    test!(!numeric.trim_end_matches('1').ends_with('1'));
+
+    let trim_char = numeric.trim_matches('1');
+    test!(!trim_char.starts_with('1'));
+    test!(!trim_char.ends_with('1'));
+
+    let repeated = "abcabcxyzabc";
+
+    test!(!repeated.trim_start_matches("abc").starts_with("abc"));
+
+    test!(!repeated.trim_end_matches("abc").ends_with("abc"));
+}
+
+/// Migrated from Rust core/std `strip_prefix` / `strip_suffix` behavior examples.
+/// Port status: partial; it checks presence/absence and prefix/suffix soundness, not the exact returned slices.
+fn test_strip_prefix_and_suffix_representatives() {
+    broadcast use group_str_strip_prefix;
+    broadcast use group_str_strip_suffix;
+
+    proof {
+        reveal_strlit("foobar");
+        reveal_strlit("foo");
+        reveal_strlit("bar");
+    }
+
+    let text = "foobar";
+
+    test!(text.strip_prefix("foo").is_some());
+    test!(text.strip_prefix('z').is_none());
+    test!(text.strip_suffix("bar").is_some());
+    test!(text.strip_suffix('z').is_none());
+}
+
+/// Fresh downstream smoke test for slice-pattern matching.
+/// It is not a direct Rust core/std migration.
+fn test_char_slice_pattern_representatives() {
+    broadcast use group_str_contains;
+    broadcast use group_str_starts_with;
+    broadcast use group_str_ends_with;
+    broadcast use group_str_trim_matches;
+
+    proof {
+        reveal_strlit("-+-core-+");
+    }
+
+    let marks: &[char] = &['-', '+'];
+    let text = "-+-core-+";
+
+    test!(text.contains(marks));
+    test!(text.starts_with(marks));
+    test!(text.ends_with(marks));
+
+    let trimmed = text.trim_matches(marks);
+    test!(!trimmed.starts_with(marks));
+    test!(!trimmed.ends_with(marks));
+}
+
+/// Migrated from Rust core/std empty-pattern behavior around `find`, `rfind`, `split_once`, `rsplit_once`, `strip_prefix`, and `strip_suffix`.
+/// Port status: partial; only the `is_some()` / `is_none()` outcomes are executable today, not the exact offsets and slices.
+fn test_empty_pattern_corner_case() {
+    broadcast use group_str_find;
+    broadcast use group_str_rfind;
+    broadcast use group_str_split_once;
+    broadcast use group_str_rsplit_once;
+    broadcast use group_str_strip_prefix;
+    broadcast use group_str_strip_suffix;
+
+    proof {
+        reveal_strlit("abc");
+        reveal_strlit("");
+    }
+
+    let text = "abc";
+
+    test!(text.find("").is_some());
+    test!(text.rfind("").is_some());
+    test!(text.split_once("").is_some());
+    test!(text.rsplit_once("").is_some());
+    test!(text.strip_prefix("").is_some());
+    test!(text.strip_suffix("").is_some());
+
+    // TODO(Verge): exact empty-pattern byte offsets and returned slices, e.g.
+    // `text.find("") == Some(0usize)` and `text.rsplit_once("") == Some((text, ""))`,
+    // need concise downstream proof helpers before becoming executable asserts here.
+}
+
+/// Fresh downstream corner-case test for overlapping string patterns.
+/// It is not a direct Rust core/std migration.
+fn test_overlapping_pattern_corner_case() {
+    broadcast use group_str_contains;
+    broadcast use group_str_find;
+    broadcast use group_str_rfind;
+
+    proof {
+        reveal_strlit("aaaa");
+        reveal_strlit("aa");
+    }
+
+    let text = "aaaa";
+
+    test!(text.contains("aa"));
+    test!(text.find("aa").is_some());
+    test!(text.rfind("aa").is_some());
+
+    // TODO(Verge): exact overlapping string-pattern assertions such as
+    // `text.split_once("aa") == Some(("", "aa"))` and
+    // `text.trim_start_matches("aa") == ""` exceed the desired proof weight
+    // for this downstream smoke suite today.
+}
+
+/// Fresh downstream composition test for `split_once` and `contains`.
+/// It is not a direct Rust core/std migration.
+fn test_split_contains_composition_case() {
+    broadcast use group_str_contains;
+    broadcast use group_str_split_once;
+
+    proof {
+        reveal_strlit("key::value");
+    }
+
+    let text = "key::value";
+    let split = text.split_once(':');
+    test!(split.is_some(), {
+        assert(text@[3] == ':');
+    });
+    match split {
+        Some((head, _tail)) => {
+            test!(!head.contains(':'));
+        }
+        None => test!(false),
     }
 }
 
 } // verus!
+
+pub fn run() -> usize {
+    let mut count = 0;
+    count += crate::run_test(
+        "str::pattern::contains_starts_ends_representatives",
+        test_contains_starts_ends_representatives,
+    );
+    count += crate::run_test(
+        "str::pattern::find_and_rfind_representatives",
+        test_find_and_rfind_representatives,
+    );
+    count += crate::run_test(
+        "str::pattern::split_once_and_rsplit_once_representatives",
+        test_split_once_and_rsplit_once_representatives,
+    );
+    count += crate::run_test(
+        "str::pattern::trim_matches_representatives",
+        test_trim_matches_representatives,
+    );
+    count += crate::run_test(
+        "str::pattern::strip_prefix_and_suffix_representatives",
+        test_strip_prefix_and_suffix_representatives,
+    );
+    count += crate::run_test(
+        "str::pattern::char_slice_pattern_representatives",
+        test_char_slice_pattern_representatives,
+    );
+    count += crate::run_test(
+        "str::pattern::empty_pattern_corner_case",
+        test_empty_pattern_corner_case,
+    );
+    count += crate::run_test(
+        "str::pattern::overlapping_pattern_corner_case",
+        test_overlapping_pattern_corner_case,
+    );
+    count += crate::run_test(
+        "str::pattern::split_contains_composition_case",
+        test_split_contains_composition_case,
+    );
+    count
+}

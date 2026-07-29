@@ -16,44 +16,21 @@ fn test_box_comparison_methods_are_callable() {
 
     let a = Box::new(3u32);
     let b = Box::new(5u32);
-    let c = Box::new(3u32);
 
-    let eq = a == c;
-    let ne = a != b;
-    let partial = a.partial_cmp(&b);
-    let lt = a < b;
-    let le = a <= b;
-    let gt = b > a;
-    let ge = b >= a;
-    let cmp = a.cmp(&b);
-    assert(eq);
-    crate::exec_assert(eq);
-    assert(ne);
-    crate::exec_assert(ne);
-    assert(partial == Some(Ordering::Less));
-    crate::exec_assert(partial == Some(Ordering::Less));
-    assert(lt);
-    crate::exec_assert(lt);
-    assert(le);
-    crate::exec_assert(le);
-    assert(gt);
-    crate::exec_assert(gt);
-    assert(ge);
-    crate::exec_assert(ge);
-    assert(cmp == Ordering::Less);
-    crate::exec_assert(cmp == Ordering::Less);
+    test!(a == Box::new(3u32));
+    test!(a != b);
+    test!(a.partial_cmp(&b) == Some(Ordering::Less));
+    test!(a < b);
+    test!(a <= b);
+    test!(b > a);
+    test!(b >= a);
+    test!(a.cmp(&b) == Ordering::Less);
 
-    let max = Box::new(3u32).max(Box::new(5u32));
-    assert(*max == 5u32);
-    crate::exec_assert(*max == 5u32);
+    test!(*Box::new(3u32).max(Box::new(5u32)) == 5u32);
 
-    let min = Box::new(3u32).min(Box::new(5u32));
-    assert(*min == 3u32);
-    crate::exec_assert(*min == 3u32);
+    test!(*Box::new(3u32).min(Box::new(5u32)) == 3u32);
 
-    let clamp = Box::new(4u32).clamp(Box::new(3u32), Box::new(5u32));
-    assert(*clamp == 4u32);
-    crate::exec_assert(*clamp == 4u32);
+    test!(*Box::new(4u32).clamp(Box::new(3u32), Box::new(5u32)) == 4u32);
 }
 
 fn test_rc_comparison_methods_are_callable() {
@@ -63,44 +40,21 @@ fn test_rc_comparison_methods_are_callable() {
 
     let a = Rc::new(3u32);
     let b = Rc::new(5u32);
-    let c = Rc::new(3u32);
 
-    let eq = a == c;
-    let ne = a != b;
-    let partial = a.partial_cmp(&b);
-    let lt = a < b;
-    let le = a <= b;
-    let gt = b > a;
-    let ge = b >= a;
-    let cmp = a.cmp(&b);
-    assert(eq);
-    crate::exec_assert(eq);
-    assert(ne);
-    crate::exec_assert(ne);
-    assert(partial == Some(Ordering::Less));
-    crate::exec_assert(partial == Some(Ordering::Less));
-    assert(lt);
-    crate::exec_assert(lt);
-    assert(le);
-    crate::exec_assert(le);
-    assert(gt);
-    crate::exec_assert(gt);
-    assert(ge);
-    crate::exec_assert(ge);
-    assert(cmp == Ordering::Less);
-    crate::exec_assert(cmp == Ordering::Less);
+    test!(a == Rc::new(3u32));
+    test!(a != b);
+    test!(a.partial_cmp(&b) == Some(Ordering::Less));
+    test!(a < b);
+    test!(a <= b);
+    test!(b > a);
+    test!(b >= a);
+    test!(a.cmp(&b) == Ordering::Less);
 
-    let max = a.clone().max(b.clone());
-    assert(*max == *b);
-    crate::exec_assert(*max == *b);
+    test!(*a.clone().max(b.clone()) == *b);
 
-    let min = a.clone().min(b.clone());
-    assert(*min == *a);
-    crate::exec_assert(*min == *a);
+    test!(*a.clone().min(b.clone()) == *a);
 
-    let clamp = Rc::new(4u32).clamp(a.clone(), b.clone());
-    assert(*clamp == 4u32);
-    crate::exec_assert(*clamp == 4u32);
+    test!(*Rc::new(4u32).clamp(a.clone(), b.clone()) == 4u32);
 }
 
 } // verus!

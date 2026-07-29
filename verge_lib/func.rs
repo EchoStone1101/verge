@@ -51,6 +51,11 @@ verus! {
 pub(crate) mod str;
 
 /// This function encodes whether an `exec`-mode function `f` is deterministic.
+///
+/// Note that this definition uses `spec`-mode equality. As a result, it may not apply 
+/// to functions that have non-`Copy` return values (e.g., two `String`s are `spec`-mode 
+/// equal only when they are exact copies, whereas often we only care about their views 
+/// as `Seq<char>`s.)
 pub open spec fn is_deterministic<F, Args: Tuple>(f: F) -> bool
 where
     F: FnMut<Args>,

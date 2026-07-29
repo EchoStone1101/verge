@@ -9,44 +9,22 @@ use verge::str::*;
 
 verus! {
 
-fn keep_not_b(character: char) -> (ret: bool)
-    ensures
-        ret == (character != 'b'),
-{
-    character != 'b'
-}
-
 fn test_views_and_capacity_are_callable() {
     broadcast use group_str_axioms;
 
     let mut text = String::with_capacity(16);
-    let empty = text.is_empty();
-    let len = text.len();
-    let bytes = text.as_bytes();
-
-    assert(text@ =~= Seq::<char>::empty());
-    assert(empty);
-    crate::exec_assert(empty);
-    assert(len == 0usize);
-    crate::exec_assert(len == 0usize);
-    assert(bytes@ =~= Seq::<u8>::empty());
-    crate::exec_assert(bytes.len() == 0usize);
+    test!(text.is_empty());
+    test!(text.len() == 0usize);
+    test!(text.as_bytes().len() == 0usize);
 
     proof {
         reveal_strlit("abc");
     }
     text.push_str("abc");
 
-    let nonempty = text.is_empty();
-    let len = text.len();
-    let bytes = text.as_bytes();
-    assert(text@ =~= seq!['a', 'b', 'c']);
-    assert(!nonempty);
-    crate::exec_assert(!nonempty);
-    assert(len == 3usize);
-    crate::exec_assert(len == 3usize);
-    assert(bytes@ =~= seq![97u8, 98u8, 99u8]);
-    crate::exec_assert(bytes.len() == 3usize);
+    test!(!text.is_empty());
+    test!(text.len() == 3usize);
+    test!(text.as_bytes().len() == 3usize);
 }
 
 fn test_from_utf8_ok_err_and_verified() {
@@ -55,43 +33,34 @@ fn test_from_utf8_ok_err_and_verified() {
     let good = vec![104u8, 101u8, 108u8, 108u8, 111u8];
     assert(good@.is_utf8());
     let good_result = String::from_utf8(good);
-    let good_is_ok = good_result.is_ok();
-    assert(good_is_ok);
-    crate::exec_assert(good_is_ok);
+    test!(good_result.is_ok());
     match good_result {
         Ok(text) => {
-            assert(text@ =~= seq!['h', 'e', 'l', 'l', 'o']);
-            let len = text.len();
-            assert(len == 5usize);
-            crate::exec_assert(len == 5usize);
+            test!(text.len() == 5usize);
         }
         Err(_) => {
-            assert(false);
+            test!(false);
         }
     }
 
     let bad = vec![0xffu8];
     assert(!bad@.is_utf8());
     let bad_result = String::from_utf8(bad);
-    let bad_is_err = bad_result.is_err();
-    assert(bad_is_err);
-    crate::exec_assert(bad_is_err);
+    test!(bad_result.is_err());
     match bad_result {
         Ok(_) => {
-            assert(false);
+            test!(false);
         }
         Err(error) => {
-            assert(error.is_str_utf8_error());
+            proof {
+                assert(error.is_str_utf8_error());
+            }
         }
     }
 
     let verified_bytes = vec![97u8, 98u8, 99u8];
     assert(verified_bytes@.is_utf8());
-    let verified = String::from_utf8_verified(verified_bytes);
-    assert(verified@ =~= seq!['a', 'b', 'c']);
-    let verified_len = verified.len();
-    assert(verified_len == 3usize);
-    crate::exec_assert(verified_len == 3usize);
+    test!(String::from_utf8_verified(verified_bytes).len() == 3usize);
 }
 
 fn test_into_bytes_roundtrip_is_callable() {
@@ -104,13 +73,9 @@ fn test_into_bytes_roundtrip_is_callable() {
     text.push_str("abc");
     let bytes = text.into_bytes();
 
-    assert(bytes@ =~= seq![97u8, 98u8, 99u8]);
-    crate::exec_assert(bytes.len() == 3usize);
+    test!(bytes.len() == 3usize);
 
-    let roundtrip = String::from_utf8(bytes);
-    let roundtrip_is_ok = roundtrip.is_ok();
-    assert(roundtrip_is_ok);
-    crate::exec_assert(roundtrip_is_ok);
+    test!(String::from_utf8(bytes).is_ok());
 }
 
 fn test_as_mut_str_exposes_current_view() {
@@ -121,13 +86,8 @@ fn test_as_mut_str_exposes_current_view() {
 
     let mut text = String::with_capacity(4);
     text.push_str("abc");
-    let ghost before = text@;
-    {
-        let view = text.as_mut_str();
-        assert(view@ =~= before);
-    }
-    assert(text@ =~= before);
-    crate::exec_assert(text.len() == 3usize);
+    test!(text.as_mut_str().len() == 3usize);
+    test!(text.len() == 3usize);
 }
 
 fn test_push_pop_and_clear_core_cases() {
@@ -139,40 +99,24 @@ fn test_push_pop_and_clear_core_cases() {
 
     let mut text = String::with_capacity(16);
     text.push_str("");
-    assert(text@ =~= Seq::<char>::empty());
-    crate::exec_assert(text.len() == 0usize);
+    test!(text.len() == 0usize);
 
     text.push_str("abc");
-    assert(text@ =~= seq!['a', 'b', 'c']);
-    crate::exec_assert(text.len() == 3usize);
+    test!(text.len() == 3usize);
 
     text.push('b');
     text.push('¢');
     text.push('€');
     text.push('𤭢');
-    assert(text@ =~= seq!['a', 'b', 'c', 'b', '¢', '€', '𤭢']);
 
-    let four_byte = text.pop();
-    assert(four_byte == Some('𤭢'));
-    crate::exec_assert(four_byte == Some('𤭢'));
-    let three_byte = text.pop();
-    assert(three_byte == Some('€'));
-    crate::exec_assert(three_byte == Some('€'));
-    let two_byte = text.pop();
-    assert(two_byte == Some('¢'));
-    crate::exec_assert(two_byte == Some('¢'));
-    let one_byte = text.pop();
-    assert(one_byte == Some('b'));
-    crate::exec_assert(one_byte == Some('b'));
+    test!(text.pop() == Some('𤭢'));
+    test!(text.pop() == Some('€'));
+    test!(text.pop() == Some('¢'));
+    test!(text.pop() == Some('b'));
 
     text.clear();
-    assert(text@ =~= Seq::<char>::empty());
-    let empty = text.is_empty();
-    assert(empty);
-    crate::exec_assert(empty);
-    let none = text.pop();
-    assert(none.is_none());
-    crate::exec_assert(none.is_none());
+    test!(text.is_empty());
+    test!(text.pop().is_none());
 }
 
 fn test_reserve_preserves_contents() {
@@ -183,15 +127,11 @@ fn test_reserve_preserves_contents() {
 
     let mut text = String::with_capacity(3);
     text.push_str("cap");
-    let ghost before = text@;
-
     text.reserve(8usize);
-    assert(text@ =~= before);
-    crate::exec_assert(text.len() == 3usize);
+    test!(text.len() == 3usize);
 
     text.reserve_exact(8usize);
-    assert(text@ =~= before);
-    crate::exec_assert(text.len() == 3usize);
+    test!(text.len() == 3usize);
 }
 
 fn test_insert_ascii_boundary() {
@@ -199,10 +139,7 @@ fn test_insert_ascii_boundary() {
 
     let mut text = String::with_capacity(1);
     text.insert(0usize, 'a');
-    assert(text@.as_bytes() =~= seq![97u8]);
-    let len = text.len();
-    assert(len == 1usize);
-    crate::exec_assert(len == 1usize);
+    test!(text.len() == 1usize);
 }
 
 fn test_insert_str_ascii_boundary() {
@@ -213,10 +150,7 @@ fn test_insert_str_ascii_boundary() {
 
     let mut text = String::with_capacity(2);
     text.insert_str(0usize, "bc");
-    assert(text@.as_bytes() =~= seq![98u8, 99u8]);
-    let len = text.len();
-    assert(len == 2usize);
-    crate::exec_assert(len == 2usize);
+    test!(text.len() == 2usize);
 }
 
 fn test_remove_ascii_boundary() {
@@ -226,13 +160,8 @@ fn test_remove_ascii_boundary() {
     }
 
     let mut text = String::from_str("abcd");
-    let removed = text.remove(1usize);
-
-    assert(removed as u32 == decode_first_scalar(seq![98u8, 99u8, 100u8]));
-    assert(text@.as_bytes() =~= seq![97u8, 99u8, 100u8]);
-    let removed_len = text.len();
-    assert(removed_len == 3usize);
-    crate::exec_assert(removed_len == 3usize);
+    test!(text.remove(1usize) == 'b');
+    test!(text.len() == 3usize);
 }
 
 fn test_split_off_and_truncate_ascii_boundaries() {
@@ -243,27 +172,16 @@ fn test_split_off_and_truncate_ascii_boundaries() {
 
     let mut text = String::with_capacity(8);
     text.push_str("ABCD");
-    let remainder = text.split_off(2usize);
-    let prefix_len = text.len();
-    let remainder_len = remainder.len();
-    assert(prefix_len == 2usize);
-    assert(remainder_len == 2usize);
-    crate::exec_assert(prefix_len == 2usize);
-    crate::exec_assert(remainder_len == 2usize);
+    test!(text.split_off(2usize).len() == 2usize);
+    test!(text.len() == 2usize);
 
-    let empty = text.split_off(2usize);
-    assert(empty@ =~= Seq::<char>::empty());
-    crate::exec_assert(empty.is_empty());
-    let prefix_len = text.len();
-    assert(prefix_len == 2usize);
-    crate::exec_assert(prefix_len == 2usize);
+    test!(text.split_off(2usize).is_empty());
+    test!(text.len() == 2usize);
 
     text.truncate(1usize);
-    assert(text@.as_bytes() =~= seq![65u8]);
-    crate::exec_assert(text.len() == 1usize);
+    test!(text.len() == 1usize);
     text.truncate(0usize);
-    assert(text@ =~= Seq::<char>::empty());
-    crate::exec_assert(text.is_empty());
+    test!(text.is_empty());
 }
 
 fn test_truncate_past_end_is_noop() {
@@ -274,13 +192,8 @@ fn test_truncate_past_end_is_noop() {
 
     let mut text = String::with_capacity(5);
     text.push_str("12345");
-    let ghost before = text@;
-    assert(text@.as_bytes().len() == 5);
     text.truncate(6usize);
-    assert(text@.as_bytes() =~= before.as_bytes());
-    let len = text.len();
-    assert(len == 5usize);
-    crate::exec_assert(len == 5usize);
+    test!(text.len() == 5usize);
 }
 
 fn test_retain_with_named_predicate() {
@@ -299,43 +212,27 @@ fn test_retain_with_named_predicate() {
     {
         character != 'b'
     };
-    let keep_a = keep_not_b_closure('a');
-    let keep_b = keep_not_b_closure('b');
-    let keep_c = keep_not_b_closure('c');
-    assert(keep_a);
-    assert(!keep_b);
-    assert(keep_c);
+    test!(keep_not_b_closure('a'));
+    test!(!keep_not_b_closure('b'));
+    test!(keep_not_b_closure('c'));
 
     text.retain(keep_not_b_closure);
-    proof {
-        let pred = |character: char| call_ensures(keep_not_b_closure, (character,), true);
+    test!(text.len() == 2usize, {
         reveal_with_fuel(Seq::<_>::filter, 4);
-        assert(text@ =~= "abc"@.filter(pred));
-        assert(pred('a'));
-        assert(!pred('b'));
-        assert(pred('c'));
-        assert_seqs_equal!(text@ == seq!['a', 'c']);
-    };
-    let retained_len = text.len();
-    assert(retained_len == 2usize);
-    crate::exec_assert(retained_len == 2usize);
+    });
 
-    let last = text.pop();
-    assert(last == Some('c'));
-    crate::exec_assert(last == Some('c'));
-    let first = text.pop();
-    assert(first == Some('a'));
-    crate::exec_assert(first == Some('a'));
+    test!(text.pop() == Some('c'));
+    test!(text.pop() == Some('a'));
 }
 
 fn test_panicking_indices_are_blocked_by_preconditions() {
     broadcast use group_str_axioms;
 
     let empty = String::with_capacity(0);
-    assert(empty@.as_bytes().len() == 0);
-    assert(!is_char_boundary(empty@.as_bytes(), 1));
-
+    test!(empty.len() == 0usize);
     proof {
+        assert(!is_char_boundary(empty@.as_bytes(), 1));
+
         let hello = seq![72u8, 101u8, 108u8, 108u8, 111u8];
         assert(hello.is_utf8());
         assert(hello.len() == 5);

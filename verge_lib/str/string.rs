@@ -16,14 +16,18 @@ pub assume_specification [ String::as_bytes ] (s: &String) -> (bytes: &[u8])
     no_unwind
 ;
 
-/// Enable `String::len`. Note that this returns length in bytes.
+/// Enable `String::len`.
+///
+/// Note that this returns length in bytes.
+#[verifier::allow_in_spec]
 pub assume_specification [ String::len ] (s: &String) -> (ret: usize)
-    ensures
-        ret == s@.as_bytes().len(),
+    returns
+        s@.as_bytes().len() as usize,
     no_unwind
 ;
 
 /// Enable `String::is_empty`. 
+#[verifier::allow_in_spec]
 pub assume_specification [ String::is_empty ] (s: &String) -> (ret: bool)
     returns
         s@.len() == 0,

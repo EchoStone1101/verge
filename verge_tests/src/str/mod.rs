@@ -45,17 +45,25 @@ fn test_string_truncate(s: &mut String)
     s.truncate(512);
 }
 
-fn test_utf8(s: &mut String) {
+fn test_utf8() {
     broadcast use group_str_axioms;
 
+    proof {
+        reveal_strlit("abc");
+        reveal_strlit("头");
+        reveal_strlit("尾");
+    }
+
+    let mut s = String::from_str("abc");
+    let ghost before = s@;
     s.insert_str(0, "头");
-    s.insert_str(s.len(), "尾");
-    assert(s@ == "头"@ + old(s)@ + "尾"@);
+    s.push_str("尾");
+    assert(s@ == "头"@ + before + "尾"@);
 
     let ghost hlen = "头"@.as_bytes().len();
     let ghost tlen = "尾"@.as_bytes().len();
     let ghost len = s@.as_bytes().len();
-    assert(s@.as_bytes().subrange(hlen as int, (len - tlen) as int) == old(s)@.as_bytes());
+    assert(s@.as_bytes().subrange(hlen as int, (len - tlen) as int) == before.as_bytes());
 }
 
 fn test_trim_ascii() {
@@ -262,15 +270,14 @@ fn test_str_get(s: &mut str)
     broadcast use group_str_axioms;
     let s1 = s.get(0..2);
     assert(s1 is Some);
-    let s2 = &s[3..4];
+    let _ = &s[3..4];
     let s3 = s.get_mut(5..6);
     assert(s3 is Some);
 }
 
 fn test_collect() {
     broadcast use group_str_axioms;
-    let array = &['a', 'b', 'c'];
-    let s = array.into_iter().collect::<Box<str>>();
+    let s = (&['a', 'b', 'c']).into_iter().collect::<Box<str>>();
 
     assert(s@.len() == 3);
 }
@@ -281,7 +288,9 @@ pub fn run() -> usize {
     let mut count = 0;
     count += crate::run_suite("str::chars", chars::run);
     count += crate::run_suite("str::fmt", fmt::run);
+    count += crate::run_suite("str::iter", iter::run);
     count += crate::run_suite("str::parse", parse::run);
+    count += crate::run_suite("str::pattern", pattern::run);
     count += crate::run_suite("str::string", string::run);
     count
 }

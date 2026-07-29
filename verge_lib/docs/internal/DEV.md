@@ -57,4 +57,4 @@ See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 
 ## Tests
 
-See `docs/internal/TESTS.md` for the testing scheme. In short, Verge API tests live in the separate `verge_tests/` crate as private `exec fn`s organized to mirror the `verge_lib` module layout; each migrated module exposes a `run()` hook for the executable driver. Verifying and running that crate exercises public visibility, downstream imports, runtime/spec agreement, and `broadcast_use_by_default_when_this_crate_is_imported` behavior instead of relying on `verge_lib` internals.
+See `docs/internal/TESTS.md` for the testing scheme. In short, Verge API tests live in the separate `verge_tests/` crate as private `exec fn`s organized to mirror the `verge_lib` module layout; each migrated module exposes a `run()` hook for the executable driver. Executable checks use scoped `test!` cases so proof hints for one runtime assertion do not leak into later checks. Verifying and running that crate exercises public visibility, downstream imports, runtime/spec agreement, and `broadcast_use_by_default_when_this_crate_is_imported` behavior instead of relying on `verge_lib` internals.

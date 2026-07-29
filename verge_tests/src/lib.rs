@@ -19,13 +19,32 @@
 use vstd::prelude::*;
 use std::io::Write;
 
+/// Prove and executably check one test condition in a fresh proof context.
+macro_rules! test {
+    ($($tail:tt)*) => {
+        ::vstd::prelude::verus_exec_macro_exprs!(test_internal!($($tail)*))
+    };
+}
+
+macro_rules! test_internal {
+    ($condition:expr $(,)?) => {{
+        $crate::exec_assert($condition);
+    }};
+
+    ($condition:expr, $proof:block $(,)?) => {{
+        $proof
+        $crate::exec_assert($condition);
+    }};
+}
+
 mod io;
 mod cmp;
 mod str;
 
 verus! {
 
-/// Executably assert a condition, to check for proof soundness.
+/// Runtime endpoint for `test!`; direct callers should prefer the macro so
+/// per-condition proof hints stay scoped.
 #[verifier::external_body]
 fn exec_assert(cond: bool)
     requires cond,
