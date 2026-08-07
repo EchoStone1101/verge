@@ -7,7 +7,7 @@ edition = "2024"
 vstd = "0.0.0-2026-05-31-0205"
 verus_builtin = "0.0.0-2026-05-17-0151"
 verus_builtin_macros = "0.0.0-2026-05-31-0205"
-verge = { path = "../verge_lib" }
+verge = { path = "../verge_lib", features = ["func_assume_lemmas"] }
 verge_macros = { path = "../verge_macros" }
 
 [package.metadata.verus]

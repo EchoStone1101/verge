@@ -12,6 +12,8 @@ verus! {
     crate::func::str::pattern::contains::lemma_str_contains_char_injective_by(s, ch; ret)
 )]
 //~doc-skip
+#[crate::func::assume_surjective]
+#[crate::func::assume_injective_by(s, ch; ret)]
 pub broadcast proof fn lemma_str_contains_char(s: Seq<char>, ch: char, ret: bool)
     requires
         #[trigger] str_contains_post(s, ch, ret),
@@ -78,6 +80,8 @@ pub broadcast proof fn lemma_str_contains_closure<F>(s: Seq<char>, f: F, ret: bo
 }
 
 //~doc-skip
+#[crate::func::assume_surjective]
+#[crate::func::assume_injective_by(s, chars@; ret)]
 pub broadcast proof fn lemma_str_contains_chars<'b>(s: Seq<char>, chars: &'b [char], ret: bool)
     requires
         #[trigger] str_contains_post(s, chars, ret),
@@ -114,6 +118,8 @@ pub broadcast proof fn lemma_str_contains_chars<'b>(s: Seq<char>, chars: &'b [ch
 }
 
 //~doc-skip
+#[crate::func::assume_surjective]
+#[crate::func::assume_injective_by(s, pat@; ret)]
 pub broadcast proof fn lemma_str_contains_string<'b>(s: Seq<char>, pat: &'b str, ret: bool)
     requires
         #[trigger] str_contains_post(s, pat, ret),

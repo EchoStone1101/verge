@@ -6,6 +6,8 @@ use super::internal::*;
 verus! {
 
 //~doc-skip
+#[crate::func::assume_surjective]
+#[crate::func::assume_injective_by(s, ch; (ret is Some, if ret is Some { ret->0@ } else { Seq::<char>::empty() }))]
 pub broadcast proof fn lemma_str_strip_suffix_char<'a>(s: Seq<char>, ch: char, ret: Option<&'a str>)
     requires
         #[trigger] str_strip_suffix_post(s, ch, ret),
@@ -142,6 +144,8 @@ pub broadcast proof fn lemma_str_strip_suffix_closure<'a, F>(s: Seq<char>, f: F,
 }
 
 //~doc-skip
+#[crate::func::assume_surjective]
+#[crate::func::assume_injective_by(s, chars@; (ret is Some, if ret is Some { ret->0@ } else { Seq::<char>::empty() }))]
 pub broadcast proof fn lemma_str_strip_suffix_chars<'a, 'b>(s: Seq<char>, chars: &'b [char], ret: Option<&'a str>)
     requires
         #[trigger] str_strip_suffix_post(s, chars, ret),
@@ -212,6 +216,8 @@ pub broadcast proof fn lemma_str_strip_suffix_chars<'a, 'b>(s: Seq<char>, chars:
 }
 
 //~doc-skip
+#[crate::func::assume_surjective]
+#[crate::func::assume_injective_by(s, pat@; (ret is Some, if ret is Some { ret->0@ } else { Seq::<char>::empty() }))]
 pub broadcast proof fn lemma_str_strip_suffix_string<'a, 'b>(s: Seq<char>, pat: &'b str, ret: Option<&'a str>)
     requires
         #[trigger] str_strip_suffix_post(s, pat, ret),

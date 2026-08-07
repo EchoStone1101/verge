@@ -6,6 +6,8 @@ use super::internal::*;
 verus! {
 
 //~doc-skip
+#[crate::func::assume_surjective]
+#[crate::func::assume_injective_by(s, ch; ret)]
 pub broadcast proof fn lemma_str_ends_with_char(s: Seq<char>, ch: char, ret: bool)
     requires
         #[trigger] str_ends_with_post(s, ch, ret),
@@ -77,6 +79,8 @@ pub broadcast proof fn lemma_str_ends_with_closure<F>(s: Seq<char>, f: F, ret: b
 }
 
 //~doc-skip
+#[crate::func::assume_surjective]
+#[crate::func::assume_injective_by(s, chars@; ret)]
 pub broadcast proof fn lemma_str_ends_with_chars<'b>(s: Seq<char>, chars: &'b [char], ret: bool)
     requires
         #[trigger] str_ends_with_post(s, chars, ret),
@@ -112,6 +116,8 @@ pub broadcast proof fn lemma_str_ends_with_chars<'b>(s: Seq<char>, chars: &'b [c
 }
 
 //~doc-skip
+#[crate::func::assume_surjective]
+#[crate::func::assume_injective_by(s, pat@; ret)]
 pub broadcast proof fn lemma_str_ends_with_string<'b>(s: Seq<char>, pat: &'b str, ret: bool)
     requires
         #[trigger] str_ends_with_post(s, pat, ret),

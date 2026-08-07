@@ -26,9 +26,9 @@ fn test_from_str_char_examples() {
 }
 
 fn test_int_from_str_boundary_cases() {
-    test!(matches!(<u8 as FromStr>::from_str("255"), Ok(255u8)));
-    test!(matches!(<i8 as FromStr>::from_str("127"), Ok(127i8)));
-    test!(matches!(<i8 as FromStr>::from_str("-128"), Ok(-128i8)));
+    test!(<u8 as FromStr>::from_str("255") == Ok(255));
+    test!(<i8 as FromStr>::from_str("127") == Ok(127));
+    test!(<i8 as FromStr>::from_str("-128") == Ok(-128));
 }
 
 fn test_int_from_str_error_kind_cases() {
@@ -81,19 +81,19 @@ fn test_from_str_radix_leading_plus_boundary_from_core() {
 
 fn test_to_string_round_trips_are_usable() {
     test!(matches!(<bool as FromStr>::from_str((true.to_string()).as_str()), Ok(true)), {
-        <bool as FromToStr>::lemma_round_tripping(true);
+        proof { <bool as FromToStr>::lemma_round_tripping(true) }
     });
 
     test!(matches!(<char as FromStr>::from_str(('q'.to_string()).as_str()), Ok('q')), {
-        <char as FromToStr>::lemma_round_tripping('q');
+        proof { <char as FromToStr>::lemma_round_tripping('q') }
     });
 
     test!(matches!(<i32 as FromStr>::from_str(((-123i32).to_string()).as_str()), Ok(-123i32)), {
-        <i32 as FromToStr>::lemma_round_tripping(-123i32);
+        proof { <i32 as FromToStr>::lemma_round_tripping(-123i32) }
     });
 
     test!(matches!(<u32 as FromStr>::from_str((42u32.to_string()).as_str()), Ok(42u32)), {
-        <u32 as FromToStr>::lemma_round_tripping(42u32);
+        proof { <u32 as FromToStr>::lemma_round_tripping(42u32) }
     });
 }
 

@@ -6,6 +6,8 @@ use super::internal::*;
 verus! {
 
 //~doc-skip
+#[crate::func::assume_surjective]
+#[crate::func::assume_injective_by(s, n, ch; iter_seq.map_values(|s: &str| s@))]
 pub broadcast proof fn lemma_str_splitn_iter_char<'a>(s: Seq<char>, n: usize, ch: char, iter_seq: Seq<&'a str>)
     requires
         #[trigger] str_splitn_iter_post(s, n, ch, iter_seq),

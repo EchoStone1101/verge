@@ -6,6 +6,8 @@ use super::internal::*;
 verus! {
 
 //~doc-skip
+#[crate::func::assume_surjective]
+#[crate::func::assume_injective_by(s, ch; ret)]
 pub broadcast proof fn lemma_str_find_char(s: Seq<char>, ch: char, ret: Option<usize>)
     requires
         #[trigger] str_find_post(s, ch, ret),
@@ -124,6 +126,8 @@ pub broadcast proof fn lemma_str_find_closure<F>(s: Seq<char>, f: F, ret: Option
 }
 
 //~doc-skip
+#[crate::func::assume_surjective]
+#[crate::func::assume_injective_by(s, chars@; ret)]
 pub broadcast proof fn lemma_str_find_chars<'b>(s: Seq<char>, chars: &'b [char], ret: Option<usize>)
     requires
         #[trigger] str_find_post(s, chars, ret),
@@ -187,6 +191,8 @@ pub broadcast proof fn lemma_str_find_chars<'b>(s: Seq<char>, chars: &'b [char],
 }
 
 //~doc-skip
+#[crate::func::assume_surjective]
+#[crate::func::assume_injective_by(s, pat@; ret)]
 pub broadcast proof fn lemma_str_find_string<'b>(s: Seq<char>, pat: &'b str, ret: Option<usize>)
     requires
         #[trigger] str_find_post(s, pat, ret),

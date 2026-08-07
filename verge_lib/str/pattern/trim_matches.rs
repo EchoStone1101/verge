@@ -6,6 +6,8 @@ use super::internal::*;
 verus! {
 
 //~doc-skip
+#[crate::func::assume_surjective]
+#[crate::func::assume_injective_by(s, ch; ret)]
 pub broadcast proof fn lemma_str_trim_matches_char(s: Seq<char>, ch: char, ret: Seq<char>)
     requires
         #[trigger] str_trim_matches_post(s, ch, ret),
@@ -285,6 +287,8 @@ pub broadcast proof fn lemma_str_trim_matches_closure<F>(s: Seq<char>, f: F, ret
 }
 
 //~doc-skip
+#[crate::func::assume_surjective]
+#[crate::func::assume_injective_by(s, chars@; ret)]
 pub broadcast proof fn lemma_str_trim_matches_chars<'b>(s: Seq<char>, chars: &'b [char], ret: Seq<char>)
     requires
         #[trigger] str_trim_matches_post(s, chars, ret),

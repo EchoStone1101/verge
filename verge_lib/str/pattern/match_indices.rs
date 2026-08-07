@@ -6,6 +6,8 @@ use super::internal::*;
 verus! {
 
 //~doc-skip
+#[crate::func::assume_surjective]
+#[crate::func::assume_injective_by(s, ch; iter_seq.map_values(|item: (usize, &str)| (item.0, item.1@)))]
 pub broadcast proof fn lemma_str_match_indices_iter_char<'a>(s: Seq<char>, ch: char, iter_seq: Seq<(usize, &'a str)>)
     requires
         #[trigger] str_match_indices_iter_post(s, ch, iter_seq),
