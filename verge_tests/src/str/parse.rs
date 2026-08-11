@@ -1,6 +1,7 @@
 //! Tests for `std::str::FromStr` and integer parsing APIs specified by Verge.
 
 use vstd::prelude::*;
+use vstd::assert_by_contradiction;
 use verge::prelude::*;
 use verge::str::*;
 use std::str::FromStr;
@@ -8,37 +9,98 @@ use std::str::FromStr;
 verus! {
 
 fn test_from_str_method_postconditions() {
-    test!(matches!("true".parse::<bool>(), Ok(true)));
-    test!(matches!("a".parse::<char>(), Ok('a')));
-    test!(matches!("4".parse::<u32>(), Ok(4u32)));
+    test!(matches!("true".parse::<bool>(), Ok(true)), {
+        proof { reveal_strlit("true") }
+    });
+    test!(matches!("a".parse::<char>(), Ok('a')), {
+        proof { reveal_strlit("a") }
+    });
+    test!(matches!("4".parse::<u32>(), Ok(4u32)), {
+        proof { 
+            reveal_strlit("4");
+            reveal(spec_int_from_str_radix);
+            reveal_with_fuel(spec_int_from_str_radix_rec, 2);
+        }
+    });
 }
 
 fn test_from_str_bool_examples() {
+    proof { 
+        reveal_strlit("x");
+        reveal_strlit("true");
+        reveal_strlit("false");
+    }
     test!(matches!(<bool as FromStr>::from_str("true"), Ok(true)));
     test!(matches!(<bool as FromStr>::from_str("false"), Ok(false)));
-    test!(<bool as FromStr>::from_str("x").is_err());
+    test!(<bool as FromStr>::from_str("x").is_err(), {
+        proof {
+            assert_by_contradiction!(!exists|v: bool| <bool as verge::str::FromStrSpec>::from_str_ok_ensures("x"@, v), {
+                let v = choose|v: bool| <bool as verge::str::FromStrSpec>::from_str_ok_ensures("x"@, v);
+                assert("x"@ == "true"@ || "x"@ == "false"@);
+            });
+        }
+    });
 }
 
 fn test_from_str_char_examples() {
+    proof {
+        reveal_strlit("a");
+        reveal_strlit("");
+        reveal_strlit("abc");
+    }
+
     test!(matches!(<char as FromStr>::from_str("a"), Ok('a')));
     test!(<char as FromStr>::from_str("").is_err());
     test!(<char as FromStr>::from_str("abc").is_err());
 }
 
 fn test_int_from_str_boundary_cases() {
-    test!(<u8 as FromStr>::from_str("255") == Ok(255));
-    test!(<i8 as FromStr>::from_str("127") == Ok(127));
-    test!(<i8 as FromStr>::from_str("-128") == Ok(-128));
+    broadcast use verge::cmp::result::group_result_ordering;
+    broadcast use verge::str::parse::group_parse_error_comparison;
+    proof {
+        reveal_strlit("255");
+        reveal_strlit("127");
+        reveal_strlit("-128");
+        reveal(spec_int_from_str_radix);
+        reveal_with_fuel(spec_int_from_str_radix_rec, 4);
+    }
+    
+    // XXX: due to a bug in Verus's parser, `Ok(-128i8)` inside `matches!` is 
+    // not accepted; thus direct `exec` comparison is used here.
+    // As a by product this also showcases how proofs for that is done.
+    test!(<u8 as FromStr>::from_str("255") == Ok(255), {
+        assert(<u8 as FromStrSpec>::from_str_ok_ensures("255"@, 255u8));
+    });
+    test!(<i8 as FromStr>::from_str("127") == Ok(127), {
+        assert(<i8 as FromStrSpec>::from_str_ok_ensures("127"@, 127i8));
+    });
+    test!(<i8 as FromStr>::from_str("-128") == Ok(-128), {
+        assert(<i8 as FromStrSpec>::from_str_ok_ensures("-128"@, -128i8));
+    });
 }
 
 fn test_int_from_str_error_kind_cases() {
+    proof {
+        reveal_strlit("");
+        reveal_strlit("123Hello");
+        reveal_strlit("-");
+        reveal_strlit("-1");
+        reveal_strlit("256");
+        reveal_strlit("128");
+        reveal_strlit("-129");
+        reveal(spec_int_from_str_radix);
+        reveal_with_fuel(spec_int_from_str_radix_rec, 8);
+    }
+
     let empty = <u8 as FromStr>::from_str("");
     test!(empty.is_err());
     assert(empty->Err_0.kind() is Empty);
 
     let trailing_text = <u8 as FromStr>::from_str("123Hello");
     test!(trailing_text.is_err());
-    assert(trailing_text->Err_0.kind() is InvalidDigit);
+    assert(trailing_text->Err_0.kind() is InvalidDigit) by {
+        assert(!char_is_digit_radix("123Hello"@[3], 10));
+    }
 
     let bare_minus = <i8 as FromStr>::from_str("-");
     test!(bare_minus.is_err());
@@ -62,13 +124,25 @@ fn test_int_from_str_error_kind_cases() {
 }
 
 fn test_from_str_radix_examples() {
+    proof {
+        reveal_strlit("1001");
+        reveal_strlit("ffff");
+        reveal_strlit("z");
+        reveal_strlit("Z");
+        reveal_strlit("_");
+        reveal(spec_int_from_str_radix);
+        reveal_with_fuel(spec_int_from_str_radix_rec, 8);
+    }
+
     test!(matches!(u32::from_str_radix("1001", 2), Ok(9u32)));
     test!(matches!(u16::from_str_radix("ffff", 16), Ok(65535u16)));
     test!(matches!(u8::from_str_radix("z", 36), Ok(35u8)));
 
     let invalid_decimal = u8::from_str_radix("Z", 10);
     test!(invalid_decimal.is_err());
-    assert(invalid_decimal->Err_0.kind() is InvalidDigit);
+    assert(invalid_decimal->Err_0.kind() is InvalidDigit) by {
+        assert(!char_is_digit_radix("Z"@[0], 10));
+    }
 
     let invalid_binary = u8::from_str_radix("_", 2);
     test!(invalid_binary.is_err());
@@ -76,6 +150,13 @@ fn test_from_str_radix_examples() {
 }
 
 fn test_from_str_radix_leading_plus_boundary_from_core() {
+    broadcast use verge::cmp::result::group_result_ordering;
+    broadcast use verge::str::parse::group_parse_error_comparison;
+    proof {
+        reveal_strlit("+9223372036854775807");
+        reveal(spec_int_from_str_radix);
+        reveal_with_fuel(spec_int_from_str_radix_rec, 24);
+    }
     test!(i64::from_str_radix("+9223372036854775807", 10) == Ok(i64::MAX));
 }
 

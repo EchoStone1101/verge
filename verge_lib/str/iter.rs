@@ -294,7 +294,24 @@ impl_iterator!(
     [ SplitWhitespace['a] as VergeSplitWhitespace['_] :: Item = &'a str ]
     [ [str as View<V=Seq<char>>] :: split_whitespace_iter via split_whitespace ] 
     (&self,) -> |iter| {
-        str_split_whitespace_iter_post(self@, iter.seq())
+        // splits are non-empty
+        &&& forall |i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len() ==>
+                iter.seq()[i]@.len() > 0
+        // splits cannot have whitespaces
+        &&& forall |i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len() ==>
+                forall |j: int| #![trigger iter.seq()[i]@[j]] 0 <= j < iter.seq()[i]@.len() ==>
+                    !iter.seq()[i]@[j].is_whitespace()
+        &&& exists |sps: Seq<Seq<char>>| #![trigger sps.len()] {
+            &&& sps.len() == iter.seq().len() + 1
+            // delimeters are all whitespaces
+            &&& forall |i: int| #![trigger sps[i]] 0 <= i < sps.len() ==>
+                    forall |j: int| #![trigger sps[i][j]] 0 <= j < sps[i].len() ==>
+                        sps[i][j].is_whitespace()
+            &&& forall |i: int| #![trigger sps[i]] 1 <= i < sps.len() - 1 ==>
+                    sps[i].len() > 0
+            // delimeters and lines make up the original string
+            &&& self@ =~= join(Seq::new(iter.seq().len(), |j: int| iter.seq()[j]@), sps)
+        }
     }
 );
 
@@ -309,7 +326,24 @@ impl_iterator!(
     [ SplitAsciiWhitespace['a] as VergeSplitAsciiWhitespace['_] :: Item = &'a str ]
     [ [str as View<V=Seq<char>>] :: split_ascii_whitespace_iter via split_ascii_whitespace ] 
     (&self,) -> |iter| {
-        str_split_ascii_whitespace_iter_post(self@, iter.seq())
+        // splits are non-empty
+        &&& forall |i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len() ==>
+                iter.seq()[i]@.len() > 0
+        // splits cannot have ASCII whitespaces
+        &&& forall |i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len() ==>
+                forall |j: int| #![trigger iter.seq()[i]@[j]] 0 <= j < iter.seq()[i]@.len() ==>
+                    !iter.seq()[i]@[j].is_ascii_whitespace()
+        &&& exists |sps: Seq<Seq<char>>| #![trigger sps.len()] {
+            &&& sps.len() == iter.seq().len() + 1
+            // delimeters are all ASCII whitespaces
+            &&& forall |i: int| #![trigger sps[i]] 0 <= i < sps.len() ==>
+                    forall |j: int| #![trigger sps[i][j]] 0 <= j < sps[i].len() ==>
+                        sps[i][j].is_ascii_whitespace()
+            &&& forall |i: int| #![trigger sps[i]] 1 <= i < sps.len() - 1 ==>
+                    sps[i].len() > 0
+            // delimeters and lines make up the original string
+            &&& self@ =~= join(Seq::new(iter.seq().len(), |j: int| iter.seq()[j]@), sps)
+        }
     }
 );
 

@@ -22,6 +22,7 @@
 #![allow(unused_doc_comments)]
 #![allow(dead_code)]
 #![allow(unused_attributes)]
+#![allow(private_bounds)]
 #![allow(rustdoc::invalid_rust_codeblocks)]
 #![feature(allocator_api)]
 #![feature(sized_hierarchy)]
@@ -57,6 +58,9 @@ macro_rules! impl_maybe_generic {
 }
 
 verus! {
+
+/// Shared marker trait used to seal internal traits.
+pub(crate) trait Sealed {}
 
 pub mod clone;
 pub mod cmp;

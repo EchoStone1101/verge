@@ -5,6 +5,7 @@
 //! validity predicate and value/error postconditions of `from_str()`.
 use super::*;
 use vstd::std_specs::result::{spec_unwrap_err, spec_unwrap};
+use vstd::std_specs::cmp::PartialEqSpec;
 use vstd::prelude::Integer;
 use vstd::assert_by_contradiction;
 pub use std::str::ParseBoolError;
@@ -106,7 +107,6 @@ pub assume_specification[ ParseIntError::kind ](e: &ParseIntError) -> (kind: &In
 
 /// This function encodes whether a string can be parsed as an arbitrarily large `int` in 
 /// the supplied radix, ignoring machine-integer bounds.
-#[verifier::opaque]
 pub open spec fn str_is_valid_int_radix(s: Seq<char>, radix: int, signed: bool) -> bool
     recommends
         2 <= radix,
@@ -138,6 +138,8 @@ pub open spec fn spec_int_from_str_radix(s: Seq<char>, radix: int) -> int
 
 /// This function encodes parsing an unsigned digit sequence as an arbitrarily large `int`,
 /// recursively, in the supplied radix.
+///
+/// Invalid sequences map to arbitrary values.
 pub open spec fn spec_int_from_str_radix_rec(s: Seq<char>, radix: int) -> int
     recommends
         2 <= radix,
@@ -147,10 +149,12 @@ pub open spec fn spec_int_from_str_radix_rec(s: Seq<char>, radix: int) -> int
 {
     if s.len() == 0 {
         0
-    } else {
+    } else if char_is_digit_radix(s.last(), radix) {
         radix
         * spec_int_from_str_radix_rec(s.drop_last(), radix) 
         + char_digit_value(s.last())
+    } else {
+        arbitrary::<int>()
     }
 }
 
@@ -164,7 +168,7 @@ pub open spec fn char_is_digit_radix(c: char, radix: int) -> bool
 
 /// Encodes the numeric value of an ASCII radix digit.
 ///
-/// Non-digits map to `-1`; use `char_is_digit_radix` when checking validity.
+/// Non-digits map to an arbitrary negative value; use `char_is_digit_radix` when checking validity.
 pub open spec fn char_digit_value(c: char) -> int {
     if (CHAR_ZERO as int) <= (c as u32) <= (CHAR_NINE as int) {
         (c as u32) as int - (CHAR_ZERO as int)
@@ -173,7 +177,8 @@ pub open spec fn char_digit_value(c: char) -> int {
     } else if (CHAR_UPPER_A as int) <= (c as u32) <= (CHAR_UPPER_Z as int) {
         (c as u32) as int - (CHAR_UPPER_A as int) + 10
     } else {
-        -1
+        // this makes sure the value is definitely not a valid digit
+        -(arbitrary::<nat>() as int + 1)
     }
 }
 
@@ -410,7 +415,6 @@ mod int_proofs {
             str_is_valid_int_radix(spec_int_to_str(n), 10, signed),
             spec_int_from_str_radix(spec_int_to_str(n), 10) == n,
     {
-        reveal(str_is_valid_int_radix);
         reveal(spec_int_from_str_radix);
         reveal(spec_int_to_str);
         if n == 0 {
@@ -494,5 +498,81 @@ mod int_proofs {
         }
     }
 }
+
+/// Linking lemmas for parsing errors to be compared in `exec`-mode.
+pub broadcast group group_parse_error_comparison {
+    lemma_parse_bool_error_obeys_eq_spec,
+    lemma_parse_bool_error_eq_spec,
+    lemma_parse_char_error_obeys_eq_spec,
+    lemma_parse_int_error_obeys_eq_spec,
+    lemma_parse_int_error_eq_spec,
+    lemma_int_error_kind_obeys_eq_spec,
+    lemma_int_error_kind_eq_spec,
+}
+
+/// Proof that asserts `ParseBoolError` obeys `PartialEq`.
+pub broadcast axiom fn lemma_parse_bool_error_obeys_eq_spec()
+    ensures
+        #[trigger] <ParseBoolError as PartialEqSpec>::obeys_eq_spec();
+
+/// Proof that interprets `ParseBoolError::eq_spec`.
+pub broadcast axiom fn lemma_parse_bool_error_eq_spec(a: &ParseBoolError, b: &ParseBoolError)
+    ensures
+        #![trigger <ParseBoolError as PartialEqSpec>::eq_spec(a, b)]
+        <ParseBoolError as PartialEqSpec>::eq_spec(a, b) == true;
+
+/// Enable `ParseBoolError::eq`.
+pub assume_specification[ <ParseBoolError as PartialEq>::eq ](
+    x: &ParseBoolError,
+    y: &ParseBoolError,
+) -> bool;
+
+/// Proof that asserts `ParseCharError` obeys `PartialEq`.
+pub broadcast axiom fn lemma_parse_char_error_obeys_eq_spec()
+    ensures
+        #[trigger] <ParseCharError as PartialEqSpec>::obeys_eq_spec();
+
+// Because `ParseCharError` does not expose its kind like `ParseIntError` does, 
+// the `eq_spec` is left uninterpreted here.
+
+/// Enable `ParseCharError::eq`.
+pub assume_specification[ <ParseCharError as PartialEq>::eq ](
+    x: &ParseCharError,
+    y: &ParseCharError,
+) -> bool;
+
+/// Proof that asserts `ParseIntError` obeys `PartialEq`.
+pub broadcast axiom fn lemma_parse_int_error_obeys_eq_spec()
+    ensures
+        #[trigger] <ParseIntError as PartialEqSpec>::obeys_eq_spec();
+
+/// Proof that interprets `ParseIntError::eq_spec`.
+pub broadcast axiom fn lemma_parse_int_error_eq_spec(a: &ParseIntError, b: &ParseIntError)
+    ensures
+        #![trigger <ParseIntError as PartialEqSpec>::eq_spec(a, b)]
+        <ParseIntError as PartialEqSpec>::eq_spec(a, b) == (a.kind() == b.kind());
+
+/// Enable `ParseIntError::eq`.
+pub assume_specification[ <ParseIntError as PartialEq>::eq ](
+    x: &ParseIntError,
+    y: &ParseIntError,
+) -> bool;
+
+/// Proof that asserts `IntErrorKind` obeys `PartialEq`.
+pub broadcast axiom fn lemma_int_error_kind_obeys_eq_spec()
+    ensures
+        #[trigger] <IntErrorKind as PartialEqSpec>::obeys_eq_spec();
+
+/// Proof that interprets `IntErrorKind::eq_spec`.
+pub broadcast axiom fn lemma_int_error_kind_eq_spec(a: &IntErrorKind, b: &IntErrorKind)
+    ensures
+        #![trigger <IntErrorKind as PartialEqSpec>::eq_spec(a, b)]
+        <IntErrorKind as PartialEqSpec>::eq_spec(a, b) == (a == b);
+
+/// Enable `IntErrorKind::eq`.
+pub assume_specification[ <IntErrorKind as PartialEq>::eq ](
+    x: &IntErrorKind,
+    y: &IntErrorKind,
+) -> bool;
 
 } // verus!
