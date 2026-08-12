@@ -1,396 +1,679 @@
 # `verge::str::pattern`
 
-Specifications and lemmas for string pattern related operations.
+Monomorphic specifications for string pattern operations.
 
-## Specification Methodology
-To specify `str::split`, `str::contains`, and other methods that make use of
-the `std::str::Pattern` trait, Verus adopts the "linking lemma" pattern,
-where generic post-conditions are captured via `uninterp spec` functions
-(e.g., `str_contains_post`). Then, broadcast lemmas use the general
-specs as triggers to automatically introduce actual specs per pattern type
-(e.g., `lemma_str_contains_str` for `&str` patterns, `lemma_str_contains_char`
-for `char` patterns). This design minimizes both spec redundancy and user burden
-(thanks to automatic broadcasting).
-
-Additionally, while the lemma post-conditions are meant to be complete (in that they
-uniquely define the output), Verge cannot predict all forms of wanted specs,
-which can be particularly a problem for the more intricate APIs (e.g., `str::split`
-with `&str` patterns). In this case, it is helpful to understand that all the
-immediate post-conditions are internally derived from the forward and backward
-pattern matching operations (`spec_matches` and `spec_rmatches`), serving as
-a complete and basic spec foundation.
-By default this is hidden by `#[verifier::opaque]`, but could be `reveal`-ed
-to help prove alternative specs in certain contexts (e.g., more intuitive `str::split`
-specs when `pat@.len() == 1`), or show consistency between APIs (e.g., `str::split` and
-`str::matches` join into the original string).
+Rust's `str` pattern APIs are generic over the unstable `Pattern` trait.
+Verge exposes a concrete extension-trait surface instead: every supported
+pattern kind has its own method suffix (`_ch`, `_chars`, `_fn`, or `_str`),
+and each method carries a monomorphic specification respectively.
 
 
 ## Traits
 
 
-### `ExPattern`
-
-Enables `std::str::pattern::Pattern`.
+### `StrPatternFns`
 
 ```rust
-pub trait ExPattern: Sized
+pub trait StrPatternFns: View<V = Seq<char>>
 ```
 
 
-### `ExSearcher`
+#### `contains_ch`
 
 ```rust
-pub trait ExSearcher<'a>
+fn contains_ch(&self, ch: char) -> (ret: bool)
+    ensures
+        ret == exists |i: int| 0 <= i < self@.len() && self@[i] == ch;
 ```
 
 
-### `ExReverseSearcher`
+#### `contains_chars`
 
 ```rust
-pub trait ExReverseSearcher<'a>: Searcher<'a>
+fn contains_chars<'a>(&self, chars: &'a [char]) -> (ret: bool)
+    ensures
+        ret == exists |i: int| 0 <= i < self@.len() && #[trigger] chars@.contains(self@[i]);
 ```
 
 
-### `ExDoubleEndedSearcher`
+#### `contains_fn`
 
 ```rust
-pub trait ExDoubleEndedSearcher<'a>: ReverseSearcher<'a>
+fn contains_fn<F>(&self, f: F) -> (ret: bool)
+    where F: FnMut(char) -> bool,
+    requires is_deterministic(f) && is_total(f),
+    ensures
+        ret == exists |i: int| 0 <= i < self@.len() && #[trigger] call_ensures(f, (self@[i],), true);
+```
+
+
+#### `contains_str`
+
+```rust
+fn contains_str<'a>(&self, pat: &'a str) -> (ret: bool)
+    ensures
+        ret == pat@.is_subrange_of(self@);
+```
+
+
+#### `starts_with_ch`
+
+```rust
+fn starts_with_ch(&self, ch: char) -> (ret: bool)
+    ensures
+        ret == (self@.len() > 0 && self@.first() == ch);
+```
+
+
+#### `starts_with_chars`
+
+```rust
+fn starts_with_chars<'a>(&self, chars: &'a [char]) -> (ret: bool)
+    ensures
+        ret == (self@.len() > 0 && #[trigger] chars@.contains(self@.first()));
+```
+
+
+#### `starts_with_fn`
+
+```rust
+fn starts_with_fn<F>(&self, f: F) -> (ret: bool)
+    where F: FnMut(char) -> bool,
+    requires is_deterministic(f) && is_total(f),
+    ensures
+        ret == (self@.len() > 0 && #[trigger] call_ensures(f, (self@.first(),), true));
+```
+
+
+#### `starts_with_str`
+
+```rust
+fn starts_with_str<'a>(&self, pat: &'a str) -> (ret: bool)
+    ensures
+        ret == pat@.is_prefix_of(self@);
+```
+
+
+#### `ends_with_ch`
+
+```rust
+fn ends_with_ch(&self, ch: char) -> (ret: bool)
+    ensures
+        ret == (self@.len() > 0 && self@.last() == ch);
+```
+
+
+#### `ends_with_chars`
+
+```rust
+fn ends_with_chars<'a>(&self, chars: &'a [char]) -> (ret: bool)
+    ensures
+        ret == (self@.len() > 0 && #[trigger] chars@.contains(self@.last()));
+```
+
+
+#### `ends_with_fn`
+
+```rust
+fn ends_with_fn<F>(&self, f: F) -> (ret: bool)
+    where F: FnMut(char) -> bool,
+    requires is_deterministic(f) && is_total(f),
+    ensures
+        ret == (self@.len() > 0 && #[trigger] call_ensures(f, (self@.last(),), true));
+```
+
+
+#### `ends_with_str`
+
+```rust
+fn ends_with_str<'a>(&self, pat: &'a str) -> (ret: bool)
+    ensures
+        ret == pat@.is_suffix_of(self@);
+```
+
+
+#### `find_ch`
+
+```rust
+fn find_ch(&self, ch: char) -> (ret: Option<usize>)
+    ensures
+        match ret {
+        None => forall |i: int| 0 <= i < self@.len() ==> self@[i] != ch,
+        Some(k) => {
+        let i = decode_utf8(self@.as_bytes().take(k as int)).len() as int;
+        &&& is_char_boundary(self@.as_bytes(), k as int)
+        &&& i < self@.len()
+        &&& self@[i] == ch
+        &&& forall |j: int| 0 <= j < i ==> self@[j] != ch
+        },
+        };
+```
+
+
+#### `find_chars`
+
+```rust
+fn find_chars<'a>(&self, chars: &'a [char]) -> (ret: Option<usize>)
+    ensures
+        match ret {
+        None => forall |i: int| 0 <= i < self@.len() ==> !#[trigger] chars@.contains(self@[i]),
+        Some(k) => {
+        let i = decode_utf8(self@.as_bytes().take(k as int)).len() as int;
+        &&& is_char_boundary(self@.as_bytes(), k as int)
+        &&& i < self@.len()
+        &&& chars@.contains(self@[i])
+        &&& forall |j: int| 0 <= j < i ==> !#[trigger] chars@.contains(self@[j])
+        },
+        };
+```
+
+
+#### `find_fn`
+
+```rust
+fn find_fn<F>(&self, f: F) -> (ret: Option<usize>)
+    where F: FnMut(char) -> bool,
+    requires is_deterministic(f) && is_total(f),
+    ensures
+        match ret {
+        None => forall |i: int| 0 <= i < self@.len() ==> !#[trigger] call_ensures(f, (self@[i],), true),
+        Some(k) => {
+        let i = decode_utf8(self@.as_bytes().take(k as int)).len() as int;
+        &&& is_char_boundary(self@.as_bytes(), k as int)
+        &&& i < self@.len()
+        &&& call_ensures(f, (self@[i],), true)
+        &&& forall |j: int| 0 <= j < i ==> !#[trigger] call_ensures(f, (self@[j],), true)
+        },
+        };
+```
+
+
+#### `find_str`
+
+```rust
+fn find_str<'a>(&self, pat: &'a str) -> (ret: Option<usize>)
+    ensures
+        match ret {
+        None => !pat@.is_subrange_of(self@),
+        Some(k) => {
+        let i = decode_utf8(self@.as_bytes().take(k as int)).len() as int;
+        &&& is_char_boundary(self@.as_bytes(), k as int)
+        &&& i + pat@.len() <= self@.len()
+        &&& pat@ == self@.subrange(i, i + pat@.len())
+        &&& forall |j: int| 0 <= j < i ==> pat@ != #[trigger] self@.subrange(j, j + pat@.len())
+        },
+        };
+```
+
+
+#### `rfind_ch`
+
+```rust
+fn rfind_ch(&self, ch: char) -> (ret: Option<usize>)
+    ensures
+        match ret {
+            None => forall |i: int| 0 <= i < self@.len() ==> self@[i] != ch,
+            Some(k) => {
+                let i = decode_utf8(self@.as_bytes().take(k as int)).len() as int;
+                &&& is_char_boundary(self@.as_bytes(), k as int)
+                &&& i < self@.len()
+                &&& self@[i] == ch
+                &&& forall |j: int| i < j < self@.len() ==> self@[j] != ch
+            },
+        };
+```
+
+
+#### `rfind_chars`
+
+```rust
+fn rfind_chars<'a>(&self, chars: &'a [char]) -> (ret: Option<usize>)
+    ensures
+        match ret {
+        None => forall |i: int| 0 <= i < self@.len() ==> !#[trigger] chars@.contains(self@[i]),
+        Some(k) => {
+        let i = decode_utf8(self@.as_bytes().take(k as int)).len() as int;
+        &&& is_char_boundary(self@.as_bytes(), k as int)
+        &&& i < self@.len()
+        &&& chars@.contains(self@[i])
+        &&& forall |j: int| i < j < self@.len() ==> !#[trigger] chars@.contains(self@[j])
+        },
+        };
+```
+
+
+#### `rfind_fn`
+
+```rust
+fn rfind_fn<F>(&self, f: F) -> (ret: Option<usize>)
+    where F: FnMut(char) -> bool,
+    requires is_deterministic(f) && is_total(f),
+    ensures
+        match ret {
+        None => forall |i: int| 0 <= i < self@.len() ==> !#[trigger] call_ensures(f, (self@[i],), true),
+        Some(k) => {
+        let i = decode_utf8(self@.as_bytes().take(k as int)).len() as int;
+        &&& is_char_boundary(self@.as_bytes(), k as int)
+        &&& i < self@.len()
+        &&& call_ensures(f, (self@[i],), true)
+        &&& forall |j: int| i < j < self@.len() ==> !#[trigger] call_ensures(f, (self@[j],), true)
+        },
+        };
+```
+
+
+#### `rfind_str`
+
+```rust
+fn rfind_str<'a>(&self, pat: &'a str) -> (ret: Option<usize>)
+    ensures
+        match ret {
+        None => !pat@.is_subrange_of(self@),
+        Some(k) => {
+        let i = decode_utf8(self@.as_bytes().take(k as int)).len() as int;
+        &&& is_char_boundary(self@.as_bytes(), k as int)
+        &&& i + pat@.len() <= self@.len()
+        &&& pat@ == self@.subrange(i, i + pat@.len())
+        &&& forall |j: int| i < j <= self@.len() - pat@.len()
+            ==> pat@ != #[trigger] self@.subrange(j, j + pat@.len())
+        },
+        };
+```
+
+
+#### `split_once_ch`
+
+```rust
+fn split_once_ch<'a>(&'a self, ch: char) -> (ret: Option<(&'a str, &'a str)>)
+    ensures
+        match ret {
+        None => forall |i: int| 0 <= i < self@.len() ==> self@[i] != ch,
+        Some((head, tail)) => {
+        &&& self@ =~= head@ + seq![ch] + tail@
+        &&& forall |i: int| 0 <= i < head@.len() ==> self@[i] != ch
+        },
+        };
+```
+
+
+#### `split_once_chars`
+
+```rust
+fn split_once_chars<'a, 'b>(&'a self, chars: &'b [char]) -> (ret: Option<(&'a str, &'a str)>)
+    ensures
+        match ret {
+        None => forall |i: int| 0 <= i < self@.len() ==> !#[trigger] chars@.contains(self@[i]),
+        Some((head, tail)) => {
+        let i = head@.len() as int;
+        &&& i < self@.len()
+        &&& self@ =~= head@ + seq![self@[i]] + tail@
+        &&& chars@.contains(self@[i])
+        &&& forall |j: int| 0 <= j < i ==> !#[trigger] chars@.contains(self@[j])
+        },
+        };
+```
+
+
+#### `split_once_fn`
+
+```rust
+fn split_once_fn<'a, F>(&'a self, f: F) -> (ret: Option<(&'a str, &'a str)>)
+    where F: FnMut(char) -> bool,
+    requires is_deterministic(f) && is_total(f),
+    ensures
+        match ret {
+        None => forall |i: int| 0 <= i < self@.len() ==> !#[trigger] call_ensures(f, (self@[i],), true),
+        Some((head, tail)) => {
+        let i = head@.len() as int;
+        &&& i < self@.len()
+        &&& self@ =~= head@ + seq![self@[i]] + tail@
+        &&& call_ensures(f, (self@[i],), true)
+        &&& forall |j: int| 0 <= j < i ==> !#[trigger] call_ensures(f, (self@[j],), true)
+        },
+        };
+```
+
+
+#### `split_once_str`
+
+```rust
+fn split_once_str<'a, 'b>(&'a self, pat: &'b str) -> (ret: Option<(&'a str, &'a str)>)
+    ensures
+        match ret {
+        None => !pat@.is_subrange_of(self@),
+        Some((head, tail)) => {
+        &&& pat@.len() == 0 ==> (head@.len() == 0 && tail@ =~= self@)
+        &&& pat@.len() > 0 ==> {
+            let i = head@.len() as int;
+            &&& i + pat@.len() <= self@.len()
+            &&& self@ =~= head@ + pat@ + tail@
+            &&& forall |j: int| 0 <= j < i ==> pat@ != #[trigger] self@.subrange(j, j + pat@.len())
+        }
+        },
+        };
+```
+
+
+#### `rsplit_once_ch`
+
+```rust
+fn rsplit_once_ch<'a>(&'a self, ch: char) -> (ret: Option<(&'a str, &'a str)>)
+    ensures
+        match ret {
+        None => forall |i: int| 0 <= i < self@.len() ==> self@[i] != ch,
+        Some((head, tail)) => {
+        &&& self@ =~= head@ + seq![ch] + tail@
+        &&& forall |i: int| head@.len() + 1 <= i < self@.len() ==> self@[i] != ch
+        },
+        };
+```
+
+
+#### `rsplit_once_chars`
+
+```rust
+fn rsplit_once_chars<'a, 'b>(&'a self, chars: &'b [char]) -> (ret: Option<(&'a str, &'a str)>)
+    ensures
+        match ret {
+        None => forall |i: int| 0 <= i < self@.len() ==> !#[trigger] chars@.contains(self@[i]),
+        Some((head, tail)) => {
+        let i = head@.len() as int;
+        &&& i < self@.len()
+        &&& self@ =~= head@ + seq![self@[i]] + tail@
+        &&& chars@.contains(self@[i])
+        &&& forall |j: int| i < j < self@.len() ==> !#[trigger] chars@.contains(self@[j])
+        },
+        };
+```
+
+
+#### `rsplit_once_fn`
+
+```rust
+fn rsplit_once_fn<'a, F>(&'a self, f: F) -> (ret: Option<(&'a str, &'a str)>)
+    where F: FnMut(char) -> bool,
+    requires is_deterministic(f) && is_total(f),
+    ensures
+        match ret {
+        None => forall |i: int| 0 <= i < self@.len() ==> !#[trigger] call_ensures(f, (self@[i],), true),
+        Some((head, tail)) => {
+        let i = head@.len() as int;
+        &&& i < self@.len()
+        &&& self@ =~= head@ + seq![self@[i]] + tail@
+        &&& call_ensures(f, (self@[i],), true)
+        &&& forall |j: int| i < j < self@.len() ==> !#[trigger] call_ensures(f, (self@[j],), true)
+        },
+        };
+```
+
+
+#### `rsplit_once_str`
+
+```rust
+fn rsplit_once_str<'a, 'b>(&'a self, pat: &'b str) -> (ret: Option<(&'a str, &'a str)>)
+    ensures
+        match ret {
+        None => !pat@.is_subrange_of(self@),
+        Some((head, tail)) => {
+        &&& pat@.len() == 0 ==> (head@ =~= self@ && tail@.len() == 0)
+        &&& pat@.len() > 0 ==> {
+            let i = head@.len() as int;
+            &&& i + pat@.len() <= self@.len()
+            &&& self@ =~= head@ + pat@ + tail@
+            &&& forall |j: int| i < j <= self@.len() - pat@.len()
+                ==> pat@ != #[trigger] self@.subrange(j, j + pat@.len())
+        }
+        },
+        };
+```
+
+
+#### `trim_matches_ch`
+
+```rust
+fn trim_matches_ch(&self, ch: char) -> (ret: &str)
+    ensures
+        ret@ == self@.skip_while(|c: char| c == ch).rskip_while(|c: char| c == ch);
+```
+
+
+#### `trim_matches_chars`
+
+```rust
+fn trim_matches_chars<'a>(&self, chars: &'a [char]) -> (ret: &str)
+    ensures
+        ret@ == self@.skip_while(|c: char| chars@.contains(c)).rskip_while(|c: char| chars@.contains(c));
+```
+
+
+#### `trim_matches_fn`
+
+```rust
+fn trim_matches_fn<F>(&self, f: F) -> (ret: &str)
+    where F: FnMut(char) -> bool,
+    requires is_deterministic(f) && is_total(f),
+    ensures
+        ret@ == self@.skip_while(|c: char| call_ensures(f, (c,), true))
+        .rskip_while(|c: char| call_ensures(f, (c,), true));
+```
+
+
+#### `trim_matches_str`
+
+```rust
+fn trim_matches_str<'a>(&self, pat: &'a str) -> (ret: &str)
+    ensures
+        (pat@.len() == 0 && ret@ == self@) || (pat@.len() > 0 && ret@.is_subrange_of(self@)
+        && (ret@.len() == 0 || (!pat@.is_prefix_of(ret@) && !pat@.is_suffix_of(ret@))));
+```
+
+
+#### `trim_start_matches_ch`
+
+```rust
+fn trim_start_matches_ch(&self, ch: char) -> (ret: &str)
+    ensures
+        ret@ == self@.skip_while(|c: char| c == ch);
+```
+
+
+#### `trim_start_matches_chars`
+
+```rust
+fn trim_start_matches_chars<'a>(&self, chars: &'a [char]) -> (ret: &str)
+    ensures
+        ret@ == self@.skip_while(|c: char| chars@.contains(c));
+```
+
+
+#### `trim_start_matches_fn`
+
+```rust
+fn trim_start_matches_fn<F>(&self, f: F) -> (ret: &str)
+    where F: FnMut(char) -> bool,
+    requires is_deterministic(f) && is_total(f),
+    ensures
+        ret@ == self@.skip_while(|c: char| call_ensures(f, (c,), true));
+```
+
+
+#### `trim_start_matches_str`
+
+```rust
+fn trim_start_matches_str<'a>(&self, pat: &'a str) -> (ret: &str)
+    ensures
+        (pat@.len() == 0 && ret@ == self@) || (pat@.len() > 0 && ret@.is_suffix_of(self@)
+        && (ret@.len() == 0 || !pat@.is_prefix_of(ret@)));
+```
+
+
+#### `trim_end_matches_ch`
+
+```rust
+fn trim_end_matches_ch(&self, ch: char) -> (ret: &str)
+    ensures
+        ret@ == self@.rskip_while(|c: char| c == ch);
+```
+
+
+#### `trim_end_matches_chars`
+
+```rust
+fn trim_end_matches_chars<'a>(&self, chars: &'a [char]) -> (ret: &str)
+    ensures
+        ret@ == self@.rskip_while(|c: char| chars@.contains(c));
+```
+
+
+#### `trim_end_matches_fn`
+
+```rust
+fn trim_end_matches_fn<F>(&self, f: F) -> (ret: &str)
+    where F: FnMut(char) -> bool,
+    requires is_deterministic(f) && is_total(f),
+    ensures
+        ret@ == self@.rskip_while(|c: char| call_ensures(f, (c,), true));
+```
+
+
+#### `trim_end_matches_str`
+
+```rust
+fn trim_end_matches_str<'a>(&self, pat: &'a str) -> (ret: &str)
+    ensures
+        (pat@.len() == 0 && ret@ == self@) || (pat@.len() > 0 && ret@.is_prefix_of(self@)
+        && (ret@.len() == 0 || !pat@.is_suffix_of(ret@)));
+```
+
+
+#### `strip_prefix_ch`
+
+```rust
+fn strip_prefix_ch<'a>(&'a self, ch: char) -> (ret: Option<&'a str>)
+    ensures
+        match ret {
+        Some(rest) => self@ =~= seq![ch] + rest@,
+        None => self@.len() == 0 || self@.first() != ch,
+        };
+```
+
+
+#### `strip_prefix_chars`
+
+```rust
+fn strip_prefix_chars<'a, 'b>(&'a self, chars: &'b [char]) -> (ret: Option<&'a str>)
+    ensures
+        match ret {
+        Some(rest) => self@.len() > 0 && chars@.contains(self@.first()) && self@ =~= seq![self@.first()] + rest@,
+        None => self@.len() == 0 || !chars@.contains(self@.first()),
+        };
+```
+
+
+#### `strip_prefix_fn`
+
+```rust
+fn strip_prefix_fn<'a, F>(&'a self, f: F) -> (ret: Option<&'a str>)
+    where F: FnMut(char) -> bool,
+    requires is_deterministic(f) && is_total(f),
+    ensures
+        match ret {
+        Some(rest) => self@.len() > 0 && call_ensures(f, (self@.first(),), true)
+        && self@ =~= seq![self@.first()] + rest@,
+        None => self@.len() == 0 || !call_ensures(f, (self@.first(),), true),
+        };
+```
+
+
+#### `strip_prefix_str`
+
+```rust
+fn strip_prefix_str<'a, 'b>(&'a self, pat: &'b str) -> (ret: Option<&'a str>)
+    ensures
+        match ret {
+        Some(rest) => self@ =~= pat@ + rest@,
+        None => !pat@.is_prefix_of(self@),
+        };
+```
+
+
+#### `strip_suffix_ch`
+
+```rust
+fn strip_suffix_ch<'a>(&'a self, ch: char) -> (ret: Option<&'a str>)
+    ensures
+        match ret {
+        Some(rest) => self@ =~= rest@ + seq![ch],
+        None => self@.len() == 0 || self@.last() != ch,
+        };
+```
+
+
+#### `strip_suffix_chars`
+
+```rust
+fn strip_suffix_chars<'a, 'b>(&'a self, chars: &'b [char]) -> (ret: Option<&'a str>)
+    ensures
+        match ret {
+        Some(rest) => self@.len() > 0 && chars@.contains(self@.last()) && self@ =~= rest@ + seq![self@.last()],
+        None => self@.len() == 0 || !chars@.contains(self@.last()),
+        };
+```
+
+
+#### `strip_suffix_fn`
+
+```rust
+fn strip_suffix_fn<'a, F>(&'a self, f: F) -> (ret: Option<&'a str>)
+    where F: FnMut(char) -> bool,
+    requires is_deterministic(f) && is_total(f),
+    ensures
+        match ret {
+        Some(rest) => self@.len() > 0 && call_ensures(f, (self@.last(),), true)
+        && self@ =~= rest@ + seq![self@.last()],
+        None => self@.len() == 0 || !call_ensures(f, (self@.last(),), true),
+        };
+```
+
+
+#### `strip_suffix_str`
+
+```rust
+fn strip_suffix_str<'a, 'b>(&'a self, pat: &'b str) -> (ret: Option<&'a str>)
+    ensures
+        match ret {
+        Some(rest) => self@ =~= rest@ + pat@,
+        None => !pat@.is_suffix_of(self@),
+        };
 ```
 
 
 ## Functions
 
 
-### `char_matches_post`
-
-Post-conditions for matching by the `char` pattern, aside from the joining.
-
-```rust
-pub open spec fn char_matches_post(
-    s: Seq<char>, c: char, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
-    ) -> bool
-{
-        // gaps are never empty
-        &&& gap.len() > 0
-        // gaps cannot contain the pattern
-        &&& forall |i: int| 0 <= i < gap.len() ==> !(#[trigger] gap[i].contains(c))
-        // matches have one item less than gaps
-        &&& seq.len() + 1 == gap.len()
-        // matches match the pattern
-        &&& forall |i: int| 0 <= i < seq.len() ==> #[trigger] (seq[i] =~= seq![c])
-}
-```
-
-
-### `closure_matches_post`
-
-Post-conditions for matching by the closure pattern, aside from the joining.
-
-```rust
-pub open spec fn closure_matches_post<F>(
-    s: Seq<char>, f: F, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
-    ) -> bool
-    where
-    F: FnMut(char) -> bool,
-    recommends
-        is_deterministic(f) && is_total(f),
-        {
-        // gaps are never empty
-        &&& gap.len() > 0
-        // gaps cannot contain the pattern
-        &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() ==>
-        gap[i].all(|c: char| call_ensures(f, (c,), false))
-        // matches have one item less than gaps
-        &&& seq.len() + 1 == gap.len()
-        // matches match the pattern
-        &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() ==>
-        seq[i].len() == 1 && call_ensures(f, (seq[i][0],), true)
-        }
-```
-
-
-### `chars_matches_post`
-
-Post-conditions for matching by the char slice pattern, aside from the joining.
-
-```rust
-pub open spec fn chars_matches_post(
-    s: Seq<char>, chars: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
-    ) -> bool
-{
-        // gaps are never empty
-        &&& gap.len() > 0
-        // gaps cannot contain the pattern
-        &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() ==>
-            gap[i].all(|c: char| !chars.contains(c))
-        // matches have one item less than gaps
-        &&& seq.len() + 1 == gap.len()
-        // matches match the pattern
-        &&& forall |i: int| #![trigger seq[i]] 0 <= i < seq.len() ==>
-            seq[i].len() == 1 && chars.contains(seq[i][0])
-}
-```
-
-
-### `empty_string_matches_post`
-
-Post-conditions for matching by the empty string pattern, aside from the joining.
-
-```rust
-pub open spec fn empty_string_matches_post(
-    s: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
-    ) -> bool
-{
-        // "ab..z" => gap = ["", "a", "b", ..., "z", ""]
-        &&& seq.len() == s.len() + 1
-        &&& gap.len() == s.len() + 2
-        &&& forall |i: int| 0 <= i < seq.len() ==>
-            #[trigger] seq[i].len() == 0
-        &&& gap.first().len() == 0 && gap.last().len() == 0
-        &&& forall |i: int| 1 <= i < gap.len() - 1 ==>
-            #[trigger] gap[i] == seq![s[i-1]]
-}
-```
-
-
-### `string_matches_post`
-
-Post-conditions for forward matching by the string pattern, aside from the joining.
-
-```rust
-pub open spec fn string_matches_post(
-    s: Seq<char>, pat: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
-    ) -> bool
-{
-        // corner case: empty string matching
-        &&& pat.len() == 0 ==> empty_string_matches_post(s, seq, gap)
-        // general matching
-        &&& pat.len() > 0 ==> {
-            // gaps are never empty
-            &&& gap.len() > 0
-            // `gap + pat` (apart from the last) cannot have `pat` as a prefix or infix
-            &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() - 1
-                ==> gap[i].len() > 0
-                    ==> !pat.is_prefix_of(gap[i] + pat) && !pat.is_infix_of(gap[i] + pat)
-            // last gap cannot have `pat` as a substring
-            &&& !(pat.is_subrange_of(gap.last()))
-            // matches have one item less than gaps
-            &&& seq.len() + 1 == gap.len()
-            // matches match the pattern
-            &&& forall |i: int| 0 <= i < seq.len() ==> #[trigger] (seq[i] =~= pat)
-}
-    }
-```
-
-
-### `string_rmatches_post`
-
-Post-conditions for backward matching by the string pattern, aside from the joining.
-
-```rust
-pub open spec fn string_rmatches_post(
-    s: Seq<char>, pat: Seq<char>, seq: Seq<Seq<char>>, gap: Seq<Seq<char>>,
-    ) -> bool
-{
-        // corner case: empty string matching
-        &&& pat.len() == 0 ==> empty_string_matches_post(s, seq, gap)
-        // general matching
-        &&& pat.len() > 0 ==> {
-            // gaps are never empty, and there are at most `n` splits
-            &&& gap.len() > 0
-            // `pat + gap` (apart from the last) cannot have `pat` as a suffix or infix
-            &&& forall |i: int| #![trigger gap[i]] 0 <= i < gap.len() - 1
-                ==> gap[i].len() > 0
-                    ==> !pat.is_suffix_of(pat + gap[i]) && !pat.is_infix_of(pat + gap[i])
-            // last gap cannot have `pat` as a substring
-            &&& !(pat.is_subrange_of(gap.last()))
-            // matches have one item less than gaps
-            &&& seq.len() + 1 == gap.len()
-            // matches match the pattern
-            &&& forall |i: int| 0 <= i < seq.len() ==> #[trigger] (seq[i] =~= pat)
-}
-    }
-```
-
-
 ### `join`
 
-Forward joining `seq` and `gap`.
+Joins alternating result pieces and separators.
 
 ```rust
 pub open spec fn join(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>) -> Seq<char>
-    recommends
-        seq.len() + 1 == gap.len(),
+    recommends seq.len() + 1 == gap.len(),
         {
         gap.first()
-        + gap
-        .drop_first()
-        .map(|i: int, ss: Seq<char>| seq[i] + ss)
-        .flatten()
+        + gap.drop_first().map(|i: int, ss: Seq<char>| seq[i] + ss).flatten()
         }
 ```
 
 
 ### `rjoin`
 
-Backward joining `seq` and `gap`.
+Joins alternating result pieces and separators from the right.
 
 ```rust
 pub open spec fn rjoin(seq: Seq<Seq<char>>, gap: Seq<Seq<char>>) -> Seq<char>
-    recommends
-        seq.len() + 1 == gap.len(),
+    recommends seq.len() + 1 == gap.len(),
         {
-        gap
-        .drop_first()
-        .map(|i: int, ss: Seq<char>| ss + seq[i])
-        .reverse()
-        .flatten_alt()
-        + gap.first()
+        gap.last()
+        + gap.drop_last().map(|i: int, ss: Seq<char>| ss + seq[i]).reverse().flatten()
         }
-```
-
-
-### `spec_matches`
-
-Encodes forward matching `s` by the general pattern `pat`,
-returning the matches and gaps.
-
-```rust
-pub uninterp spec fn spec_matches<P: Pattern>(s: Seq<char>, pat: P) -> (Seq<Seq<char>>, Seq<Seq<char>>);
-```
-
-
-### `spec_rmatches`
-
-Encodes backward matching `s` by the general pattern `pat`,
-returning the matches and gaps.
-
-```rust
-pub uninterp spec fn spec_rmatches<P: Pattern>(s: Seq<char>, pat: P) -> (Seq<Seq<char>>, Seq<Seq<char>>);
-```
-
-
-### `str_contains_post`
-
-Encodes `str::contains` for general patterns.
-
-```rust
-pub open spec fn str_contains_post<P: Pattern>(s: Seq<char>, pat: P, ret: bool) -> bool {
-    let (seq, gap) = spec_matches(s, pat);
-    ret == (seq.len() > 0)
-    }
-```
-
-
-### `str_starts_with_post`
-
-Encodes `str::starts_with` for general patterns.
-
-```rust
-pub open spec fn str_starts_with_post<P: Pattern>(s: Seq<char>, pat: P, ret: bool) -> bool {
-    let (seq, gap) = spec_matches(s, pat);
-    ret == (seq.len() > 0 && gap.first().len() == 0)
-    }
-```
-
-
-### `str_ends_with_post`
-
-Encodes `str::ends_with` for general patterns.
-
-```rust
-pub open spec fn str_ends_with_post<P>(s: Seq<char>, pat: P, ret: bool) -> bool
-    where
-    P: Pattern,
-    for<'b> <P as Pattern>::Searcher<'b>: ReverseSearcher<'b>,
-{
-        let (seq, gap) = spec_rmatches(s, pat);
-        ret == (seq.len() > 0 && gap.first().len() == 0)
-}
-```
-
-
-### `str_find_post`
-
-Encodes `str::find` for general patterns.
-
-```rust
-pub open spec fn str_find_post<P: Pattern>(s: Seq<char>, pat: P, ret: Option<usize>) -> bool {
-    let (seq, gap) = spec_matches(s, pat);
-    &&& ret is None ==> seq.len() == 0
-    &&& ret is Some ==> (seq.len() > 0 && ret->0 == gap.first().as_bytes().len())
-    }
-```
-
-
-### `str_rfind_post`
-
-Encodes `str::rfind` for general patterns.
-
-```rust
-pub open spec fn str_rfind_post<P>(s: Seq<char>, pat: P, ret: Option<usize>) -> bool
-    where
-    P: Pattern,
-    for<'a> <P as Pattern>::Searcher<'a>: ReverseSearcher<'a>,
-{
-        let (seq, gap) = spec_rmatches(s, pat);
-        &&& ret is None ==> seq.len() == 0
-        &&& ret is Some ==> (seq.len() > 0 && ret->0 == s.as_bytes().len() - gap.first().as_bytes().len() - seq.first().as_bytes().len())
-}
-```
-
-
-### `str_split_iter_post`
-
-Encodes `str::split_iter` for general patterns.
-
-```rust
-pub open spec fn str_split_iter_post<'a, P: Pattern>(s: Seq<char>, pat: P, iter_seq: Seq<&'a str>) -> bool {
-    let (seq, gap) = spec_matches(s, pat);
-    &&& iter_seq.len() == gap.len()
-    &&& forall |i: int| 0 <= i < iter_seq.len() ==>
-    #[trigger] iter_seq[i]@ == gap[i]
-    }
-```
-
-
-### `str_split_inclusive_iter_post`
-
-Encodes `str::split_inclusive_iter` for general patterns.
-
-```rust
-pub open spec fn str_split_inclusive_iter_post<'a, P: Pattern>(
-    s: Seq<char>, pat: P, iter_seq: Seq<&'a str>,
-    ) -> bool {
-    let (seq, gap) = spec_matches(s, pat);
-```
-
-
-### `str_rsplit_iter_post`
-
-Encodes `str::rsplit_iter` for general patterns.
-
-```rust
-pub open spec fn str_rsplit_iter_post<'a, P>(s: Seq<char>, pat: P, iter_seq: Seq<&'a str>) -> bool
-    where
-    P: Pattern,
-    <P as Pattern>::Searcher<'a>: ReverseSearcher<'a>,
-{
-        let (seq, gap) = spec_rmatches(s, pat);
-        &&& iter_seq.len() == gap.len()
-        &&& forall |i: int| 0 <= i < iter_seq.len() ==>
-                #[trigger] iter_seq[i]@ == gap[i]
-}
-```
-
-
-### `str_split_terminator_iter_post`
-
-Encodes `str::split_terminator_iter` for general patterns.
-
-```rust
-pub open spec fn str_split_terminator_iter_post<'a, P: Pattern>(
-    s: Seq<char>, pat: P, iter_seq: Seq<&'a str>,
-    ) -> bool {
-    let (seq, gap) = spec_matches(s, pat);
 ```

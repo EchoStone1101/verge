@@ -14,7 +14,7 @@ Tests should check three things for each public API:
    traits, assumed specifications, provided trait methods, and iterator-returning
    APIs that should be usable in normal control flow.
 2. **Spec and lemma usability.** Once the API is callable, its postconditions,
-   broadcast lemmas, linking lemmas, and helper lemmas should make common downstream
+   broadcast lemmas, and helper lemmas should make common downstream
    proofs direct. Tests should catch weak specs, missing lemmas, bad triggers, and
    trigger loops.
 3. **Spec/API soundness.** The executable behavior and the spec contract should agree,
@@ -29,6 +29,11 @@ Mirror the `verge_lib` module layout in `verge_tests/src/`:
 - `verge_tests/src/cmp/string.rs` tests public items in `verge::cmp::string`.
 - `verge_tests/src/str/chars.rs` tests public items in `verge::str::chars`.
 - `verge_tests/src/io/impls.rs` tests public items in `verge::io::impls`.
+
+The `verge_tests/src/str/iter.rs` and `verge_tests/src/str/pattern.rs` files
+are currently empty placeholders. Their earlier proof-heavy attempts were
+discarded as part of the test-layout redesign and must not be treated as
+coverage.
 
 New test files should follow the same pattern. The goal is that a path in
 `verge_tests/src/` makes it obvious which library module it exercises.

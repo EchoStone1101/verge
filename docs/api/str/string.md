@@ -21,16 +21,18 @@ pub struct ExFromUtf8Error(FromUtf8Error);
 Additional methods on `String`.
 
 ```rust
-pub trait StringAdditionalFns: Sized
+pub trait StringAdditionalFns: Sized + View<V = Seq<char>>
 ```
 
 
 #### `from_utf8_verified`
 
 ```rust
-fn from_utf8_verified(vec: Vec<u8>) -> Self
+fn from_utf8_verified(vec: Vec<u8>) -> (ret: Self)
     requires
         vec@.is_utf8(),
+    ensures
+        ret@ =~= vec@.as_str(),
     no_unwind;
 ```
 
@@ -53,12 +55,14 @@ pub assume_specification [ String::as_bytes ] (s: &String) -> (bytes: &[u8])
 
 ### `String::len`
 
-Enable `String::len`. Note that this returns length in bytes.
+Enable `String::len`.
+
+Note that this returns length in bytes.
 
 ```rust
 pub assume_specification [ String::len ] (s: &String) -> (ret: usize)
-    ensures
-        ret == s@.as_bytes().len(),
+    returns
+        s@.as_bytes().len() as usize,
     no_unwind
         ;
 ```
@@ -298,14 +302,15 @@ pub assume_specification [ String::split_off ] (s: &mut String, at: usize) -> (r
 Enable `String::truncate`.
 
 Note that this function no longer panics, but requires proving that `new_len`
-falls between code points.
+either falls between code points or is past the end of the string.
 
 ```rust
 pub assume_specification [ String::truncate ] (s: &mut String, new_len: usize)
     requires
-        is_char_boundary(s@.as_bytes(), new_len as int),
+        new_len > s@.as_bytes().len() || is_char_boundary(s@.as_bytes(), new_len as int),
     ensures
-        final(s)@.as_bytes() =~= old(s)@.as_bytes().take(new_len as int),
+        new_len <= old(s)@.as_bytes().len() ==> final(s)@.as_bytes() =~= old(s)@.as_bytes().take(new_len as int),
+        new_len > old(s)@.as_bytes().len() ==> final(s)@.as_bytes() =~= old(s)@.as_bytes(),
     no_unwind
         ;
 ```

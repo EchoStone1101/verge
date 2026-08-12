@@ -22,6 +22,15 @@ APIs can be used from a downstream crate.
 ## Traits
 
 
+### `Sealed`
+
+Shared marker trait used to seal internal traits.
+
+```rust
+pub(crate) trait Sealed {}
+```
+
+
 ### `ExAsRef`
 
 Enable the `AsRef` trait.
@@ -63,4 +72,57 @@ type V;
 
 ```rust
 spec fn view(&self) -> Self::V;
+```
+
+
+## Functions
+
+
+### `is_deterministic`
+
+Encodes whether an exec-mode function is deterministic in spec mode.
+
+```rust
+pub open spec fn is_deterministic<F, Args: Tuple>(f: F) -> bool
+    where
+    F: FnMut<Args>,
+    Args: Tuple,
+{
+        forall |args: Args, o1: <F as FnOnce<Args>>::Output, o2: <F as FnOnce<Args>>::Output|
+            #![trigger call_ensures(f, args, o1), call_ensures(f, args, o2)]
+            call_requires(f, args) && call_ensures(f, args, o1) && call_ensures(f, args, o2) ==> o1 == o2
+}
+```
+
+
+### `is_total`
+
+Encodes whether an exec-mode function is total.
+
+```rust
+pub open spec fn is_total<F, Args: Tuple>(f: F) -> bool
+    where
+    F: FnMut<Args>,
+    Args: Tuple,
+{
+        forall |args: Args| #[trigger] call_requires(f, args)
+}
+```
+
+
+### `dummy`
+
+A one-term trigger helper.
+
+```rust
+pub uninterp spec fn dummy<A>(a: A) -> ();
+```
+
+
+### `dummy2`
+
+A two-term trigger helper.
+
+```rust
+pub uninterp spec fn dummy2<A, B>(a: A, b: B) -> ();
 ```

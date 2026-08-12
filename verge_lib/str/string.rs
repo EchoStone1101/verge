@@ -174,10 +174,12 @@ pub assume_specification [ String::truncate ] (s: &mut String, new_len: usize)
 ;
 
 /// Additional methods on `String`. 
-pub trait StringAdditionalFns: Sized {
-    fn from_utf8_verified(vec: Vec<u8>) -> Self
+pub trait StringAdditionalFns: Sized + View<V = Seq<char>> {
+    fn from_utf8_verified(vec: Vec<u8>) -> (ret: Self)
         requires 
             vec@.is_utf8(),
+        ensures
+            ret@ =~= vec@.as_str(),
         no_unwind;
 }
 
@@ -185,10 +187,7 @@ impl StringAdditionalFns for String {
     /// Enable `String::from_utf8_verified` which wraps `String::from_utf8_unchecked`; note that 
     /// this is no longer `unsafe`.
     #[verifier::external_body]
-    fn from_utf8_verified(vec: Vec<u8>) -> (ret: String)
-        ensures 
-            ret@ =~= vec@.as_str(),
-    {
+    fn from_utf8_verified(vec: Vec<u8>) -> (ret: String) {
         unsafe { String::from_utf8_unchecked(vec) }
     }
 }

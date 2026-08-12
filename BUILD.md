@@ -42,3 +42,12 @@ python3 tools/generate_verge_docs.py
 ```
 
 Use `--no-warn` when intentionally regenerating despite existing undocumented public items.
+
+The generator rewrites only module pages for source files that contain
+parser-visible public items (or module-level documentation), plus the API
+index. It currently reports undocumented public items but does not yet
+understand every Verus item form, especially external specifications and
+macro re-exports; a successful `--no-warn` run therefore means generation
+completed, not that the public API is fully documented. Generated pages are
+useful for review, but source comments remain authoritative until the warning
+set is reduced.

@@ -287,54 +287,62 @@ pub assume_specification [ Path::parent ] (p: &Path) -> (ret: Option<&Path>)
 ```
 
 
-### `impl_iterator!(Ancestors)`
+### `impl_iterator!(Path)`
 
 Specifies the iterator `VergeAncestors` which wraps `Ancestors`,
 contructed via `path::ancestors_iter()`.
 
 ```rust
 impl_iterator!(
-    [ Ancestors['a] as VergeAncestors['_] :: Item = &'a Path ]
-    [ [Path as VergeView<V=PathView>] :: ancestors_iter via ancestors ]
-    (&self,) -> |seq| {
-    let norm = self@.normalize();
-    &&& seq.len() == norm.path.len() + 1
-    &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
-    ==> {
-    &&& seq[i]@.is_normalized()
-    &&& seq[i]@.abs == self@.abs
-    &&& seq[i]@.path == norm.path.take(norm.path.len() - i)
-    }
-    }
-    );
+    Ancestors<'a> as VergeAncestors<'_> :: Item = &'a Path
+    ;
+
+    [Path as VergeView<V=PathView>] :: ancestors_iter via ancestors
+    (&self,) -> (iter: VergeAncestors<'_>)
+    ensures {
+            let norm = self@.normalize();
+            &&& iter.seq().len() == norm.path.len() + 1
+            &&& forall|i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len()
+                ==> {
+                    &&& iter.seq()[i]@.is_normalized()
+                    &&& iter.seq()[i]@.abs == self@.abs
+                    &&& iter.seq()[i]@.path == norm.path.take(norm.path.len() - i)
+                }
+        }
+        ;
+        );
 ```
 
 
-### `impl_iterator!(Iter)`
+### `impl_iterator!(custom_next)`
 
 Specifies the iterator `VergeIter` which wraps `Iter`,
 contructed via `path::iterate()`.
 
 ```rust
 impl_iterator!(
-    [ Iter['a] as VergeIter['_] :: Item = &'a str ]
-    [ [Path as VergeView<V=PathView>] :: iterate via iter ]
+    Iter<'a> as VergeIter<'_> :: Item = &'a str
+    ;
+
     #[custom_next]
-    (&self,) -> |seq| {
-    let norm = self@.normalize();
-    &&& !norm.abs ==> {
-    &&& seq.len() == norm.path.len()
-    &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
-    ==> seq[i]@ == norm.path[i].drop_last()
-    }
-    &&& norm.abs ==> {
-    &&& seq.len() == norm.path.len() + 1
-    &&& seq[0]@ == seq![MAIN_SEPARATOR]
-    &&& forall|i: int| #![trigger seq[i]] 0 <= i < seq.len()
-    ==> seq[i+1]@ == norm.path[i].drop_last()
-    }
-    }
-    );
+    [Path as VergeView<V=PathView>] :: iterate via iter
+    (&self,) -> (iter: VergeIter<'_>)
+    ensures {
+            let norm = self@.normalize();
+            &&& !norm.abs ==> {
+                &&& iter.seq().len() == norm.path.len()
+                &&& forall|i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len()
+                    ==> iter.seq()[i]@ == norm.path[i].drop_last()
+            }
+            &&& norm.abs ==> {
+                &&& iter.seq().len() == norm.path.len() + 1
+                &&& iter.seq()[0]@ == seq![MAIN_SEPARATOR]
+                &&& forall|i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len()
+                    ==> iter.seq()[i+1]@ == norm.path[i].drop_last()
+            }
+        }
+        ;
+        );
 ```
 
 

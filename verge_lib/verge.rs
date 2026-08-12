@@ -38,6 +38,7 @@ use vstd::std_specs::core::IndexSpec;
 
 use core::alloc::Allocator;
 use std::rc::Rc;
+use std::marker::Tuple;
 
 pub mod prelude;
 
@@ -105,6 +106,32 @@ pub trait VergeView {
 
     spec fn view(&self) -> Self::V;
 }
+
+/// Encodes whether an exec-mode function is deterministic in spec mode.
+pub open spec fn is_deterministic<F, Args: Tuple>(f: F) -> bool
+where
+    F: FnMut<Args>,
+    Args: Tuple,
+{
+    forall |args: Args, o1: <F as FnOnce<Args>>::Output, o2: <F as FnOnce<Args>>::Output|
+        #![trigger call_ensures(f, args, o1), call_ensures(f, args, o2)]
+        call_requires(f, args) && call_ensures(f, args, o1) && call_ensures(f, args, o2) ==> o1 == o2
+}
+
+/// Encodes whether an exec-mode function is total.
+pub open spec fn is_total<F, Args: Tuple>(f: F) -> bool
+where
+    F: FnMut<Args>,
+    Args: Tuple,
+{
+    forall |args: Args| #[trigger] call_requires(f, args)
+}
+
+/// A one-term trigger helper.
+pub uninterp spec fn dummy<A>(a: A) -> ();
+
+/// A two-term trigger helper.
+pub uninterp spec fn dummy2<A, B>(a: A, b: B) -> ();
 
 }
 

@@ -19,21 +19,22 @@ use vstd::pervasive::strictly_cloned;
 use vstd::std_specs::cmp::*;
 use crate::cmp::PartialEqVerified;
 
-mod _clone_sealed { pub trait Sealed {} }
+use crate::Sealed;
 /// Marker: type implements `Clone`.
 pub struct CloneYes;
 /// Marker: type must *not* implement `Clone`.
 pub struct CloneNo;
-impl _clone_sealed::Sealed for CloneYes {}
-impl _clone_sealed::Sealed for CloneNo {}
 /// Blanket-impl side of the Clone ban trick.
 /// All `Clone` types get `Impl = CloneYes`.
 /// Macros can emit `impl CloneImpl for T { type Impl = CloneNo; }`
 /// to make `Clone` for `T` a coherence error.
-pub trait CloneImpl { type Impl: _clone_sealed::Sealed; }
+pub trait CloneImpl { type Impl: Sealed; }
 impl<T: Clone> CloneImpl for T { type Impl = CloneYes; }
 
 verus! {
+
+impl Sealed for CloneYes {}
+impl Sealed for CloneNo {}
 
 /// A verified `Clone + PartialEq` that requires a proof that cloning preserves
 /// equality: if `a.eq_spec(a)`, then `clone(a).eq_spec(a)`.

@@ -48,7 +48,7 @@ Macros can emit `impl CloneImpl for T { type Impl = CloneNo; }`
 to make `Clone` for `T` a coherence error.
 
 ```rust
-pub trait CloneImpl { type Impl: _clone_sealed::Sealed; }
+pub trait CloneImpl { type Impl: Sealed; }
 ```
 
 

@@ -14,7 +14,7 @@ keeps calls on the original Rust trait, while the `SpecImplTrait` lets concrete 
 the spec helper functions used in the method postconditions. `str::fmt::ToStringSpec` and
 `str::parse::FromStrSpec` use this style.
 
-Unfortunately, sometimes the `Spec` traits cannot be implemented in Verge directly (often due to Rust's orphan rules when the `Spec` trait is defined in `vstd`). In that case, Verge adopts the **linking lemma** pattern - introduce broadcast lemmas to help Verus interpret the implicit `spec` functions from the `Spec` trait, so that the `Spec` traits can still be used. This works because with the `Spec` trait defined in `vstd`, when it is not explicitly implemented for a certain type `T`, Verus effectively sees specs like `<T as SpecTrait>::xxx` as `uninterp` specs. 
+For APIs whose generic standard-library signatures are difficult to expose safely, Verge can instead add a monomorphic extension trait with one method per supported argument shape. The string pattern APIs use this approach: `str::pattern::StrPatternFns` provides concrete `_ch`, `_chars`, `_fn`, and `_str` methods, each with a direct postcondition. Verge intentionally does not expose the generic `Pattern` trait or maintain a linking-lemma model for these methods.
 
 Some trait methods still need concrete `assume_specification` entries for Verus to accept the
 external call form, especially associated functions on standard-library impls. Keep those assumes
@@ -29,5 +29,9 @@ Use a new delegating Verge trait only when the Rust trait signature must change 
 trait lacks the abstract state needed in its own bounds. This is the case for `verge::io` traits
 (e.g., `Read` and `Write`), where the spec needs reader/writer state unavailable from the standard
 trait alone.
+
+The `verge::func` contract attributes are retained as macro infrastructure, but
+are not currently applied to Verge APIs. Do not add contract assumptions or
+assertion lemmas there until the next function-contract design is settled.
 
 In all cases, Verge uses macros to minimize boilerplate code.

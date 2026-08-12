@@ -1,4 +1,4 @@
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file provides guidance to LLM agents when working with code in this repository.
 
 ## Build and Verification Commands
 
@@ -20,6 +20,10 @@ Tests are `exec fn`s inside `mod tests` blocks. They run as part of verification
 ## Architecture and Specification Patterns
 
 See `verge_lib/docs/internal/DEV.md` for the authoritative module overview and specification patterns. Run `/update-dev-doc` after any significant code change to keep it current.
+
+> NOTE: the docs system is not fully developed yet. 
+> Do not count on the generated docs in any way
+> until this note is removed.
 
 ## Reference Materials
 

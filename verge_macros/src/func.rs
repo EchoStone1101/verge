@@ -9,19 +9,33 @@ use syn::{
 };
 
 pub fn assume_surjective_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
-    if !attr.is_empty() {
-        return Error::new_spanned(attr, "assume_surjective takes no arguments").to_compile_error();
+    if attr.is_empty() {
+        return Error::new(
+            Span::call_site(),
+            "assume_surjective requires a proof function path",
+        )
+        .to_compile_error();
     }
+
+    let proof: Path = match parse2(attr) {
+        Ok(proof) => proof,
+        Err(err) => return err.to_compile_error(),
+    };
 
     if !cfg!(feature = "func_assume_lemmas") {
         return item;
     }
 
-    expand(item, ExpansionKind::Surjective(LemmaKind::Assume))
+    expand(
+        item,
+        ExpansionKind::Surjective(LemmaKind::Assume {
+            proof: proof.to_token_stream(),
+        }),
+    )
 }
 
 pub fn assume_injective_by_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let args: InjectionArgs = match parse2(attr) {
+    let args: AssumeInjectiveArgs = match parse2(attr) {
         Ok(args) => args,
         Err(err) => return err.to_compile_error(),
     };
@@ -30,7 +44,10 @@ pub fn assume_injective_by_impl(attr: TokenStream, item: TokenStream) -> TokenSt
         return item;
     }
 
-    expand(item, ExpansionKind::Injective(args, LemmaKind::Assume))
+    expand(
+        item,
+        ExpansionKind::Injective(args.injection, LemmaKind::Assume { proof: args.proof }),
+    )
 }
 
 pub fn assert_surjective_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -73,11 +90,22 @@ enum ExpansionKind {
 }
 
 enum LemmaKind {
-    Assume,
+    Assume { proof: TokenStream },
     Assert { proof: TokenStream },
 }
 
 fn expand(item: TokenStream, kind: ExpansionKind) -> TokenStream {
+    if let Ok(input) = parse2::<TraitItemFn>(item.clone()) {
+        let name = input.sig.ident.to_string();
+        if name.starts_with("VERUS_SPEC__") && input.default.is_some() {
+            let original = input.to_token_stream();
+            let Some(func) = Function::from_trait_item(&input) else {
+                return original;
+            };
+            return expand_function(original, func, kind);
+        }
+    }
+
     if let Ok(input) = parse2::<ItemFn>(item.clone()) {
         let original = input.to_token_stream();
         if !has_verus_internal_attr(&input.attrs, "verus_macro")
@@ -90,9 +118,6 @@ fn expand(item: TokenStream, kind: ExpansionKind) -> TokenStream {
 
     if let Ok(input) = parse2::<TraitItemFn>(item.clone()) {
         let original = input.to_token_stream();
-        if !has_verus_internal_attr(&input.attrs, "verus_macro") {
-            return original;
-        }
         let Some(func) = Function::from_trait_item(&input) else {
             return original;
         };
@@ -126,7 +151,6 @@ fn expand_function(
 struct Function<'a> {
     name: Ident,
     span: Span,
-    vis: TokenStream,
     generics: &'a syn::Generics,
     original_args: Vec<Arg>,
     ret: Option<Arg>,
@@ -146,7 +170,6 @@ impl<'a> Function<'a> {
         Self::from_parts(
             input.sig.ident.clone(),
             input.sig.ident.span(),
-            input.vis.to_token_stream(),
             &input.sig.generics,
             &input.sig.inputs,
             &input.sig.output,
@@ -157,17 +180,14 @@ impl<'a> Function<'a> {
 
     fn from_trait_item(input: &'a TraitItemFn) -> Option<Result<Self, TokenStream>> {
         let name = input.sig.ident.to_string();
-        if !name.starts_with("VERUS_SPEC__") {
-            return None;
-        }
+        let name = name.strip_prefix("VERUS_SPEC__").unwrap_or(&name);
         let block = input.default.as_ref()?;
         Some(Self::from_parts(
             Ident::new(
-                name.trim_start_matches("VERUS_SPEC__"),
+                name,
                 input.sig.ident.span(),
             ),
             input.sig.ident.span(),
-            TokenStream::new(),
             &input.sig.generics,
             &input.sig.inputs,
             &input.sig.output,
@@ -179,7 +199,6 @@ impl<'a> Function<'a> {
     fn from_parts(
         name: Ident,
         span: Span,
-        vis: TokenStream,
         generics: &'a syn::Generics,
         inputs: &'a Punctuated<FnArg, Token![,]>,
         output: &'a ReturnType,
@@ -196,7 +215,6 @@ impl<'a> Function<'a> {
         Ok(Self {
             name,
             span,
-            vis,
             generics,
             original_args,
             ret,
@@ -497,7 +515,6 @@ fn expr_path_ends_with(expr: &Expr, name: &str) -> bool {
 }
 
 fn gen_surjective(func: &Function<'_>, kind: &LemmaKind) -> TokenStream {
-    let vis = lemma_visibility(func, kind);
     let lemma_name = lemma_name(func, kind, "surjective");
     let generics = func.generics;
     let where_clause = &func.generics.where_clause;
@@ -512,7 +529,7 @@ fn gen_surjective(func: &Function<'_>, kind: &LemmaKind) -> TokenStream {
     quote_spanned! { func.span =>
         #[verus::internal(verus_macro)]
         #[verus::internal(proof)]
-        #vis fn #lemma_name #generics (#(#inputs),*) #where_clause {
+        fn #lemma_name #generics (#(#inputs),*) #where_clause {
             #requires_call
             #ensures_call
             #body
@@ -521,7 +538,6 @@ fn gen_surjective(func: &Function<'_>, kind: &LemmaKind) -> TokenStream {
 }
 
 fn gen_injective(func: &Function<'_>, args: &InjectionArgs, kind: &LemmaKind) -> TokenStream {
-    let vis = lemma_visibility(func, kind);
     let lemma_name = lemma_name(func, kind, "injective");
     let generics = func.generics;
     let where_clause = &func.generics.where_clause;
@@ -554,7 +570,7 @@ fn gen_injective(func: &Function<'_>, args: &InjectionArgs, kind: &LemmaKind) ->
     quote_spanned! { func.span =>
         #[verus::internal(verus_macro)]
         #[verus::internal(proof)]
-        #vis fn #lemma_name #generics (#(#inputs1,)* #(#inputs2),*) #where_clause {
+        fn #lemma_name #generics (#(#inputs1,)* #(#inputs2),*) #where_clause {
             #requires_call
             #ensures_call
             #body
@@ -562,24 +578,20 @@ fn gen_injective(func: &Function<'_>, args: &InjectionArgs, kind: &LemmaKind) ->
     }
 }
 
-fn lemma_visibility(func: &Function<'_>, kind: &LemmaKind) -> TokenStream {
-    match kind {
-        LemmaKind::Assume => func.vis.clone(),
-        LemmaKind::Assert { .. } => TokenStream::new(),
-    }
-}
-
 fn lemma_name(func: &Function<'_>, kind: &LemmaKind, suffix: &str) -> Ident {
-    let name = match kind {
-        LemmaKind::Assume => format!("{}_{}", func.name, suffix),
-        LemmaKind::Assert { .. } => format!("__{}_{}", func.name, suffix),
-    };
-    Ident::new(&name, func.span)
+    match kind {
+        LemmaKind::Assume { .. } => {
+            Ident::new(&format!("__assume_{}_{}", func.name, suffix), func.span)
+        }
+        LemmaKind::Assert { .. } => {
+            Ident::new(&format!("__{}_{}", func.name, suffix), func.span)
+        }
+    }
 }
 
 fn lemma_body(kind: &LemmaKind, call_args: &[Ident]) -> TokenStream {
     match kind {
-        LemmaKind::Assume => quote! { ::vstd::prelude::admit(); },
+        LemmaKind::Assume { proof } => quote! { #proof(#(#call_args),*); },
         LemmaKind::Assert { proof } => quote! { #proof(#(#call_args),*); },
     }
 }
@@ -724,6 +736,31 @@ struct InjectionArgs {
     right: Vec<TokenStream>,
 }
 
+struct AssumeInjectiveArgs {
+    proof: TokenStream,
+    injection: InjectionArgs,
+}
+
+impl Parse for AssumeInjectiveArgs {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let proof: Path = input.parse()?;
+        let content;
+        parenthesized!(content in input);
+        if !input.is_empty() {
+            return Err(input.error("assume_injective_by expects a proof call expression"));
+        }
+
+        let tokens: TokenStream = content.parse()?;
+        let injection = parse_injection_tokens(tokens, "assume_injective_by")
+            .map_err(|message| content.error(message))?;
+
+        Ok(Self {
+            proof: proof.to_token_stream(),
+            injection,
+        })
+    }
+}
+
 impl Parse for InjectionArgs {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let tokens: TokenStream = input.parse()?;
@@ -826,6 +863,21 @@ mod tests {
     use quote::quote;
 
     #[test]
+    fn parses_assume_surjective_path() {
+        let proof: Path = parse2(quote! { crate::proof::lemma_name }).unwrap();
+        assert_eq!(proof.to_token_stream().to_string(), "crate :: proof :: lemma_name");
+    }
+
+    #[test]
+    fn parses_assume_injective_proof_call() {
+        let args: AssumeInjectiveArgs =
+            parse2(quote! { crate::proof::lemma_name(x, y@; ret.seq()) }).unwrap();
+        assert_eq!(args.proof.to_string(), "crate :: proof :: lemma_name");
+        assert_eq!(args.injection.left.len(), 2);
+        assert_eq!(args.injection.right.len(), 1);
+    }
+
+    #[test]
     fn parses_injection_separator() {
         let args =
             parse_injection_tokens(quote! { x, y@; ret.seq() }, "assume_injective_by").unwrap();
@@ -855,5 +907,10 @@ mod tests {
     #[test]
     fn rejects_assert_injective_without_call() {
         assert!(parse2::<AssertInjectiveArgs>(quote! { crate::proof::lemma }).is_err());
+    }
+
+    #[test]
+    fn rejects_assume_injective_without_call() {
+        assert!(parse2::<AssumeInjectiveArgs>(quote! { lemma_name }).is_err());
     }
 }

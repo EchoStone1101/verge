@@ -30,9 +30,7 @@ use vstd::std_specs::iter::FromIteratorSpec;
 use crate::seq::*;
 use crate::error::ErrorSpec;
 
-use std::str::{
-    Utf8Error, FromStr, pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher},
-};
+use std::str::{Utf8Error, FromStr};
 use std::slice::SliceIndex;
 use std::ops::{Range, Index, IndexMut};
 use std::rc::Rc;
@@ -46,9 +44,9 @@ pub mod string;
 pub mod parse;
 pub mod pattern;
 
+pub use crate::cmp::string::*;
 pub use chars::*;
 pub use fmt::*;
-pub use crate::cmp::string::*;
 pub use iter::*;
 pub use string::*;
 pub use parse::*;
@@ -490,57 +488,6 @@ pub assume_specification[ str::split_at_mut_checked ](s: &mut str, mid: usize) -
     no_unwind
 ;
 
-/// Enable `str::contains`.
-pub assume_specification<P: Pattern>[ str::contains ](s: &str, pat: P) -> (ret: bool)
-    ensures
-        str_contains_post(s@, pat, ret),
-;
-
-/// Enable `str::starts_with`.
-pub assume_specification<P: Pattern>[ str::starts_with ](s: &str, pat: P) -> (ret: bool)
-    ensures
-        str_starts_with_post(s@, pat, ret),
-;
-
-/// Enable `str::ends_with`.
-pub assume_specification<P>[ str::ends_with ](s: &str, pat: P) -> (ret: bool)
-    where 
-        P: Pattern,
-        for<'x> <P as Pattern>::Searcher<'x>: ReverseSearcher<'x>,
-    ensures
-        str_ends_with_post(s@, pat, ret),
-;
-
-/// Enable `str::find`.
-pub assume_specification<P: Pattern>[ str::find ](s: &str, pat: P) -> (ret: Option<usize>)
-    ensures
-        str_find_post(s@, pat, ret),
-;
-
-/// Enable `str::rfind`.
-pub assume_specification<P>[ str::rfind ](s: &str, pat: P) -> (ret: Option<usize>)
-    where 
-        P: Pattern,
-        for<'x> <P as Pattern>::Searcher<'x>: ReverseSearcher<'x>,
-    ensures
-        str_rfind_post(s@, pat, ret),
-;
-
-/// Enable `str::split_once`.
-pub assume_specification<P: Pattern>[ str::split_once ](s: &str, delimiter: P) -> (ret: Option<(&str, &str)>)
-    ensures
-        str_split_once_post(s@, delimiter, ret),
-;
-
-/// Enable `str::rsplit_once`.
-pub assume_specification<P>[ str::rsplit_once ](s: &str, delimiter: P) -> (ret: Option<(&str, &str)>)
-    where 
-        P: Pattern,
-        for<'x> <P as Pattern>::Searcher<'x>: ReverseSearcher<'x>,
-    ensures
-        str_rsplit_once_post(s@, delimiter, ret),
-;
-
 /// Enables `str::trim`.
 pub assume_specification[ str::trim ](s: &str) -> (ret: &str)
     ensures
@@ -567,45 +514,6 @@ pub assume_specification[ str::trim_end ](s: &str) -> (ret: &str)
         ret@.len() > 0 ==> !ret@.last().is_whitespace(),
         forall|i: int| ret@.len() <= i < s@.len()
             ==> #[trigger] s@[i].is_whitespace(),
-;
-
-/// Enables `str::trim_matches`.
-pub assume_specification<P>[ str::trim_matches ](s: &str, pat: P) -> (ret: &str)
-    where 
-        P: Pattern,
-        for<'x> <P as Pattern>::Searcher<'x>: DoubleEndedSearcher<'x>,
-    ensures
-        str_trim_matches_post(s@, pat, ret@),
-;
-
-/// Enables `str::trim_start_matches`.
-pub assume_specification<P: Pattern>[ str::trim_start_matches ](s: &str, pat: P) -> (ret: &str)
-    ensures
-        str_trim_start_matches_post(s@, pat, ret@),
-;
-
-/// Enables `str::trim_end_matches`.
-pub assume_specification<P>[ str::trim_end_matches ](s: &str, pat: P) -> (ret: &str)
-    where 
-        P: Pattern,
-        for<'x> <P as Pattern>::Searcher<'x>: ReverseSearcher<'x>,
-    ensures
-        str_trim_end_matches_post(s@, pat, ret@),
-;
-
-/// Enables `str::strip_prefix`.
-pub assume_specification<P: Pattern>[ str::strip_prefix ](s: &str, pat: P) -> (ret: Option<&str>)
-    ensures
-        str_strip_prefix_post(s@, pat, ret),
-;
-
-/// Enables `str::strip_suffix`.
-pub assume_specification<P>[ str::strip_suffix ](s: &str, pat: P) -> (ret: Option<&str>)
-    where 
-        P: Pattern,
-        for<'x> <P as Pattern>::Searcher<'x>: ReverseSearcher<'x>,
-    ensures
-        str_strip_suffix_post(s@, pat, ret),
 ;
 
 /// Enables `str::parse`.
@@ -700,35 +608,34 @@ pub assume_specification [ str::into_string ] (s: Box<str>) -> (ret: String)
 ;
 
 /// Additional methods on `str`. 
-pub trait StrAdditionalFns {
-    fn from_utf8_verified(v: &[u8]) -> &Self
+pub trait StrAdditionalFns: View<V = Seq<char>> {
+
+    /// Enable `str::from_utf8_verified` which wraps `str::from_utf8_unchecked`; note that 
+    /// this is no longer `unsafe`.
+    fn from_utf8_verified(v: &[u8]) -> (ret: &Self)
         requires 
             v@.is_utf8(),
+        ensures
+            ret@.as_bytes() =~= v@,
         no_unwind;
-    fn from_utf8_verified_mut(v: &mut [u8]) -> &mut Self
+
+    /// Enable `str::from_utf8_verified_mut` which wraps `str::from_utf8_unchecked_mut`; note that 
+    /// this is no longer `unsafe`.
+    fn from_utf8_verified_mut(v: &mut [u8]) -> (ret: &mut Self)
         requires 
             v@.is_utf8(),
+        ensures
+            final(ret)@.as_bytes() =~= final(v)@,
         no_unwind;
 }
 
 impl StrAdditionalFns for str {
-    /// Enable `str::from_utf8_verified` which wraps `str::from_utf8_unchecked`; note that 
-    /// this is no longer `unsafe`.
     #[verifier::external_body]
-    fn from_utf8_verified(v: &[u8]) -> (ret: &Self) 
-        ensures
-            ret@.as_bytes() =~= v@,
-    {
+    fn from_utf8_verified(v: &[u8]) -> (ret: &Self) {
         unsafe { str::from_utf8_unchecked(v) }
     }
-
-    /// Enable `str::from_utf8_verified_mut` which wraps `str::from_utf8_unchecked_mut`; note that 
-    /// this is no longer `unsafe`.
     #[verifier::external_body]
-    fn from_utf8_verified_mut(v: &mut [u8]) -> (ret: &mut Self)
-        ensures
-            final(ret)@.as_bytes() =~= final(v)@,
-    {
+    fn from_utf8_verified_mut(v: &mut [u8]) -> (ret: &mut Self) {
         unsafe { str::from_utf8_unchecked_mut(v) }
     }
 }

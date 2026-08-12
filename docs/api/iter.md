@@ -51,10 +51,9 @@ fn next_back_impl(&mut self) -> Option<<Self as Iterator>::Item>;
 
 This trait is used for specifying `(DoubleEnded)Iterator` types by adding the index and
 the full sequence as `spec` functions.
-It is only meant to be for Verge's internal use on the wrapper types.
 
 ```rust
-pub trait VergeIteratorSpec
+pub trait VergeIteratorSpec: Sized + crate::Sealed
 ```
 
 
@@ -83,6 +82,24 @@ spec fn idx(&self) -> int;
 
 ```rust
 spec fn ridx(&self) -> int;
+```
+
+
+#### `new_dummy`
+
+Creates a fresh iterator-typed value with the given `seq` view.
+
+This function enables the creation of iterators (which are typically meant for `exec`-mode usage)
+in `proof`-mode. It is sound because `VergeIteratorSpec` is a sealed trait and is
+only implemented on iterator types with no inherent type invariants, nor additional proof properties.
+The sole point of this function is to allow for reasoning about Verge iterators in proofs.
+
+```rust
+proof fn new_dummy(seq: Seq<Self::Item>) -> (ret: Self)
+    ensures
+        ret.idx() == 0,
+        ret.ridx() == seq.len(),
+        ret.seq() == seq,
 ```
 
 

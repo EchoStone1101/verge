@@ -1042,6 +1042,11 @@ def render_md(module_path: str, module_doc: str, items: list[Item]) -> str:
             pub_items.append(item)
 
     if not pub_items:
+        # Keep a module page when the source has useful module-level documentation
+        # but no parser-visible public items (for example, a macro re-export stub).
+        # Returning an empty string here leaves stale generated pages behind.
+        if module_doc:
+            return re.sub(r"\n{4,}", "\n\n\n", "\n".join(out))
         return ""
 
     # Group by kind

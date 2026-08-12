@@ -160,7 +160,16 @@ fn test_remove_ascii_boundary() {
     }
 
     let mut text = String::from_str("abcd");
-    test!(text.remove(1usize) == 'b');
+    proof {
+        assert(text@ =~= "abcd"@);
+        assert(text@.is_ascii());
+        lemma_ascii_str_as_bytes(text@);
+        assert(text@.as_bytes() =~= seq![97u8, 98u8, 99u8, 100u8]);
+        assert(is_char_boundary(text@.as_bytes(), 1));
+        assert(1 < text@.as_bytes().len());
+    }
+    let removed = text.remove(1usize);
+    test!(removed == 'b');
     test!(text.len() == 3usize);
 }
 

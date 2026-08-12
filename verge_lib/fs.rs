@@ -39,7 +39,7 @@ use vstd::prelude::*;
 use vstd::view::View;
 use vstd::std_specs::result::{spec_unwrap, spec_unwrap_err};
 use vstd::std_specs::iter::*;
-use crate::func::dummy;
+use crate::dummy;
 use crate::VergeView;
 use crate::io::{Error, ErrorKind, Result};
 use crate::str::*;
@@ -996,6 +996,8 @@ impl VergeIteratorSpec for VergeReadDir {
     open spec fn ridx(&self) -> int 
         { self.seq().len() as int }
 }
+
+impl crate::Sealed for VergeReadDir {}
 
 /// Enables `VergeReadDir` as an iterator.
 impl IteratorSpecImpl for VergeReadDir {
