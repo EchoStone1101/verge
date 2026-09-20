@@ -10,18 +10,6 @@ axioms and then proves the local `*Verified` traits from those links.
 ## Functions
 
 
-### `<[T] as PartialEq<[U]>>::eq`
-
-Enable slice equality.
-
-```rust
-pub assume_specification<T: PartialEq<U>, U>[ <[T] as PartialEq<[U]>>::eq ](
-    a: &[T],
-    b: &[U],
-    ) -> bool;
-```
-
-
 ### `<[T] as PartialOrd>::partial_cmp`
 
 Enable slice partial comparison.

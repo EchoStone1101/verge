@@ -3,13 +3,11 @@
 Specifications and lemmas for `Iterator` types.
 
 ## Specification Methodology
-This module includes a template specification for various implementations
-of the `Iterator` trait, built upon `vstd`'s `IteratorSpec` encoding.
-In time, these specifications should be upstreamed by `vstd` itself.
-However, as it is, Rust's orphan rules forbid implementing `IteratorSpec`
-on the actual types. Thus, wrapper types are introduced, and the
-constructor methods for the iterators are added by extension traits
-with a uniform naming convention:
+This module includes a template specification for implementations of the
+`Iterator` trait that are not yet covered by `vstd`'s `IteratorSpec`
+encoding. Rust's orphan rules forbid implementing `IteratorSpec` on the
+actual types, so wrapper types are introduced and constructor methods are
+added by extension traits with a uniform naming convention:
 - `str::char_indices() -> CharIndices` into `str::char_indices_iter() -> VergeCharIndices`;
 - `path::iter() -> path::Iter` into `path::iterate() -> path::VergeIter`;
 This workaround does not affect downstream crates. Users of Verge should

@@ -1250,13 +1250,13 @@ impl_iterator!(
             // splits cannot have whitespaces
             &&& forall |i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len() ==>
                     forall |j: int| #![trigger iter.seq()[i]@[j]] 0 <= j < iter.seq()[i]@.len() ==>
-                        !iter.seq()[i]@[j].is_whitespace()
+                        !vstd::std_specs::char::is_white_space(iter.seq()[i]@[j])
             &&& exists |sps: Seq<Seq<char>>| #![trigger sps.len()] {
                 &&& sps.len() == iter.seq().len() + 1
                 // delimeters are all whitespaces
                 &&& forall |i: int| #![trigger sps[i]] 0 <= i < sps.len() ==>
                         forall |j: int| #![trigger sps[i][j]] 0 <= j < sps[i].len() ==>
-                            sps[i][j].is_whitespace()
+                            vstd::std_specs::char::is_white_space(sps[i][j])
                 &&& forall |i: int| #![trigger sps[i]] 1 <= i < sps.len() - 1 ==>
                         sps[i].len() > 0
                 // delimeters and lines make up the original string

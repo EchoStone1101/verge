@@ -16,12 +16,6 @@ pub broadcast group group_array_ordering {
     lemma_array_lexico_cmp_spec,
 }
 
-/// Enable array equality.
-pub assume_specification<T: PartialEq<U>, U, const N: usize>[ <[T; N] as PartialEq<[U; N]>>::eq ](
-    a: &[T; N],
-    b: &[U; N],
-) -> bool;
-
 /// Enable array inequality.
 pub assume_specification<T: PartialEq<U>, U, const N: usize>[ <[T; N] as PartialEq<[U; N]>>::ne ](
     a: &[T; N],

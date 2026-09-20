@@ -44,24 +44,27 @@ impl ToString for CustomToken {
     }
 }
 
-fn test_upstream_simple_types_to_string() {
-    broadcast use lemma_bool_to_string;
+fn test_integer_to_string_lengths() {
     broadcast use lemma_int_to_string;
-    broadcast use lemma_string_to_string;
-
     proof {
-        reveal_strlit("hi");
         reveal(spec_int_to_str);
         reveal_with_fuel(spec_int_to_str_rec, 4);
     }
-
-    // Migrated from Rust's `alloc/tests/string.rs::test_simple_types`.
     test!(1i32.to_string().len() == 1usize);
     test!((-1i32).to_string().len() == 2usize);
     test!(200i32.to_string().len() == 3usize);
     test!(2i32.to_string().len() == 1usize);
+}
+
+fn test_bool_to_string_lengths() {
+    broadcast use lemma_bool_to_string;
     test!(true.to_string().len() == 4usize);
     test!(false.to_string().len() == 5usize);
+}
+
+fn test_string_to_string_length() {
+    broadcast use lemma_string_to_string;
+    proof { reveal_strlit("hi"); }
     test!(String::from_str("hi").to_string().len() == 2usize);
 }
 
@@ -111,8 +114,16 @@ fn test_debug_format_callability_and_uninterpreted_spec() {
 pub fn run() -> usize {
     let mut count = 0;
     count += crate::run_test(
-        "str::fmt::upstream_simple_types_to_string",
-        test_upstream_simple_types_to_string,
+        "str::fmt::integer_to_string_lengths",
+        test_integer_to_string_lengths,
+    );
+    count += crate::run_test(
+        "str::fmt::bool_to_string_lengths",
+        test_bool_to_string_lengths,
+    );
+    count += crate::run_test(
+        "str::fmt::string_to_string_length",
+        test_string_to_string_length,
     );
     count += crate::run_test(
         "str::fmt::char_to_string_from_upstream_char_conversion",

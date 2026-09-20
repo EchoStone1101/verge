@@ -23,21 +23,39 @@ fn test_empty() {
     assert(Seq::<u8>::empty().is_utf8());
 }
 
-/// Fresh downstream smoke test for `String::from_str` and `insert_str`.
+/// Fresh downstream smoke test for `String::from`.
 /// It is not a direct Rust core/std migration; it checks the exact literal-building path used here.
 fn test_string_literal() -> (ret: String)
     ensures ret@ =~= "abcd"@,
 {
     broadcast use group_str_axioms;
+    proof { reveal_strlit("abcd"); }
+    String::from("abcd")
+}
+
+/// Fresh downstream smoke test for `String::insert_str`.
+#[verifier::spinoff_prover]
+fn test_string_insert_str() -> (ret: String)
+    ensures ret@ =~= "abcd"@,
+{
+    broadcast use group_str_traits;
     proof {
         reveal_strlit("abd");
         reveal_strlit("c");
         reveal_strlit("abcd");
     }
 
-    let mut s = String::from_str("abd");
+    let mut s = String::from("abd");
     s.insert_str(2, "c");
     s
+}
+
+fn test_string_literal_runtime() {
+    let _ = test_string_literal();
+}
+
+fn test_string_insert_str_runtime() {
+    let _ = test_string_insert_str();
 }
 
 /// Fresh downstream mutation test for truncation on a long ASCII string.
@@ -354,12 +372,13 @@ fn test_from_utf8_verified() {
 
 /// Fresh downstream indexing and mutable-slice access smoke test for `str::get` / `get_mut`.
 /// It is not a direct Rust core/std migration; it checks callability and the expected `Some` results on a long ASCII string.
+#[verifier::spinoff_prover]
 fn test_str_get(s: &mut str)
     requires
         s@.is_ascii(),
         s@.len() > 10,
 {
-    broadcast use group_str_axioms;
+    broadcast use group_str_traits;
     let s1 = s.get(0..2);
     assert(s1 is Some);
     let _ = &s[3..4];
@@ -369,12 +388,9 @@ fn test_str_get(s: &mut str)
 
 /// Migrated from Rust core/std character-iterator and string `FromIterator` tests.
 /// Port status: partial; full upstream semantics were attempted, with exact `String` collection/extension cases deferred via `ISSUE TODO(Verge):` notes below.
-fn test_collect() {
-    broadcast use group_str_axioms;
-    proof {
-        reveal_strlit("");
-        reveal_strlit("ประเทศไทย中");
-    }
+fn test_collect_empty() {
+    broadcast use group_str_traits;
+    proof { reveal_strlit(""); }
 
     let empty = "";
     let empty_collected = empty.chars().collect::<Box<str>>();
@@ -386,7 +402,11 @@ fn test_collect() {
             reveal_with_fuel(verge::cmp::lexico_eq, 4);
         }
     });
+}
 
+fn test_collect_unicode() {
+    broadcast use group_str_traits;
+    proof { reveal_strlit("ประเทศไทย中"); }
     let data = "ประเทศไทย中";
     let data_collected = data.chars().collect::<Box<str>>();
     let data_string = data_collected.into_string();
@@ -397,7 +417,10 @@ fn test_collect() {
             reveal_with_fuel(verge::cmp::lexico_eq, 64);
         }
     });
+}
 
+fn test_collect_array() {
+    broadcast use group_str_traits;
     let s = (&['a', 'b', 'c']).into_iter().collect::<Box<str>>();
 
     test!(s.len() == 3usize, {
@@ -446,8 +469,12 @@ fn test_collect() {
 
 pub fn run() -> usize {
     let mut count = 0;
+    count += crate::run_test("str::string_literal", test_string_literal_runtime);
+    count += crate::run_test("str::string_insert_str", test_string_insert_str_runtime);
     count += crate::run_test("str::trim_ascii", test_trim_ascii);
-    count += crate::run_test("str::collect", test_collect);
+    count += crate::run_test("str::collect_empty", test_collect_empty);
+    count += crate::run_test("str::collect_unicode", test_collect_unicode);
+    count += crate::run_test("str::collect_array", test_collect_array);
     count += crate::run_suite("str::chars", chars::run);
     count += crate::run_suite("str::fmt", fmt::run);
     count += crate::run_suite("str::iter", iter::run);

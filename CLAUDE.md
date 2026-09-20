@@ -6,13 +6,13 @@ The Verus binary is bundled locally (not git-tracked). See `BUILD.md` for upgrad
 
 ```bash
 # Verify (check proofs) — full crate
-verus-release/cargo-verus verify -p verge -- --expand-errors
+verus-release-latest/cargo-verus verify -p verge -- --expand-errors
 
 # Verify a single module (faster iteration)
-verus-release/cargo-verus focus -p verge -- --verify-module <module> --expand-errors
+verus-release-latest/cargo-verus focus -p verge -- --verify-module <module> --expand-errors
 
 # Verify and compile
-verus-release/cargo-verus build -p verge -- --expand-errors
+verus-release-latest/cargo-verus build -p verge -- --expand-errors
 ```
 
 Tests are `exec fn`s inside `mod tests` blocks. They run as part of verification — there is no separate test command. To "run" a single test, verify the module containing it.

@@ -157,7 +157,14 @@ pub proof fn lemma_bezout_identity_ext2(a: nat, b: nat, m: int)
     assert(is_coprime(b1 as nat, a1 as nat)) by {
         lemma_gcd_div(a, b, d);
         assert(gcd(a1 as nat, b1 as nat) == 1);
+        assert(a1 > 0 && b1 > 0) by {
+            lemma_is_factor_bound(a, d);
+            lemma_is_factor_bound(b, d);
+            lemma_div_non_zero(a as int, d as int);
+            lemma_div_non_zero(b as int, d as int);
+        }
         axiom_coprime_gcd(a1 as nat, b1 as nat);
+        assert(is_coprime(a1 as nat, b1 as nat));
         axiom_is_coprime(a1 as nat, b1 as nat);
     }
 

@@ -20,12 +20,6 @@ pub broadcast group group_slice_ordering {
     lemma_slice_lexico_cmp_spec,
 }
 
-/// Enable slice equality.
-pub assume_specification<T: PartialEq<U>, U>[ <[T] as PartialEq<[U]>>::eq ](
-    a: &[T],
-    b: &[U],
-) -> bool;
-
 /// Enable slice partial comparison.
 pub assume_specification<T: PartialOrd>[ <[T] as PartialOrd>::partial_cmp ](
     a: &[T],

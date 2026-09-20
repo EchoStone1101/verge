@@ -193,14 +193,13 @@ fn test_split_off_and_truncate_ascii_boundaries() {
     test!(text.is_empty());
 }
 
+#[verifier::spinoff_prover]
 fn test_truncate_past_end_is_noop() {
-    broadcast use group_str_axioms;
     proof {
         reveal_strlit("12345");
     }
 
-    let mut text = String::with_capacity(5);
-    text.push_str("12345");
+    let mut text = String::from("12345");
     text.truncate(6usize);
     test!(text.len() == 5usize);
 }

@@ -4,9 +4,9 @@ version = "0.0.1"
 edition = "2024"
 
 [dependencies]
-vstd = "0.0.0-2026-05-31-0205"
-verus_builtin = "0.0.0-2026-05-17-0151"
-verus_builtin_macros = "0.0.0-2026-05-31-0205"
+vstd = "0.0.0-2026-09-06-0133"
+verus_builtin = "0.0.0-2026-09-06-0133"
+verus_builtin_macros = "0.0.0-2026-09-06-0133"
 verge = { path = "../verge_lib", features = ["func_assume_lemmas"] }
 verge_macros = { path = "../verge_macros" }
 

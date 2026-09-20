@@ -96,19 +96,19 @@ once.
 For quick iteration, verify the relevant external test module:
 
 ```bash
-verus-release/cargo-verus focus -p verge_tests --lib -- --verify-module cmp::string --expand-errors
+verus-release-latest/cargo-verus focus -p verge_tests --lib -- --verify-module cmp::string --expand-errors
 ```
 
 If a module selector is not convenient, verify the whole external test crate:
 
 ```bash
-verus-release/cargo-verus focus -p verge_tests --lib -- --expand-errors
+verus-release-latest/cargo-verus focus -p verge_tests --lib -- --expand-errors
 ```
 
 To compile and run migrated executable checks:
 
 ```bash
-verus-release/cargo-verus build -p verge_tests -- --expand-errors && ./target/debug/verge_tests
+verus-release-latest/cargo-verus build -p verge_tests -- --expand-errors && ./target/debug/verge_tests
 ```
 
 `focus` is the preferred proof-iteration command because it verifies the root crate

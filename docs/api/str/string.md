@@ -68,19 +68,6 @@ pub assume_specification [ String::len ] (s: &String) -> (ret: usize)
 ```
 
 
-### `String::is_empty`
-
-Enable `String::is_empty`.
-
-```rust
-pub assume_specification [ String::is_empty ] (s: &String) -> (ret: bool)
-    returns
-        s@.len() == 0,
-    no_unwind
-        ;
-```
-
-
 ### `String::with_capacity`
 
 Enable `String::with_capacity`.
@@ -132,57 +119,6 @@ pub assume_specification [ String::as_mut_str ] (s: &mut String) -> (ret: &mut s
     ensures
         ret@ =~= old(s)@,
         final(ret)@ =~= final(s)@,
-    no_unwind
-        ;
-```
-
-
-### `String::clear`
-
-Enable `String::clear`.
-
-```rust
-pub assume_specification [ String::clear ] (s: &mut String)
-    ensures
-        final(s)@ =~= Seq::<char>::empty(),
-    no_unwind
-        ;
-```
-
-
-### `String::push`
-
-Enable `String::push`.
-
-```rust
-pub assume_specification [ String::push ] (s: &mut String, ch: char)
-    ensures
-        final(s)@ =~= old(s)@.push(ch),
-        ;
-```
-
-
-### `String::push_str`
-
-Enable `String::push_str`.
-
-```rust
-pub assume_specification [ String::push_str ] (s: &mut String, string: &str)
-    ensures
-        final(s)@ =~= old(s)@ + string@,
-        ;
-```
-
-
-### `String::pop`
-
-Enable `String::pop`.
-
-```rust
-pub assume_specification [ String::pop ] (s: &mut String) -> (ch: Option<char>)
-    ensures
-        old(s)@.len() > 0 ==> final(s)@ =~= old(s)@.drop_last() && ch == Some(old(s)@.last()),
-        old(s)@.len() == 0 ==> final(s)@ =~= old(s)@ && ch.is_none(),
     no_unwind
         ;
 ```

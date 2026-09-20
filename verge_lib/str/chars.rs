@@ -157,14 +157,6 @@ assume_specification_for_char!(
     no_unwind
 );
 
-/// Enables `char::len_utf8`.
-assume_specification_for_char!(
-    [len_utf8 via char_len_utf8] (this: char) -> (ret: usize) 
-    returns 
-        (encode_scalar(this as u32).len() as usize),
-    no_unwind
-);
-
 pub uninterp spec fn is_non_ascii_alphabetic(this: char) -> bool;
 pub uninterp spec fn is_non_ascii_lowercase(this: char) -> bool;
 pub uninterp spec fn is_non_ascii_uppercase(this: char) -> bool;
@@ -229,16 +221,6 @@ assume_specification_for_char!(
     returns (
         ||| this.is_ascii_uppercase() 
         ||| !this.is_ascii() && is_non_ascii_uppercase(this)
-    ),
-    no_unwind
-);
-
-/// Enables `char::is_whitespace`.
-assume_specification_for_char!(
-    [is_whitespace via char_is_whitespace](this: char) -> (ret: bool)
-    returns (
-        ||| this.is_ascii_whitespace() 
-        ||| !this.is_ascii() && is_non_ascii_whitespace(this)
     ),
     no_unwind
 );

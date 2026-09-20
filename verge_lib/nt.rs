@@ -400,9 +400,11 @@ pub broadcast proof fn axiom_prime_not_composite(p: nat)
             assert(a * b + 0 == p);
             assert(1 < a < p) by { lemma_is_factor_bound(p, a); };
             assert(1 < b < p) by {
+                assert(p == b * a) by { broadcast use lemma_mul_is_commutative; }
                 lemma_div_by_multiple_is_strongly_ordered(a as int, p as int, b as int, a as int); // 1 < b
                 lemma_div_is_ordered_by_denominator(p as int, 1, a as int); // b <= p
                 assert_by_contradiction!(b != p, {
+                    assert(b * a == b * 1) by { assert(p == b * a); }
                     lemma_mul_equality_converse(b as int, a as int, 1);
                 });
             };
@@ -459,31 +461,26 @@ pub proof fn lemma_is_factor_multiples(a: nat, b: nat, c: nat)
     ensures
         is_factor_of(a, b),
 {
-    let r = a % b;
-    assert(is_factor_of(r * c, b * c)) by {
-        assert(r * c == a * c * 1 + b * c * (-(a / b))) by {
-            lemma_fundamental_div_mod(a as int, b as int);
-            assert(a == b * (a / b) + r);
-            assert(a * c == (b * (a / b) + r) * c);
-            assert(a * c == a * c * 1);
-            broadcast use group_mul_properties;
-            assert((b * (a / b) + r) * c == b * (a / b) * c + r * c);
-            assert(r * c == a * c + -(b * (a / b) * c));
-            assert(b * (a / b) * c == b * c * (a / b));
-            assert(-(b * c * (a / b)) == b * c * (-(a / b)));
+    let q = (a * c) / (b * c);
+    assert(a * c == (b * c) * q + 0) by {
+        lemma_fundamental_div_mod((a * c) as int, (b * c) as int);
+    }
+    assert(a * c == (b * q) * c) by {
+        calc!{
+            (==)
+            (b * c) * q; { lemma_mul_is_associative(b as int, c as int, q as int); }
+            b * (c * q); { lemma_mul_is_commutative(c as int, q as int); }
+            b * (q * c); { lemma_mul_is_associative(b as int, q as int, c as int); }
+            (b * q) * c;
         }
-        lemma_is_factor_lincomb(a * c, 1, b * c, -(a / b), b * c);
-    };
-    
-    assert(r * c < b * c) by {
-        lemma_mod_bound(a as int, b as int);
-        lemma_mul_strict_inequality(r as int, b as int, c as int);
     }
-
-    assert(r == 0) by {
-        lemma_is_factor_bound(r * c, b * c);
-        broadcast use group_mul_properties;
+    assert(c * a == c * (b * q)) by {
+        lemma_mul_is_commutative(a as int, c as int);
+        lemma_mul_is_commutative((b * q) as int, c as int);
     }
+    lemma_mul_equality_converse(c as int, a as int, (b * q) as int);
+    assert(a == q * b) by { lemma_mul_is_commutative(b as int, q as int); }
+    lemma_mod_multiples_basic(q as int, b as int);
 }
 
 /// Proof that `a * b / c == a / c * b` if `c|a`.
@@ -979,6 +976,7 @@ pub proof fn lemma_factorization_induct(n: nat, g: spec_fn(nat) -> nat)
             lemma_mul_strict_inequality_converse(1, p_to_e as int, n1 as int);
         }
         lemma_factorization_fun_comm(n1, g);
+        lemma_prime_factors_bound(n1);
         
         assert(g(n1) == prime_factors(n1).fold(g(1), f1)) by {
             lemma_factorization_induct(n1, g);
@@ -1008,6 +1006,10 @@ pub proof fn lemma_factorization_induct(n: nat, g: spec_fn(nat) -> nat)
                 implies set1.contains(p0)
                 by {
                     assert(is_factor_of(p_to_e, p0) || is_factor_of(n1, p0)) by {
+                        assert(n1 * p_to_e == n) by {
+                            assert(n == p_to_e * n1);
+                            broadcast use lemma_mul_is_commutative;
+                        }
                         assert(is_factor_of(n1 * p_to_e, p0));
                         axiom_prime_mul_union(p0);
                     }
@@ -1031,6 +1033,7 @@ pub proof fn lemma_factorization_induct(n: nat, g: spec_fn(nat) -> nat)
         } // ..(1)
 
         assert(prime_factors(n1).fold(g(1), f1) == prime_factors(n1).fold(g(1), f)) by {
+            lemma_prime_factors_bound(n1);
             assert(is_factor_of(n, n1)) by { lemma_mod_multiples_basic(p_to_e as int, n1 as int); }
             lemma_factorization_fun_fold(n, p, n1, prime_factors(n1), g);
         } // ..(2)

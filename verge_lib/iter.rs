@@ -1,13 +1,11 @@
 //! Specifications and lemmas for `Iterator` types.
 //!
 //! ## Specification Methodology
-//! This module includes a template specification for various implementations
-//! of the `Iterator` trait, built upon `vstd`'s `IteratorSpec` encoding.
-//! In time, these specifications should be upstreamed by `vstd` itself.
-//! However, as it is, Rust's orphan rules forbid implementing `IteratorSpec`
-//! on the actual types. Thus, wrapper types are introduced, and the
-//! constructor methods for the iterators are added by extension traits
-//! with a uniform naming convention:
+//! This module includes a template specification for implementations of the
+//! `Iterator` trait that are not yet covered by `vstd`'s `IteratorSpec`
+//! encoding. Rust's orphan rules forbid implementing `IteratorSpec` on the
+//! actual types, so wrapper types are introduced and constructor methods are
+//! added by extension traits with a uniform naming convention:
 //! - `str::char_indices() -> CharIndices` into `str::char_indices_iter() -> VergeCharIndices`;
 //! - `path::iter() -> path::Iter` into `path::iterate() -> path::VergeIter`;
 //! This workaround does not affect downstream crates. Users of Verge should
@@ -20,7 +18,6 @@ use crate::seq::*;
 use crate::{is_deterministic, is_total};
 use vstd::prelude::*;
 use vstd::pervasive::cloned;
-use vstd::math::{min, max};
 use vstd::std_specs::iter::*;
 use vstd::relations::sorted_by;
 pub use paste::paste;
@@ -330,110 +327,6 @@ pub fn iter_reduce<I: Iterator, F>(
         }
     { iter.reduce(f) }
 
-/// Enables `Iterator::find`.
-#[verifier::external_body]
-pub fn iter_find<I: Iterator, P>(iter: &mut I, predicate: P) -> (ret: Option<I::Item>)
-    where
-        P: FnMut(&I::Item) -> bool,
-    requires
-        <I as IteratorSpec>::obeys_prophetic_iter_laws(iter) && <I as IteratorSpec>::will_return_none(iter),
-        is_total(predicate) && is_deterministic(predicate),
-    ensures
-        // The iterator consistently obeys, completes, and decreases throughout its lifetime
-        (*final(iter)).will_return_none() == (*old(iter)).will_return_none(),
-        (*old(iter)).decrease() is Some <==> (*final(iter)).decrease() is Some,
-        (*final(iter)).remaining().is_suffix_of((*old(iter)).remaining()),
-        // If find returns None, then the iterator has no remaining
-        // elements, and the predicate was false for all of the original
-        // iterator's elements.
-        ret.is_none() ==> {
-            &&& (*final(iter)).remaining().len() == 0
-            &&& forall |i| 0 <= i < (*old(iter)).remaining().len() ==>
-                predicate.ensures((#[trigger]&(*old(iter)).remaining()[i],), false)
-        },
-        // If find returns Some, then the returned value satisfies the
-        // predicate, and all previous elements did not satisfy the
-        // predicate.
-        ret.is_some() ==> {
-            let idx = (*old(iter)).remaining().len() - (*final(iter)).remaining().len() - 1;
-            {
-                &&& (*final(iter)).remaining().len() < (*old(iter)).remaining().len()
-                &&& predicate.ensures((&ret.unwrap(),), true)
-                &&& (*old(iter)).remaining()[idx] == ret.unwrap()
-                &&& forall |i| 0 <= i < idx ==>
-                    predicate.ensures((#[trigger] &(*old(iter)).remaining()[i],), false)
-            }
-        },
-    { iter.find(predicate) }
-
-/// Enables `Iterator::all`.
-#[verifier::external_body]
-pub fn iter_all<I: Iterator, P>(iter: &mut I, predicate: P) -> (ret: bool)
-    where
-        P: FnMut(I::Item) -> bool,
-    requires
-        <I as IteratorSpec>::obeys_prophetic_iter_laws(iter) && <I as IteratorSpec>::will_return_none(iter),
-        is_total(predicate) && is_deterministic(predicate),
-    ensures
-        // The iterator consistently obeys, completes, and decreases throughout its lifetime
-        (*final(iter)).will_return_none() == (*old(iter)).will_return_none(),
-        (*old(iter)).decrease() is Some <==> (*final(iter)).decrease() is Some,
-        (*final(iter)).remaining().is_suffix_of((*old(iter)).remaining()),
-        // If all returns true, then the iterator has no remaining
-        // elements, and the predicate was true for all of the original
-        // iterator's elements.
-        ret ==> {
-            &&& (*final(iter)).remaining().len() == 0
-            &&& forall |i| 0 <= i < (*old(iter)).remaining().len() ==>
-                predicate.ensures((#[trigger](*old(iter)).remaining()[i],), true)
-        },
-        // If all returns false, then there is some element for which the
-        // predicate was false, and all previous elements satisfied the predicate.
-        !ret ==> {
-            let idx = (*old(iter)).remaining().len() - (*final(iter)).remaining().len() - 1;
-            {
-                &&& (*final(iter)).remaining().len() < (*old(iter)).remaining().len()
-                &&& predicate.ensures(((*old(iter)).remaining()[idx],), false)
-                &&& forall |i| 0 <= i < idx ==>
-                    predicate.ensures((#[trigger] (*old(iter)).remaining()[i],), true)
-            }
-        },
-    { iter.all(predicate) }
-
-/// Enables `Iterator::any`.
-#[verifier::external_body]
-pub fn iter_any<I: Iterator, P>(iter: &mut I, predicate: P) -> (ret: bool)
-    where
-        P: FnMut(I::Item) -> bool,
-    requires
-        <I as IteratorSpec>::obeys_prophetic_iter_laws(iter) && <I as IteratorSpec>::will_return_none(iter),
-        is_total(predicate) && is_deterministic(predicate),
-    ensures
-        // The iterator consistently obeys, completes, and decreases throughout its lifetime
-        (*final(iter)).will_return_none() == (*old(iter)).will_return_none(),
-        (*old(iter)).decrease() is Some <==> (*final(iter)).decrease() is Some,
-        (*final(iter)).remaining().is_suffix_of((*old(iter)).remaining()),
-        // If any returns false, then the iterator has no remaining
-        // elements, and the predicate was false for all of the original
-        // iterator's elements.
-        !ret ==> {
-            &&& (*final(iter)).remaining().len() == 0
-            &&& forall |i| 0 <= i < (*old(iter)).remaining().len() ==>
-                predicate.ensures((#[trigger](*old(iter)).remaining()[i],), false)
-        },
-        // If any returns true, then there is some element for which the
-        // predicate was true, and all previous elements did not satisfy the predicate.
-        ret ==> {
-            let idx = (*old(iter)).remaining().len() - (*final(iter)).remaining().len() - 1;
-            {
-                &&& (*final(iter)).remaining().len() < (*old(iter)).remaining().len()
-                &&& predicate.ensures(((*old(iter)).remaining()[idx],), true)
-                &&& forall |i| 0 <= i < idx ==>
-                    predicate.ensures((#[trigger] (*old(iter)).remaining()[i],), false)
-            }
-        },
-    { iter.any(predicate) }
-
 /// Enables `Iterator::nth`.
 #[verifier::external_body]
 pub fn iter_nth<I: Iterator>(iter: &mut I, n: usize) -> (ret: Option<I::Item>)
@@ -493,72 +386,6 @@ impl_iterator_method!(
     }
 );
 
-/// Specifies the iterator `VergeZip` which wraps `Zip`,
-/// contructed via `Iterator::zip_iter()`.
-impl_iterator_method!(
-    #[verifier::accept_recursive_types(I)]
-    #[verifier::accept_recursive_types(U)]
-    [ std::iter::Zip[I, U] as VergeZip[Self, U]
-        where
-            I: Iterator + Sized,
-            U: Iterator + Sized,
-    ] [ zip_iter[U] via zip
-        where
-            U: Iterator + Sized,
-    ] (self, other: U) requires(
-        other.obeys_prophetic_iter_laws(),
-        other.will_return_none(),
-    ) -> |iter| {
-        let zip_len = min(self.remaining().len() as int, other.remaining().len() as int);
-        iter.seq() == self.remaining().take(zip_len)
-            .zip_with(other.remaining().take(zip_len))
-    }
-);
-
-/// Specifies the iterator `VergeMap` which wraps `Map`,
-/// constructed via `Iterator::map_iter()`.
-impl_iterator_method!(
-    #[verifier::accept_recursive_types(I)]
-    #[verifier::accept_recursive_types(F)]
-    #[verifier::accept_recursive_types(B)]
-    [ std::iter::Map[I, F] as VergeMap[Self, F, B] :: Item [B] = B
-        where
-            I: Iterator + Sized,
-            F: FnMut(I::Item) -> B,
-    ] [ map_iter[F, B] via map
-        where
-            F: FnMut(Self::Item) -> B,
-    ] (self, f: F) requires(
-        is_deterministic(f),
-        is_total(f),
-    ) -> |iter| {
-        iter.seq() == Seq::new(
-            self.remaining().len(),
-            |i: int| choose|ret: B| call_ensures(f, (self.remaining()[i],), ret)
-        )
-    }
-);
-
-/// Specifies the iterator `VergeFilter` which wraps `Filter`,
-/// constructed via `Iterator::filter_iter()`.
-impl_iterator_method!(
-    #[verifier::accept_recursive_types(I)]
-    #[verifier::accept_recursive_types(P)]
-    [ std::iter::Filter[I, P] as VergeFilter[Self, P]
-        where
-            I: Iterator + Sized,
-            P: FnMut(&I::Item) -> bool,
-    ] [ filter_iter[P] via filter
-        where
-            P: FnMut(&Self::Item) -> bool,
-    ] (self, predicate: P) requires(
-        is_deterministic(predicate),
-        is_total(predicate),
-    ) -> |iter| {
-        iter.seq() == self.remaining().filter(|item: Self::Item| call_ensures(predicate, (&item,), true))
-    }
-);
-
 /// Specifies the iterator `VergeEnumerate` which wraps `Enumerate`,
 /// constructed via `Iterator::enumerate_iter()`.
 impl_iterator_method!(
@@ -609,30 +436,6 @@ impl_iterator_method!(
     ) -> |iter| {
         iter.seq() == self.remaining()
             .take_while(|item: Self::Item| call_ensures(predicate, (&item,), true))
-    }
-);
-
-/// Specifies the iterator `VergeSkip` which wraps `Skip`,
-/// constructed via `Iterator::skip_iter()`.
-impl_iterator_method!(
-    #[verifier::accept_recursive_types(I)]
-    [ std::iter::Skip[I] as VergeSkip[Self] where I: Iterator + Sized ]
-    [ skip_iter via skip ]
-    (self, n: usize) -> |iter| {
-        iter.seq() == self.remaining()
-            .skip(min(n as int, self.remaining().len() as int))
-    }
-);
-
-/// Specifies the iterator `VergeTake` which wraps `Take`,
-/// constructed via `Iterator::take_iter()`.
-impl_iterator_method!(
-    #[verifier::accept_recursive_types(I)]
-    [ std::iter::Take[I] as VergeTake[Self] where I: Iterator + Sized ]
-    [ take_iter via take ]
-    (self, n: usize) -> |iter| {
-        iter.seq() == self.remaining()
-            .take(min(n as int, self.remaining().len() as int))
     }
 );
 
@@ -744,11 +547,6 @@ macro_rules! impl_iterator_method {
                 { self.seq().subrange(self.idx(), self.ridx()) }
             open spec fn decrease(&self) -> Option<nat>
                 { Some((self.ridx() - self.idx()) as nat) }
-            open spec fn initial_value_relation(&self, init: &Self) -> bool {
-                &&& init.seq() == self.seq()
-                &&& init.idx() == self.idx()
-                &&& init.ridx() == self.ridx()
-            }
             open spec fn peek(&self, i: int) -> Option<$ity> {
                 if 0 <= self.idx() + i < self.ridx() { Some(self.seq()[self.idx() + i]) } else { None }
             }
@@ -844,11 +642,6 @@ macro_rules! impl_iterator_method {
                 { self.seq().subrange(self.idx(), self.ridx()) }
             open spec fn decrease(&self) -> Option<nat>
                 { Some((self.ridx() - self.idx()) as nat) }
-            open spec fn initial_value_relation(&self, init: &Self) -> bool {
-                &&& init.seq() == self.seq()
-                &&& init.idx() == self.idx()
-                &&& init.ridx() == self.ridx()
-            }
             open spec fn peek(&self, i: int) -> Option<$ity> {
                 if 0 <= self.idx() + i < self.ridx() { Some(self.seq()[self.idx() + i]) } else { None }
             }
@@ -972,11 +765,6 @@ macro_rules! impl_iterator_method {
                 { self.seq().subrange(self.idx(), self.ridx()) }
             open spec fn decrease(&self) -> Option<nat>
                 { Some((self.ridx() - self.idx()) as nat) }
-            open spec fn initial_value_relation(&self, init: &Self) -> bool {
-                &&& init.seq() == self.seq()
-                &&& init.idx() == self.idx()
-                &&& init.ridx() == self.ridx()
-            }
             open spec fn peek(&self, i: int) -> Option<<$type<$($gen)*> as Iterator>::Item> {
                 if 0 <= self.idx() + i < self.ridx() { Some(self.seq()[self.idx() + i]) } else { None }
             }
@@ -1362,11 +1150,6 @@ macro_rules! impl_iterator {
                 { self.seq().subrange(self.idx(), self.ridx()) }
             open spec fn decrease(&self) -> Option<nat>
                 { Some((self.ridx() - self.idx()) as nat) }
-            open spec fn initial_value_relation(&self, init: &Self) -> bool {
-                &&& init.seq() == self.seq()
-                &&& init.idx() == self.idx()
-                &&& init.ridx() == self.ridx()
-            }
             open spec fn peek(&self, i: int) -> Option<$ity> {
                 if 0 <= self.idx() + i < self.ridx() { Some(self.seq()[self.idx() + i]) } else { None }
             }

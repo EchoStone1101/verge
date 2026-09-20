@@ -6,7 +6,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-CARGO_VERUS="$ROOT_DIR/verus-release/cargo-verus"
+CARGO_VERUS="$ROOT_DIR/verus-release-latest/cargo-verus"
 TEST_PROJECT="$SCRIPT_DIR/tests/test_project"
 
 if [ ! -f "$CARGO_VERUS" ]; then
@@ -15,7 +15,7 @@ if [ ! -f "$CARGO_VERUS" ]; then
 fi
 
 echo "=== Building verge_macros ==="
-cargo +1.94.0 build --release -p verge_macros
+cargo +1.98.1 build --release -p verge_macros
 
 echo ""
 echo "=== Running macro integration tests ==="

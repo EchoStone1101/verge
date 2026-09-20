@@ -469,8 +469,6 @@ pub trait PathBufAdditionalFns {
 
     fn as_str(&self) -> &str
         no_unwind;
-    fn into_string(self) -> String 
-        no_unwind;
     fn push(&mut self, path: &Path);
 }
 
@@ -493,15 +491,6 @@ impl PathBufAdditionalFns for PathBuf {
             ret@ == self.str_view(),
     {
         unsafe { str::from_utf8_unchecked(self.as_os_str().as_encoded_bytes()) }
-    }
-
-    /// Consumes the `PathBuf`, yielding its internal `String` storage.
-    #[verifier::external_body]
-    fn into_string(self) -> (ret: String)
-        ensures
-            ret@ == self.str_view(),
-    {
-        unsafe { String::from_utf8_unchecked(self.into_os_string().into_encoded_bytes()) }
     }
 
     /// Extends `self` with `path`.

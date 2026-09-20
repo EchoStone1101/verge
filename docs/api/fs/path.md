@@ -142,14 +142,6 @@ fn as_str(&self) -> &str
 ```
 
 
-#### `into_string`
-
-```rust
-fn into_string(self) -> String
-    no_unwind;
-```
-
-
 #### `push`
 
 ```rust

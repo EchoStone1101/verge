@@ -19,7 +19,7 @@ The workspace has three crates:
 | `func` | Reserved function-contract attribute macro re-exports; no active contract lemmas |
 | `fs` | File system: `File`, `ReadDir`, `DirEntry`, path, metadata |
 | `io` | I/O traits and impls: `Read`, `Write`, `BufReader`, stdio |
-| `iter` | `Iterator` trait specs, wrapper iterators, constructor-method extensions, and sealed `VergeIteratorSpec::new_dummy` witness construction |
+| `iter` | Iterator operations and wrapper iterators not yet specified by `vstd`, plus sealed `VergeIteratorSpec::new_dummy` witness construction |
 | `mem` | `forget`, `replace` |
 | `nt` | Number theory: GCD, LCM, Euler's totient, prime factors, and `ISet`-based fold lemmas |
 | `seq` | Extended `Seq` specs and sequence lemmas |
@@ -46,6 +46,8 @@ See `docs/internal/SPEC-GUIDE.md` for detailed guidance. The main patterns:
 **Specifying traits:** Prefer `#[verifier::external_trait_specification]` with `#[verifier::external_trait_extension(Spec via SpecImpl)]` when the original trait signature is usable (for example, `str::fmt::ToStringSpec` and `str::parse::FromStrSpec`). Use concrete `assume_specification` bridges when Verus still needs help accepting a standard-library impl call form, and use new delegating Verge traits only when the Rust signature or trait bounds cannot express the needed abstract state (for example, `io::Read`/`io::Write`).
 
 **Sealing internal traits:** Shared seal markers live at the crate root (`verge::Sealed`) and are reused for internal extension traits that must not be implemented downstream, such as `CloneImpl` and `VergeIteratorSpec`.
+
+**Iterator specifications:** Prefer `vstd::std_specs::iter` whenever it specifies the standard iterator type or method directly. Verge keeps wrapper iterators only for gaps in upstream coverage and removes them when equivalent `vstd` support becomes available.
 
 **Broadcast groups:** Lemmas are grouped with `broadcast group group_*` and enabled in proofs with `broadcast use group_*;`.
 

@@ -1009,11 +1009,6 @@ impl IteratorSpecImpl for VergeReadDir {
         { self.seq().subrange(self.idx(), self.ridx()) }
     open spec fn decrease(&self) -> Option<nat> 
         { Some((self.ridx() - self.idx()) as nat) }
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& init.seq() == self.seq()
-        &&& init.idx() == self.idx()
-        &&& init.ridx() == self.ridx()
-    }
     open spec fn peek(&self, i: int) -> Option<Result<DirEntry>> {
         if 0 <= self.idx() + i < self.ridx() { Some(self.seq()[self.idx() + i]) } else { None }
     }

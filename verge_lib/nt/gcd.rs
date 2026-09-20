@@ -129,7 +129,9 @@ proof fn lemma_gcd_rec(a: nat, b: nat)
     let d = gcd_rec(a, b);
     if a <= b && b % a == 0 {
         assert(d == a);
-        assert(is_factor_of(a, d));
+        assert(is_factor_of(a, d)) by {
+            assert(a % a == 0) by { lemma_mod_self_0(a as int); }
+        }
         assert(is_factor_of(b, d));
     } else if a > b {
         assert(d == gcd_rec(b, a));
@@ -547,7 +549,9 @@ pub proof fn lemma_lcm_is_factor(a: nat, b: nat, n: nat)
     let n2 = n1 / a1;
     assert(n1 == a1 * n2 + 0) by { lemma_fundamental_div_mod(n1 as int, a1 as int); }
     
-    assert(a1 * b > 0) by { broadcast use group_mul_properties; }
+    assert(a1 * b > 0) by {
+        lemma_mul_nonzero(a1 as int, b as int);
+    }
     if n == 0 {
         // ..trivial
     } else {

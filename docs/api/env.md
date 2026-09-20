@@ -25,15 +25,12 @@ contructed via `args_iter()`.
 
 ```rust
 impl_iterator!(
-    Args<> as VergeArgs<> :: Item = String
-    ;
+    Args<> as VergeArgs<> :: Item = String;
 
-    args_iter via args
-    () -> (iter: VergeArgs)
+    args_iter via args () -> (iter: VergeArgs)
     ensures {
-            Env::args() =~~= iter.seq().map(|i: int, arg: String| arg@)
-        }
-        ;
+        Env::args() =~~= iter.seq().map(|i: int, arg: String| arg@)
+        };
         );
 ```
 

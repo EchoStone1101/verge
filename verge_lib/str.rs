@@ -25,7 +25,7 @@ use vstd::math::{min, max};
 use vstd::assert_by_contradiction;
 use vstd::utf8::*;
 use vstd::slice::*;
-use vstd::std_specs::core::{IndexSpec, IndexSpecImpl};
+use vstd::std_specs::core::IndexSpec;
 use vstd::std_specs::iter::FromIteratorSpec; 
 use crate::seq::*;
 use crate::error::ErrorSpec;
@@ -359,7 +359,7 @@ pub uninterp spec fn str_index_mut_ensures<'a, I>(s: &'a mut str, i: I, r: &'a m
 #[verifier::external_body]
 pub broadcast axiom fn lemma_str_range_index_requires(s: &str, i: Range<usize>)
     ensures
-        (#[trigger] s.index_req(&i)) 
+        (#[trigger] vstd::std_specs::core::IndexSpec::index_req(s, &i))
             <==> str_range_index_requires(s, i.start as int, i.end as int)
 ;
 
@@ -398,8 +398,8 @@ pub assume_specification<I: SliceIndex<str>>[ str::get ] (
     ensures
         ({
             match ret {
-                Some(o) => s.index_req(&i) && str_index_ensures(s, i, o),
-                None => !s.index_req(&i),
+                Some(o) => vstd::std_specs::core::IndexSpec::index_req(s, &i) && str_index_ensures(s, i, o),
+                None => !vstd::std_specs::core::IndexSpec::index_req(s, &i),
             }
         }),
 ;
@@ -409,7 +409,7 @@ pub assume_specification<I: SliceIndex<str>>[ str::get_unchecked ] (
     s: &str, i: I,
 ) -> (ret: &<I as SliceIndex<str>>::Output)
     requires
-        s.index_req(&i),
+        vstd::std_specs::core::IndexSpec::index_req(s, &i),
     ensures
         str_index_ensures(s, i, ret),
 ;
@@ -421,8 +421,8 @@ pub assume_specification<I: SliceIndex<str>>[ str::get_mut ] (
     ensures
         ({
             match ret {
-                Some(o) => old(s).index_req(&i) && str_index_mut_ensures(s, i, o),
-                None => !old(s).index_req(&i) && final(s)@ == old(s)@
+                Some(o) => vstd::std_specs::core::IndexSpec::index_req(old(s), &i) && str_index_mut_ensures(s, i, o),
+                None => !vstd::std_specs::core::IndexSpec::index_req(old(s), &i) && final(s)@ == old(s)@
             }
         }),
 ;
@@ -432,7 +432,7 @@ pub assume_specification<I: SliceIndex<str>>[ str::get_unchecked_mut ] (
     s: &mut str, i: I,
 ) -> (ret: &mut <I as SliceIndex<str>>::Output)
     requires
-        s.index_req(&i),
+        vstd::std_specs::core::IndexSpec::index_req(s, &i),
     ensures
         str_index_mut_ensures(s, i, ret),
 ;
@@ -493,27 +493,28 @@ pub assume_specification[ str::trim ](s: &str) -> (ret: &str)
     ensures
         ret@.is_subrange_of(s@),
         ret@.len() > 0 ==> 
-            !ret@.first().is_whitespace() && !ret@.last().is_whitespace(),
-        ret@ == s@.skip_while(|c: char| c.is_whitespace())
-                    .rskip_while(|c: char| c.is_whitespace()),
+            !vstd::std_specs::char::is_white_space(ret@.first())
+                && !vstd::std_specs::char::is_white_space(ret@.last()),
+        ret@ == s@.skip_while(|c: char| vstd::std_specs::char::is_white_space(c))
+                    .rskip_while(|c: char| vstd::std_specs::char::is_white_space(c)),
 ;
 
 /// Enables `str::trim_start`.
 pub assume_specification[ str::trim_start ](s: &str) -> (ret: &str)
     ensures
         ret@.is_suffix_of(s@),
-        ret@.len() > 0 ==> !ret@.first().is_whitespace(),
+        ret@.len() > 0 ==> !vstd::std_specs::char::is_white_space(ret@.first()),
         forall|i: int| 0 <= i < s@.len() - ret@.len()
-            ==> #[trigger] s@[i].is_whitespace(),
+            ==> #[trigger] vstd::std_specs::char::is_white_space(s@[i]),
 ;
 
 /// Enables `str::trim_end`.
 pub assume_specification[ str::trim_end ](s: &str) -> (ret: &str)
     ensures
         ret@.is_prefix_of(s@),
-        ret@.len() > 0 ==> !ret@.last().is_whitespace(),
+        ret@.len() > 0 ==> !vstd::std_specs::char::is_white_space(ret@.last()),
         forall|i: int| ret@.len() <= i < s@.len()
-            ==> #[trigger] s@[i].is_whitespace(),
+            ==> #[trigger] vstd::std_specs::char::is_white_space(s@[i]),
 ;
 
 /// Enables `str::parse`.

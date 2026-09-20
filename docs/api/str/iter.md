@@ -52,21 +52,19 @@ impl_iterator!(
     Split<'a, P> as VergeSplit<'_, P> :: Item = &'a str
     where {
     P: Pattern
-    }
-    ;
+    };
 
     [str as View<V=Seq<char>>] :: split_ch_iter via split
     (&self, ch: char) -> (iter: VergeSplit<'_, char>)
     ensures {
-            &&& iter.seq().len() > 0
-            &&& forall |i: int| 0 <= i < iter.seq().len()
-                    ==> !(#[trigger] iter.seq()[i]@.contains(ch))
-            &&& self@ == iter.seq().first()@
-                + iter.seq().drop_first()
-                    .map_values(|ss: &str| ss@.insert(0, ch))
-                    .flatten()
-        }
-        ;
+        &&& iter.seq().len() > 0
+        &&& forall |i: int| 0 <= i < iter.seq().len()
+                ==> !(#[trigger] iter.seq()[i]@.contains(ch))
+        &&& self@ == iter.seq().first()@
+            + iter.seq().drop_first()
+                .map_values(|ss: &str| ss@.insert(0, ch))
+                .flatten()
+        };
 
         [str as View<V=Seq<char>>] :: split_chars_iter via split <'b>
         (&self, chars: &'b [char]) -> (iter: VergeSplit<'_, &'b [char]>)
@@ -95,20 +93,19 @@ impl_iterator!(
         is_deterministic(f) && is_total(f)
         }
     ensures {
-            &&& iter.seq().len() > 0
-            &&& forall |i: int| 0 <= i < iter.seq().len()
-                    ==> (#[trigger] iter.seq()[i]@).all(|c: char| call_ensures(f, (c,), false))
-            &&& exists |delim: Seq<char>| #![trigger delim.len()] {
-                &&& #[trigger] delim.len() == iter.seq().len() - 1
-                &&& forall |i: int| 0 <= i < delim.len()
-                        ==> #[trigger] call_ensures(f, (delim[i],), true)
-                &&& self@ == iter.seq().first()@
-                    + iter.seq().drop_first()
-                        .map(|i: int, ss: &str| ss@.insert(0, delim[i]))
-                        .flatten()
-            }
+        &&& iter.seq().len() > 0
+        &&& forall |i: int| 0 <= i < iter.seq().len()
+                ==> (#[trigger] iter.seq()[i]@).all(|c: char| call_ensures(f, (c,), false))
+        &&& exists |delim: Seq<char>| #![trigger delim.len()] {
+            &&& #[trigger] delim.len() == iter.seq().len() - 1
+            &&& forall |i: int| 0 <= i < delim.len()
+                    ==> #[trigger] call_ensures(f, (delim[i],), true)
+            &&& self@ == iter.seq().first()@
+                + iter.seq().drop_first()
+                    .map(|i: int, ss: &str| ss@.insert(0, delim[i]))
+                    .flatten()
         }
-        ;
+        };
 
         [str as View<V=Seq<char>>] :: split_str_iter via split <'b>
         (&self, pat: &'b str) -> (iter: VergeSplit<'_, &'b str>)
@@ -238,14 +235,14 @@ impl_double_ended_iterator!(
 ```
 
 
-### `impl_iterator!(verifier)`
+### `impl_iterator!(specialized_next_reverse_searcher)`
 
 Specifies the iterator `VergeRSplit` which wraps `RSplit`,
 constructed via pattern-specialized string methods.
 
 ```rust
 impl_iterator!(
-    specialized_next_reverse_searcher
+    #[specialized_next_reverse_searcher]
     #[verifier::reject_recursive_types(P)]
     RSplit<'a, P> as VergeRSplit<'_, P> :: Item = &'a str
     where {
@@ -477,14 +474,14 @@ impl_double_ended_iterator!(
 ```
 
 
-### `impl_iterator!(verifier)`
+### `impl_iterator!(specialized_next_reverse_searcher)`
 
 Specifies the iterator `VergeRSplitTerminator` which wraps `RSplitTerminator`,
 constructed via pattern-specialized string methods.
 
 ```rust
 impl_iterator!(
-    specialized_next_reverse_searcher
+    #[specialized_next_reverse_searcher]
     #[verifier::reject_recursive_types(P)]
     RSplitTerminator<'a, P> as VergeRSplitTerminator<'_, P> :: Item = &'a str
     where {
@@ -713,14 +710,14 @@ impl_iterator!(
 ```
 
 
-### `impl_iterator!(verifier)`
+### `impl_iterator!(specialized_next_reverse_searcher)`
 
 Specifies the iterator `VergeRSplitN` which wraps `RSplitN`,
 constructed via pattern-specialized string methods.
 
 ```rust
 impl_iterator!(
-    specialized_next_reverse_searcher
+    #[specialized_next_reverse_searcher]
     #[verifier::reject_recursive_types(P)]
     RSplitN<'a, P> as VergeRSplitN<'_, P> :: Item = &'a str
     where {
@@ -906,14 +903,14 @@ impl_double_ended_iterator!(
 ```
 
 
-### `impl_iterator!(verifier)`
+### `impl_iterator!(specialized_next_reverse_searcher)`
 
 Specifies the iterator `VergeRMatches` which wraps `RMatches`,
 constructed via pattern-specialized string methods.
 
 ```rust
 impl_iterator!(
-    specialized_next_reverse_searcher
+    #[specialized_next_reverse_searcher]
     #[verifier::reject_recursive_types(P)]
     RMatches<'a, P> as VergeRMatches<'_, P> :: Item = &'a str
     where {
@@ -1137,14 +1134,14 @@ impl_double_ended_iterator!(
 ```
 
 
-### `impl_iterator!(verifier)`
+### `impl_iterator!(specialized_next_reverse_searcher)`
 
 Specifies the iterator `VergeRMatchIndices` which wraps `RMatchIndices`,
 constructed via pattern-specialized string methods.
 
 ```rust
 impl_iterator!(
-    specialized_next_reverse_searcher
+    #[specialized_next_reverse_searcher]
     #[verifier::reject_recursive_types(P)]
     RMatchIndices<'a, P> as VergeRMatchIndices<'_, P> :: Item = (usize, &'a str)
     where {
@@ -1404,13 +1401,13 @@ impl_iterator!(
             // splits cannot have whitespaces
             &&& forall |i: int| #![trigger iter.seq()[i]] 0 <= i < iter.seq().len() ==>
                     forall |j: int| #![trigger iter.seq()[i]@[j]] 0 <= j < iter.seq()[i]@.len() ==>
-                        !iter.seq()[i]@[j].is_whitespace()
+                        !vstd::std_specs::char::is_white_space(iter.seq()[i]@[j])
             &&& exists |sps: Seq<Seq<char>>| #![trigger sps.len()] {
                 &&& sps.len() == iter.seq().len() + 1
                 // delimeters are all whitespaces
                 &&& forall |i: int| #![trigger sps[i]] 0 <= i < sps.len() ==>
                         forall |j: int| #![trigger sps[i][j]] 0 <= j < sps[i].len() ==>
-                            sps[i][j].is_whitespace()
+                            vstd::std_specs::char::is_white_space(sps[i][j])
                 &&& forall |i: int| #![trigger sps[i]] 1 <= i < sps.len() - 1 ==>
                         sps[i].len() > 0
                 // delimeters and lines make up the original string

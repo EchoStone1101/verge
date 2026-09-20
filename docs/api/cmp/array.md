@@ -6,18 +6,6 @@ Specifications and verified comparison impls for arrays.
 ## Functions
 
 
-### `<[T; N] as PartialEq<[U; N]>>::eq`
-
-Enable array equality.
-
-```rust
-pub assume_specification<T: PartialEq<U>, U, const N: usize>[ <[T; N] as PartialEq<[U; N]>>::eq ](
-    a: &[T; N],
-    b: &[U; N],
-    ) -> bool;
-```
-
-
 ### `<[T; N] as PartialEq<[U; N]>>::ne`
 
 Enable array inequality.

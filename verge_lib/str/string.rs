@@ -26,14 +26,6 @@ pub assume_specification [ String::len ] (s: &String) -> (ret: usize)
     no_unwind
 ;
 
-/// Enable `String::is_empty`. 
-#[verifier::allow_in_spec]
-pub assume_specification [ String::is_empty ] (s: &String) -> (ret: bool)
-    returns
-        s@.len() == 0,
-    no_unwind
-;
-
 /// Enable `String::with_capacity`.
 pub assume_specification [ String::with_capacity ] (cap: usize) -> (s: String)
     ensures
@@ -63,33 +55,6 @@ pub assume_specification [ String::as_mut_str ] (s: &mut String) -> (ret: &mut s
     ensures
         ret@ =~= old(s)@,
         final(ret)@ =~= final(s)@,
-    no_unwind
-;
-
-/// Enable `String::clear`.
-pub assume_specification [ String::clear ] (s: &mut String)
-    ensures
-        final(s)@ =~= Seq::<char>::empty(),
-    no_unwind
-;
-
-/// Enable `String::push`. 
-pub assume_specification [ String::push ] (s: &mut String, ch: char) 
-    ensures
-        final(s)@ =~= old(s)@.push(ch),
-;
-
-/// Enable `String::push_str`. 
-pub assume_specification [ String::push_str ] (s: &mut String, string: &str) 
-    ensures
-        final(s)@ =~= old(s)@ + string@,
-;
-
-/// Enable `String::pop`. 
-pub assume_specification [ String::pop ] (s: &mut String) -> (ch: Option<char>) 
-    ensures
-        old(s)@.len() > 0 ==> final(s)@ =~= old(s)@.drop_last() && ch == Some(old(s)@.last()),
-        old(s)@.len() == 0 ==> final(s)@ =~= old(s)@ && ch.is_none(),
     no_unwind
 ;
 
