@@ -184,7 +184,11 @@ fn test_char_unicode_predicates_ascii_backed() {
 }
 
 fn test_char_unicode_predicates_non_ascii_core_cases() {
-    // XXX: Verge doesn't module full Unicode categories in spec yet, 
+    assert(is_non_ascii_whitespace('\u{a0}'));
+    assert(!is_non_ascii_whitespace(' '));
+    test!('\u{a0}'.is_whitespace());
+
+    // XXX: Verge doesn't model the other full Unicode categories in spec yet,
     // so some facts require a (cheap) `exec`-mode proof.
     if 'ö'.is_lowercase() {
         test!('ö'.is_alphabetic(), {
