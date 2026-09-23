@@ -69,7 +69,6 @@ pub mod env;
 pub mod error;
 pub mod func;
 pub mod fs;
-// pub mod index;
 pub mod io;
 pub mod iter;
 pub mod mem;

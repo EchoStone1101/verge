@@ -72,6 +72,8 @@ _ITEM_KW_RE = re.compile(
     r'(fn|struct|enum|trait|type|impl|mod|assume_specification)\b'
 )
 
+_VERUS_BLOCK_RE = re.compile(r'^\s*verus(?:_[A-Za-z0-9_]*)?!\s*\{')
+
 
 def _net_braces(s: str) -> int:
     """Count net { minus } in a string, ignoring string literal contents.
@@ -270,7 +272,7 @@ def parse_source(source: str) -> tuple[str, list[Item]]:
             continue
 
         # Check for verus! { or verus_! { — the main content block
-        if depth == 0 and re.match(r'verus_?!\s*\{', stripped):
+        if depth == 0 and _VERUS_BLOCK_RE.match(stripped):
             depth += delta  # depth becomes 1
             i += 1
             # Scan items inside verus! {} at depth 1
@@ -438,15 +440,22 @@ def main() -> None:
 
     print(f"  Processing {len(src_files)} source files ...", file=sys.stderr)
     written = 0
+    skipped: list[Path] = []
     for idx, src_file in enumerate(src_files, 1):
         rel = src_file.relative_to(src_root)
         print(f"  [{idx}/{len(src_files)}] {rel}           ", file=sys.stderr, end="\r")
         if process_file(src_file, src_root, out_root):
             written += 1
+        else:
+            skipped.append(rel)
 
     out_files = list(out_root.rglob("*.md"))
     print(f"\n  Done: {written} files written to {out_root}  ({len(out_files)} .md total)",
           file=sys.stderr)
+    if skipped:
+        print("  Skipped source files without extractable module docs or items:", file=sys.stderr)
+        for rel in skipped:
+            print(f"    - {rel}", file=sys.stderr)
 
 
 if __name__ == "__main__":
